@@ -4,7 +4,15 @@ Estado actual del proyecto, no un diario de sesiones — reescribir en vez de
 acumular. Ver `01-Proyectos/PTM-Prediction/` en el vault para el historial
 de decisiones.
 
-## DECISIÓN ARQUITECTÓNICA ABIERTA (no resuelta, no implementar sin confirmar)
+## DECISIÓN ARQUITECTÓNICA — CERRADA 2026-07-27
+
+**Confirmado por Enzo: se mantiene la arquitectura actual, sin cambios de
+código.** DeepMVP sigue siendo el único motor de Camino FASTA; DeepPTMPred
+sigue siendo el motor de Camino PDB (estructura real); Camino PDB sigue
+corriendo DeepMVP+DeepPTMPred en consenso, sin sumar un tercer motor por
+ahora. MTPrompt-PTM se evaluó a fondo y se descarta como reemplazo — motivo
+completo abajo. Nada en `pipeline.py`/`src/engines/` necesitaba cambiar:
+esto ya era el diseño implementado, la decisión era si mantenerlo o no.
 
 Enzo pidió reconsiderar que motor cubre Camino FASTA y cual Camino PDB,
 evaluando **MTPrompt-PTM** (`github.com/hanye311/MTPrompt-PTM`) como
@@ -52,15 +60,20 @@ DeepPTMPred el 2026-07-27 (repo clonado real, venv `mtprompt` creado,
   DeepPTMPred cubren). Licencia MIT (mejor que DeepPTMPred, sin licencia
   declarada).
 
-**No implementado, no decidido.** Requiere que Enzo elija entre: (a)
-mantener arquitectura actual (DeepMVP FASTA-solo, DeepMVP+DeepPTMPred
-consenso PDB con estructura real), (b) sustituir DeepPTMPred por
-MTPrompt-PTM (gana: sin PyRosetta, CLI real, corre en ambos caminos
-habilitando consenso tambien en FASTA; pierde: unico motor con estructura
-3D real, 6 tipos de cobertura), o (c) usar los tres motores (DeepMVP +
-DeepPTMPred + MTPrompt-PTM). Cualquiera de estas requiere rediseñar
-`ptm_annotation.py` (la correspondencia de tipos ya construida asume solo
-DeepMVP+DeepPTMPred).
+**Decisión final (2026-07-27): opción (a), sin cambios.** Motivo: DeepMVP
+tiene evidencia verificada mas solida (benchmark real contra 8 herramientas
+en Nature Methods) y cubre exactamente los 6 tipos ya decididos el 26/07 —
+los 7 tipos extra de MTPrompt-PTM quedan fuera de ese alcance, no son una
+ventaja real para este proyecto. DeepPTMPred sigue siendo el unico motor
+con estructura 3D real, algo que se perderia si se sustituyera. No se
+rediseño `ptm_annotation.py` porque no hubo cambio de motores.
+
+MTPrompt-PTM y MusiteDeep (alternativas FASTA) y LkaM-PTM/SAPP
+(alternativas PDB) quedan documentadas como candidatos evaluados y
+descartados, no lineas de trabajo activas — ver el desglose completo en
+`01-Proyectos/PTM-Prediction/Decisiones/2026-07-27-implementacion-fase1-a-fase3-nucleo.md`
+del vault y el artifact publicado en la sesion del 27-07 (comparacion de
+arquitecturas de los 6 motores investigados).
 
 ## Hecho — pipeline completo end-to-end (2026-07-27), motores sin instalar
 
