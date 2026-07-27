@@ -76,33 +76,58 @@ aplica.
   (`Lvera-code/PTM-Prediction`, publico) cuando haya algo funcional
   end-to-end CON los motores reales instalados.
 
-## Riesgos de instalacion identificados, no verificados todavia
+## Instalacion real — verificado 2026-07-27 (repos clonados, dependencias instaladas de verdad)
 
-- **DeepPTMPred usa `tensorflow-addons`** (para su loss function
-  `SigmoidFocalCrossEntropy`), paquete archivado/deprecado por Google desde
-  2024, contra TensorFlow 2.15 — no se ha intentado instalar todavia, riesgo
-  real de incompatibilidad no descartado.
-- **DeepPTMPred requiere PyRosetta** (licencia academica gratuita via
-  registro, mismo matiz que otras herramientas de licencia restringida en
-  proyecto 1), checkpoint ESM-2 de ~2.5GB, GPU recomendada, ~50GB de disco.
-  Instalacion no iniciada en esta maquina.
+Ambos repos se clonaron de verdad en esta maquina (`git clone`, dentro de
+`PTM-Prediction/`, gitignorados) para verificar friccion de instalacion
+real, no solo leer codigo. Contenido identico al verificado por API/curl
+horas antes (`diff` byte a byte contra `predict.py` confirmado).
+
+- **DeepMVP — INSTALADO Y FUNCIONAL** (sin pesos, esos si requieren
+  descarga manual del Shiny app). Entorno conda real `deepmvp`
+  (`/home/enzo/miniconda3/envs/deepmvp/bin/python`, Python 3.7.10):
+  `pip install -r requirements.txt` completo sin errores (TensorFlow
+  2.4.2 CPU, numpy 1.19.5, todo el stack). `python DeepMVP.py predict -h`
+  imprime exactamente el CLI documentado arriba. Verificado tambien el
+  caso de error real: con `-m` apuntando a una carpeta de modelos VACIA,
+  DeepMVP.py revienta con `ValueError: No objects to concatenate` (traza
+  cruda de pandas, opaca) — confirma que el chequeo proactivo de
+  `DeepMVPEngine._validate_installation` (falla antes, con mensaje
+  accionable) es necesario, no cosmetico. Un warning benigno de numpy/API
+  mismatch aparece en stderr pero no afecta la ejecucion.
+- **DeepPTMPred — dependencias mas riesgosas YA VERIFICADAS, instalacion
+  completa NO intentada** (PyRosetta requiere su propio instalador +
+  registro, ESM-2 checkpoint ~2.5GB de descarga manual, ~50GB disco — fuera
+  del tiempo disponible hoy). Verificado en un venv Python 3.10 aislado:
+  `tensorflow==2.15` + `tensorflow-addons==0.23.0` instalan Y IMPORTAN sin
+  error (`from tensorflow_addons.losses import SigmoidFocalCrossEntropy`
+  funciona) — solo un `UserWarning` de deprecacion esperado (TFA en modo
+  mantenimiento desde 2024, fin de vida anunciado mayo 2024, pero el
+  paquete sigue siendo instalable e importable). Esto DESCARTA el riesgo
+  de incompatibilidad que se habia flageado sin verificar. `fair-esm` +
+  `torch` tambien instalan e importan limpio. **Unico bloqueante real
+  restante: PyRosetta**, no intentado (instalador propio via
+  `pyrosetta-installer`, fuera de alcance de una verificacion rapida).
 - **DeepPTMPred no declara licencia** en su repo (a diferencia de DeepMVP,
   GPL-3.0) — verificar con Carlos antes de cualquier uso mas alla de
-  investigacion/TFG.
-- El runner propio (`_deepptmpred_runner.py`) esta escrito y con la logica
-  verificada contra el codigo fuente real, pero NUNCA se ha ejecutado
-  contra el entorno real (sin PyRosetta/TF/fair-esm instalados aqui) — solo
-  probado con `subprocess.run` mockeado.
+  investigacion/TFG. Esto sigue sin resolver.
+- El runner propio (`_deepptmpred_runner.py`) sigue sin ejecutarse contra
+  el entorno real completo (falta PyRosetta + checkpoint ESM-2 + pesos) —
+  solo probado con `subprocess.run` mockeado en tests.
 
 ## Proximos pasos reales
 
-1. Clonar DeepMVP + descargar sus pesos, clonar DeepPTMPred + descargar
-   checkpoint ESM-2 + instalar PyRosetta, verificar ambos venvs dedicados
-   (stacks incompatibles entre si: DeepMVP Python 3.7/TF 2.4, DeepPTMPred
-   Python 3.10/TF 2.15).
-2. Correr el pipeline real end-to-end sobre un caso real (validar que el
-   runner de DeepPTMPred funciona de verdad, no solo mockeado).
-3. Extension 3 (ΔΔG) y Fase A (modelado estructural real) — diseno cerrado
+1. Descargar pesos de DeepMVP (manual, `https://deepmvp.ptmax.org/`,
+   Shiny app) y apuntar `DEEPMVP_MODEL_DIR` — el resto de la instalacion
+   ya esta lista y verificada (env conda `deepmvp` funcional).
+2. Instalar PyRosetta (`pip install pyrosetta-installer` + script propio,
+   requiere registro academico) + descargar checkpoint ESM-2 (~2.5GB) para
+   DeepPTMPred — unico bloqueante real restante de ese lado, ya que TF/
+   tensorflow-addons/fair-esm/torch se verificaron limpios.
+3. Correr el pipeline real end-to-end sobre un caso real una vez ambos
+   esten completos (validar que el runner de DeepPTMPred funciona de
+   verdad, no solo mockeado).
+4. Extension 3 (ΔΔG) y Fase A (modelado estructural real) — diseno cerrado
    el 26-07, implementacion no empezada, deliberadamente pospuestas.
-4. Cross-validacion con StackGlyEmbed (proyecto 1) para N-glicosilacion —
+5. Cross-validacion con StackGlyEmbed (proyecto 1) para N-glicosilacion —
    deliberadamente sin integrar por ahora (decision 2026-07-26).

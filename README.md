@@ -15,13 +15,15 @@ Oscar Sorzano), independiente de
   PTM; DeepPTMPred exige `pdb_path` obligatorio, sin modo solo-secuencia,
   de ahi la asimetria entre caminos).
 - **Fase 3 (nucleo)**: anotacion/filtrado + logica de decision de flujo sobre
-  las predicciones de Fase 3a. Diseno cerrado, implementacion pendiente (ver
-  STATUS.md).
+  las predicciones de Fase 3a (`src/engines/ptm_annotation.py`). Fusiona
+  consenso donde DeepMVP y DeepPTMPred coinciden en tipo+posicion.
 
 ## Estado actual (2026-07-27)
 
-Fase 1 y Fase 1.5 implementadas y con tests. Fase 3 (motores DeepMVP/
-DeepPTMPred + nucleo de anotacion) todavia no construida — ver `STATUS.md`.
+Pipeline completo end-to-end (Fase 1/1.5/3) implementado y con 67 tests.
+Ningun motor tiene pesos instalados todavia en esta maquina — ver
+`STATUS.md` para el detalle de que falta (pesos de DeepMVP, PyRosetta +
+checkpoint ESM-2 de DeepPTMPred) y que ya se verifico instalable de verdad.
 
 ## Uso
 
@@ -36,6 +38,24 @@ python pipeline.py --input fasta_inputs/mi_estructura.pdb
 pip install -r requirements.txt
 pytest tests/
 ```
+
+DeepMVP y DeepPTMPred requieren venvs dedicados aparte (stacks
+incompatibles entre si), nunca el venv principal del pipeline:
+
+```bash
+git clone https://github.com/bzhanglab/DeepMVP
+conda create -n deepmvp python=3.7.10 -y
+conda run -n deepmvp pip install -r DeepMVP/requirements.txt
+export DEEPMVP_PYTHON_BIN=$(conda run -n deepmvp which python)
+# Pesos: descarga manual desde https://deepmvp.ptmax.org/ -> DeepMVP/models/
+
+git clone https://github.com/kuikui-wang/DeepPTMPred
+# venv Python 3.10 (ver DeepPTMPred/pred/train_PTM/environment.yml),
+# + pyrosetta-installer (ver README del repo) + checkpoint ESM-2 (~2.5GB)
+```
+
+Ver `STATUS.md` para el detalle completo de que ya se verifico (ambos
+repos clonados y probados en esta maquina el 2026-07-27) y que falta.
 
 ## Decisiones de arquitectura
 
