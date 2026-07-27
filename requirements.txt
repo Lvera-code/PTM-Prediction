@@ -1,0 +1,16 @@
+# Dependencias del pipeline de prediccion de zonas PTM (pipeline.py).
+pandas>=1.5.0
+numpy>=1.22.0
+
+# Fase 1.5 (estructura, PDB/mmCIF): parseo 100% local via gemmi (sin llamadas
+# de red). Libreria liviana, sin conflictos de dependencias con el resto del
+# pipeline.
+gemmi>=0.6.0
+
+# NOTA: DeepMVP y DeepPTMPred (Fase 3, motores de prediccion de PTMs) NO se
+# instalan aqui todavia -- sus engine wrappers no estan construidos (ver
+# STATUS.md). Cuando se construyan, lo mas probable es que necesiten un venv
+# dedicado cada uno (DeepMVP: TensorFlow 2.4.x; DeepPTMPred: PyRosetta +
+# checkpoint ESM-2), mismo patron que los motores de B-Cell-Epitope-Prediction.
+
+pytest>=7.0.0

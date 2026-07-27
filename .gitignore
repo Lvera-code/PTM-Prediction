@@ -1,0 +1,19 @@
+*.pyc
+__pycache__/
+.pytest_cache/
+logs/
+
+# Salida del pipeline: resultados regenerables de cada corrida de
+# pipeline.py, no es codigo fuente ni un artefacto versionable.
+fasta_outputs/
+
+# DeepMVP (Fase 3, motor unico Camino FASTA): repo empaquetado, pesos NO
+# incluidos (descarga separada). Nunca debe subirse.
+DeepMVP/
+.venv-deepmvp/
+
+# DeepPTMPred (Fase 3, motor 2 del consenso Camino PDB): repo empaquetado,
+# pesos SI incluidos (.h5 por tipo de PTM). Nunca debe subirse (pesado +
+# regenerable via git clone).
+DeepPTMPred/
+.venv-deepptmpred/
