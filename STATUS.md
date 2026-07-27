@@ -106,8 +106,17 @@ horas antes (`diff` byte a byte contra `predict.py` confirmado).
   paquete sigue siendo instalable e importable). Esto DESCARTA el riesgo
   de incompatibilidad que se habia flageado sin verificar. `fair-esm` +
   `torch` tambien instalan e importan limpio. **Unico bloqueante real
-  restante: PyRosetta**, no intentado (instalador propio via
-  `pyrosetta-installer`, fuera de alcance de una verificacion rapida).
+  restante: PyRosetta.** Se intento la instalacion automatica real via
+  `pip install pyrosetta-installer` + `install_pyrosetta()` (el metodo que
+  documenta el propio README de DeepPTMPred) — el paquete instalador SI se
+  instala, pero la descarga del wheel real falla en esta maquina: el mirror
+  por defecto (`west.rosettacommons.org`) responde `404` en la ruta que el
+  instalador consulta (`.../latest.html`), y el mirror alternativo
+  (`graylab.jhu.edu`) falla la verificacion TLS (cadena de certificados no
+  confiable en este entorno). No investigado mas a fondo (puede ser un
+  cambio de ruta del lado de PyRosetta, o una restriccion de red/CA de este
+  entorno sandboxeado) — instalacion manual necesaria, confirmado que NO es
+  automatizable tal cual en esta maquina, no es simplemente "no intentado".
 - **DeepPTMPred no declara licencia** en su repo (a diferencia de DeepMVP,
   GPL-3.0) — verificar con Carlos antes de cualquier uso mas alla de
   investigacion/TFG. Esto sigue sin resolver.
@@ -120,10 +129,12 @@ horas antes (`diff` byte a byte contra `predict.py` confirmado).
 1. Descargar pesos de DeepMVP (manual, `https://deepmvp.ptmax.org/`,
    Shiny app) y apuntar `DEEPMVP_MODEL_DIR` — el resto de la instalacion
    ya esta lista y verificada (env conda `deepmvp` funcional).
-2. Instalar PyRosetta (`pip install pyrosetta-installer` + script propio,
-   requiere registro academico) + descargar checkpoint ESM-2 (~2.5GB) para
-   DeepPTMPred — unico bloqueante real restante de ese lado, ya que TF/
-   tensorflow-addons/fair-esm/torch se verificaron limpios.
+2. Instalar PyRosetta manualmente (la instalacion automatica via
+   `pyrosetta-installer` falla en esta maquina, ver arriba — probar desde
+   una red/maquina distinta, o instalar via conda con canal academico
+   registrado) + descargar checkpoint ESM-2 (~2.5GB) para DeepPTMPred —
+   unico bloqueante real restante de ese lado, ya que TF/tensorflow-addons/
+   fair-esm/torch se verificaron limpios.
 3. Correr el pipeline real end-to-end sobre un caso real una vez ambos
    esten completos (validar que el runner de DeepPTMPred funciona de
    verdad, no solo mockeado).

@@ -108,6 +108,10 @@ def main() -> int:
     parser.add_argument("--protein-id", required=True)
     parser.add_argument("--sequence", required=True, help="Secuencia ATMSEQ ya saneada por Fase 1.5")
     parser.add_argument("--pdb-path", required=True, help="PDB de una sola cadena (Fase 1.5)")
+    # Lista duplicada a proposito de Settings.DEEPPTMPRED_PTM_TYPES: este
+    # script corre en el venv dedicado de DeepPTMPred, nunca importa 'src'
+    # (ver docstring del modulo). Si el repo agrega/quita un tipo de PTM,
+    # actualizar ambas listas (aqui y en src/config/settings.py).
     parser.add_argument("--ptm-type", required=True, choices=[
         "phosphorylation", "acetylation", "ubiquitination", "hydroxylation",
         "gamma_carboxyglutamic_acid", "lys_methylation", "malonylation",
