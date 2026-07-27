@@ -7,14 +7,15 @@ de decisiones.
 ## Hecho
 
 - **Fase 1** (`src/utils/fasta_parser.py`): saneamiento de FASTA crudo
-  (mayusculas, rechazo fatal de residuos no canonicos, deteccion de
-  accessions duplicados). Reutiliza el patron de
-  `BCell-Epitope-Prediction/src/utils/fasta_parser.py`, con una diferencia
-  real: la politica de rechazo de residuos no canonicos aqui es un default
-  CONSERVADOR, no una verificacion confirmada del comportamiento real de
-  DeepMVP (a diferencia de BepiPred-3.0 en proyecto 1, confirmado por
-  lectura directa del codigo). Revisar cuando se construya
-  `deepmvp_engine.py`.
+  (mayusculas, deteccion de accessions duplicados). Politica de residuos no
+  canonicos RELAJADA 2026-07-27 para igualar la tolerancia real de DeepMVP
+  (verificada leyendo `lib/PeptideEncode.py`, ver hallazgo abajo): ya no
+  rechaza fatal ningun caracter, solo reporta warning para los que DeepMVP
+  degrada (fuera de los 20 estandar + U + B; 'X' ni siquiera cuenta como
+  degradado, DeepMVP lo trata como "sin señal"). Diferente del
+  comportamiento de `BCell-Epitope-Prediction/src/utils/fasta_parser.py`
+  (rechazo fatal, correcto ahi porque BepiPred-3.0 SI aborta) a proposito:
+  cada Fase 1 refleja la tolerancia real de su unico motor consumidor.
 - **Fase 1.5** (`src/utils/structure_parser.py`): extraccion de secuencia
   ATMSEQ + mapeo de posiciones desde PDB/mmCIF via `gemmi`. Identico al de
   proyecto 1 (logica 100% generica, no especifica de epitopos).
@@ -33,26 +34,19 @@ de decisiones.
   `site_prediction.tsv` (columnas `protein|aa|pos|x|y_pred|fpr|ptm`). 9
   tests con `subprocess.run` mockeado (no se descargaron repo/pesos reales
   todavia en esta maquina).
-- 44 tests (`pytest tests/`, sin binarios/modelos externos).
+- 48 tests (`pytest tests/`, sin binarios/modelos externos).
 - Repo local (`git init`), sin remoto todavia — decidido 2026-07-27, se
   crea en GitHub (`Lvera-code/PTM-Prediction`, publico) cuando haya algo
   funcional end-to-end.
 
-## Hallazgos reales que afectan diseño ya cerrado (pendientes de decisión del usuario)
+## Hallazgos reales que afectan diseño ya cerrado
 
-- **Tolerancia a residuos no canonicos**: `lib/PeptideEncode.py` confirma
-  que DeepMVP NO aborta ante 'X'/otros caracteres no canonicos (los
-  codifica como vector de ceros o 0.5, con un aviso impreso, nunca
-  `exit(1)` — esa linea esta comentada en el codigo real). Esto es MAS
-  PERMISIVO que la politica de rechazo fatal que tiene hoy
-  `src/utils/fasta_parser.py` (ya documentada ahi como default
-  conservador, no verificado — ahora SI esta verificado). No se relajo
-  unilateralmente: decidir si Fase 1 se relaja para igualar la tolerancia
-  real de DeepMVP, o si se mantiene el rechazo fatal por consistencia con
-  el resto del pipeline (Camino PDB via `structure_parser.py` ya produce
-  'X' para residuos no resueltos, y ESE camino no pasa por
-  `fasta_parser.py` en absoluto -- la inconsistencia ya existe entre
-  caminos, esto solo la hace mas visible).
+- **Tolerancia a residuos no canonicos** — RESUELTO 2026-07-27 (decision de
+  Enzo: relajar Fase 1 para igualar la tolerancia real de DeepMVP, ver
+  arriba). `lib/PeptideEncode.py` confirma que DeepMVP NO aborta ante
+  'X'/otros caracteres no canonicos (los codifica como vector de ceros o
+  0.5, con un aviso impreso, nunca `exit(1)` — esa linea esta comentada en
+  el codigo real).
 - **Umbral de confianza real**: no hay un cutoff de probabilidad publicado
   por tipo de PTM. Cada carpeta de pesos trae su propio
   `site_prediction.tsv` de validacion, y la columna `fpr` que DeepMVP ya

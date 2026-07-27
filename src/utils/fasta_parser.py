@@ -6,17 +6,27 @@ separarlo en registros (cabecera, secuencia) y producir una version saneada
 del Camino FASTA; el Camino PDB usa ``src.utils.structure_parser`` en su
 lugar, no este modulo).
 
-Politica de residuos no canonicos: por defecto se RECHAZA (fatal) cualquier
-caracter fuera de los 20 aminoacidos estandar, mismo motivo de fondo que en
-``B-Cell-Epitope-Prediction``: eliminar o sustituir un residuo desplaza la
-numeracion de posicion y puede fusionar residuos que en la proteina real no
-son vecinos, fabricando una zona PTM en la costura que no existe en ninguna
-secuencia real. Esta es una politica CONSERVADORA por defecto, no una
-verificacion confirmada del comportamiento real de DeepMVP ante 'X'/'U'/'O'
--- a diferencia de BepiPred-3.0 en proyecto 1 (confirmado por lectura directa
-del codigo que rechaza en bloque), la tolerancia real de DeepMVP a residuos
-no canonicos todavia no se ha verificado leyendo su repo. Revisar y ajustar
-esta politica cuando se construya ``src/engines/deepmvp_engine.py``.
+Politica de residuos no canonicos (relajada 2026-07-27 para igualar la
+tolerancia real de DeepMVP, verificada leyendo directamente
+``lib/PeptideEncode.py::encodePeptideOneHot`` del repo
+github.com/bzhanglab/DeepMVP -- no una suposicion): DeepMVP NUNCA aborta
+ante un residuo fuera de su alfabeto (el ``exit(1)`` correspondiente esta
+comentado en el codigo real). 'X' se codifica como vector de ceros (sin
+señal, no es un error); cualquier otro caracter no reconocido (ambiguedades
+IUPAC Z/J, pirrolisina O, gaps '-', stops '*', digitos, etc.) se codifica
+como vector de 0.5 con un aviso impreso, y el resto de la prediccion sigue.
+El alfabeto que SI reconoce con codificacion propia (no degradada) son los
+20 estandar mas U (selenocisteina) y B (ambiguedad Asx), confirmado en
+``letterDict`` del repo.
+
+En consecuencia, este modulo ya NO rechaza (fatal) ningun registro por
+residuos no canonicos -- solo lo reporta como warning, dejando pasar el
+registro sin modificar su secuencia (se mantiene el principio de nunca
+eliminar ni sustituir un residuo: eso desplazaria la numeracion de posicion
+y podria fusionar residuos que en la proteina real no son vecinos). Unico
+consumidor del Camino FASTA es DeepMVP (decision 2026-07-26, asimetria
+aceptada), asi que igualar exactamente su tolerancia real es correcto aqui
+y no una relajacion generica del pipeline.
 """
 
 from dataclasses import dataclass
@@ -29,6 +39,11 @@ from src.utils.logger_config import setup_logger
 logger = setup_logger(__name__)
 
 CANONICAL_AMINOACIDS = set("ACDEFGHIKLMNPQRSTVWY")
+# Alfabeto que DeepMVP codifica con señal propia (no degradada), confirmado
+# leyendo lib/PeptideEncode.py::letterDict: los 20 estandar mas U
+# (selenocisteina) y B (ambiguedad Asx). 'X' se trata aparte (vector de
+# ceros, ver sanitize_sequence): no es señal degradada, es "sin señal".
+DEEPMVP_KNOWN_AMINOACIDS = CANONICAL_AMINOACIDS | {"U", "B"}
 
 
 @dataclass
@@ -89,22 +104,25 @@ def parse_fasta(path: Path) -> List[Tuple[str, str]]:
 
 
 def sanitize_sequence(raw_sequence: str) -> Tuple[str, List[str]]:
-    """Normaliza a mayusculas y detecta (sin corregir) residuos no canonicos.
+    """Normaliza a mayusculas y detecta (sin corregir) residuos que DeepMVP degrada.
 
-    Deliberadamente NO elimina ni sustituye los caracteres no canonicos: ver
-    politica documentada en el docstring del modulo.
+    Deliberadamente NO elimina ni sustituye ningun caracter: ver politica
+    documentada en el docstring del modulo. 'X' se excluye del reporte de
+    "degradados" porque DeepMVP lo trata como "sin señal" (vector de ceros),
+    no como un error -- solo se listan los caracteres que DeepMVP codifica
+    como vector de 0.5 (fuera de los 20 estandar + U + B).
 
     Args:
         raw_sequence: Secuencia de aminoacidos sin procesar.
 
     Returns:
-        Tupla ``(secuencia_en_mayusculas, caracteres_no_canonicos_encontrados)``,
-        con la lista de caracteres invalidos en orden de aparicion (vacia si
-        la secuencia es 100% canonica).
+        Tupla ``(secuencia_en_mayusculas, caracteres_degradados_encontrados)``,
+        con la lista de caracteres en orden de aparicion (vacia si la
+        secuencia es 100% alfabeto conocido de DeepMVP o 'X').
     """
     upper = raw_sequence.upper()
-    invalid_chars = [c for c in upper if c not in CANONICAL_AMINOACIDS]
-    return upper, invalid_chars
+    degraded_chars = [c for c in upper if c not in DEEPMVP_KNOWN_AMINOACIDS and c != "X"]
+    return upper, degraded_chars
 
 
 def load_and_sanitize(path: Path) -> List[FastaRecord]:
@@ -118,12 +136,13 @@ def load_and_sanitize(path: Path) -> List[FastaRecord]:
 
     Raises:
         FastaFormatError: Si el archivo no tiene sintaxis FASTA valida
-            (fatal); si algun registro contiene residuos no canonicos
-            (fatal, ver politica en el docstring del modulo); o si dos o mas
-            registros comparten el mismo accession (primer token de la
-            cabecera). Este ultimo caso es fatal por diseno: Fase 3 agrupa
-            resultados por accession, y dos proteinas distintas con el mismo
-            accession se fusionarian en una unica cadena de reporte.
+            (fatal); o si dos o mas registros comparten el mismo accession
+            (primer token de la cabecera). Este ultimo caso es fatal por
+            diseno: Fase 3 agrupa resultados por accession, y dos proteinas
+            distintas con el mismo accession se fusionarian en una unica
+            cadena de reporte. Los residuos no canonicos YA NO son fatales
+            (ver politica relajada en el docstring del modulo) -- solo se
+            reportan como warning.
         InvalidSequenceError: Si NINGUN registro tiene secuencia (fatal a
             nivel de archivo). El descarte de registros individuales
             genuinamente vacios solo se loggea como warning y no detiene el
@@ -137,15 +156,14 @@ def load_and_sanitize(path: Path) -> List[FastaRecord]:
             logger.warning("Registro '%s' descartado: no tiene ninguna secuencia asociada.", header)
             continue
 
-        upper_seq, invalid_chars = sanitize_sequence(raw_seq)
-        if invalid_chars:
-            raise FastaFormatError(
-                f"Registro '{header}' en '{path.name}' contiene {len(invalid_chars)} residuo(s) no "
-                f"canonico(s) ({sorted(set(invalid_chars))}): rechazado por politica conservadora "
-                "por defecto (ambiguedades IUPAC X/B/Z/J, selenocisteina U, pirrolisina O, gaps '-', "
-                "stops '*', digitos, etc.). Sustituye manualmente ese residuo por su mejor "
-                "aproximacion canonica (o elimina el registro) en el FASTA de entrada y vuelve a "
-                "intentarlo."
+        upper_seq, degraded_chars = sanitize_sequence(raw_seq)
+        if degraded_chars:
+            logger.warning(
+                "Registro '%s' en '%s' contiene %d residuo(s) fuera del alfabeto conocido de "
+                "DeepMVP (%s): se acepta igual, sin modificar la secuencia. DeepMVP los codifica "
+                "como vector degradado (0.5) en vez de fallar (verificado leyendo "
+                "lib/PeptideEncode.py::encodePeptideOneHot).",
+                header, path.name, len(degraded_chars), sorted(set(degraded_chars)),
             )
 
         accession = header.split()[0] if header else "UNKNOWN"

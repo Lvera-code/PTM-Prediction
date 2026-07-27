@@ -35,10 +35,23 @@ def test_sanitize_sequence_normaliza_mayusculas():
     assert invalid == []
 
 
-def test_sanitize_sequence_detecta_residuos_no_canonicos():
-    upper, invalid = sanitize_sequence("MKTXAYI")
+def test_sanitize_sequence_no_reporta_x_como_degradado():
+    # 'X' es "sin señal" para DeepMVP (vector de ceros), no un caracter degradado.
+    upper, degraded = sanitize_sequence("MKTXAYI")
     assert upper == "MKTXAYI"
-    assert invalid == ["X"]
+    assert degraded == []
+
+
+def test_sanitize_sequence_detecta_residuos_degradados():
+    upper, degraded = sanitize_sequence("MKTZAYI")
+    assert upper == "MKTZAYI"
+    assert degraded == ["Z"]
+
+
+def test_sanitize_sequence_no_reporta_u_ni_b_como_degradados():
+    upper, degraded = sanitize_sequence("MKTUBAYI")
+    assert upper == "MKTUBAYI"
+    assert degraded == []
 
 
 def test_load_and_sanitize_registro_valido(tmp_path):
@@ -47,10 +60,31 @@ def test_load_and_sanitize_registro_valido(tmp_path):
     assert records == [FastaRecord(header="ACC1 desc", accession="ACC1", sequence="MKTAYI")]
 
 
-def test_load_and_sanitize_rechaza_residuo_no_canonico(tmp_path):
-    p = _write(tmp_path, "bad.fasta", ">ACC1\nMKTXAYI\n")
-    with pytest.raises(FastaFormatError):
-        load_and_sanitize(p)
+def test_load_and_sanitize_acepta_residuo_x_sin_modificar_secuencia(tmp_path):
+    # 'X' es "sin señal" para DeepMVP (vector de ceros), no un error.
+    p = _write(tmp_path, "withx.fasta", ">ACC1\nMKTXAYI\n")
+    records = load_and_sanitize(p)
+    assert records == [FastaRecord(header="ACC1", accession="ACC1", sequence="MKTXAYI")]
+
+
+def test_load_and_sanitize_acepta_residuo_degradado_y_loguea_warning(tmp_path, caplog):
+    # 'Z' (ambiguedad IUPAC) no esta en el alfabeto conocido de DeepMVP:
+    # se acepta igual (vector 0.5), solo se reporta como warning.
+    p = _write(tmp_path, "degraded.fasta", ">ACC1\nMKTZAYI\n")
+    with caplog.at_level("WARNING"):
+        records = load_and_sanitize(p)
+    assert records == [FastaRecord(header="ACC1", accession="ACC1", sequence="MKTZAYI")]
+    assert "Z" in caplog.text
+
+
+def test_load_and_sanitize_acepta_selenocisteina_y_asx_sin_warning(tmp_path, caplog):
+    # U (selenocisteina) y B (Asx) SI tienen codificacion propia en DeepMVP
+    # (letterDict), no son "degradados": no deberian generar warning.
+    p = _write(tmp_path, "ub.fasta", ">ACC1\nMKTUBAYI\n")
+    with caplog.at_level("WARNING"):
+        records = load_and_sanitize(p)
+    assert records[0].sequence == "MKTUBAYI"
+    assert caplog.text == ""
 
 
 def test_load_and_sanitize_descarta_registro_vacio_sin_detener_lote(tmp_path):
