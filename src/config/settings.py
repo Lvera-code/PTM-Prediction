@@ -94,6 +94,68 @@ class Settings:
     # 'y_pred'. El score crudo (y_pred) se conserva siempre igual.
     DEEPMVP_MAX_FPR: float = _env_float("DEEPMVP_MAX_FPR", 0.05)
 
+    # --- Fase 3a: DeepPTMPred (motor 2/2 del consenso, Camino PDB unicamente) ---
+    # Verificado leyendo github.com/kuikui-wang/DeepPTMPred directamente
+    # (README.md, pred/train_PTM/predict.py, pred/train_PTM/e2_single_data.py,
+    # pred/train_PTM/environment.yml) el 2026-07-27. Repo real, pesos SI
+    # incluidos en el repo (.h5 por tipo, ~19MB c/u), pero SIN licencia
+    # declarada (a diferencia de DeepMVP, GPL-3.0) -- verificar con Carlos
+    # antes de cualquier uso mas alla de investigacion/TFG.
+    #
+    # HALLAZGO IMPORTANTE: a diferencia de DeepMVP, ni predict.py ni
+    # e2_single_data.py tienen CLI real -- ptm_type/pdb_path/protein_id/ruta
+    # del checkpoint ESM estan hardcodeados dentro de su bloque
+    # `if __name__ == "__main__":`. Por eso este proyecto NO invoca esos
+    # scripts directamente por subprocess (a diferencia de DeepMVP): usa un
+    # runner propio (`src/engines/_deepptmpred_runner.py`) que importa sus
+    # clases parametrizables (PredictConfig, PTMPredictor) y REIMPLEMENTA la
+    # extraccion de features ESM-2 -- e2_single_data.py::extract_full_sequence_esm
+    # tiene un bug real confirmado: redefine 'custom_checkpoint_path' como
+    # variable LOCAL con una ruta absoluta hardcodeada de AutoDL
+    # (/root/autodl-tmp/...), ignorando cualquier valor pasado o de modulo.
+    DEEPPTMPRED_HOME: Path = Path(_env_str("DEEPPTMPRED_HOME", "DeepPTMPred"))
+    DEEPPTMPRED_TRAIN_PTM_DIR: Path = Path(
+        _env_str("DEEPPTMPRED_TRAIN_PTM_DIR", "DeepPTMPred/pred/train_PTM")
+    )
+    DEEPPTMPRED_RUNNER_SCRIPT: Path = Path(
+        _env_str(
+            "DEEPPTMPRED_RUNNER_SCRIPT",
+            str(Path(__file__).resolve().parent.parent / "engines" / "_deepptmpred_runner.py"),
+        )
+    )
+    # Python 3.10 + TensorFlow==2.15 + PyTorch 2.0 + PyRosetta + fair-esm (ver
+    # environment.yml del repo): stack pesado y DISTINTO del de DeepMVP
+    # (Python 3.7 + TF 2.4), requiere su propio venv/conda dedicado, nunca
+    # compartido con DEEPMVP_PYTHON_BIN. tensorflow-addons (usado por
+    # predict.py para su loss function) esta archivado/deprecado por Google
+    # desde 2024 -- riesgo real de instalacion contra TF 2.15 sin verificar
+    # todavia, no asumido como resuelto.
+    DEEPPTMPRED_PYTHON_BIN: str = _env_str("DEEPPTMPRED_PYTHON_BIN", sys.executable)
+    # Checkpoint ESM-2 (fair-esm, ~2.5GB), descarga separada (no incluido en
+    # el repo, a diferencia de los pesos .h5 de PTM que si vienen incluidos).
+    DEEPPTMPRED_ESM_CHECKPOINT: Path = Path(
+        _env_str("DEEPPTMPRED_ESM_CHECKPOINT", "DeepPTMPred/esm/checkpoints/esm2_t33_650M_UR50D.pt")
+    )
+    # Cache de features ESM por accession (.npz), reutilizado entre corridas
+    # y entre tipos de PTM del mismo accession (evita recalcular el embedding
+    # completo 17 veces, una por tipo de PTM).
+    DEEPPTMPRED_CUSTOM_ESM_DIR: Path = Path(
+        _env_str("DEEPPTMPRED_CUSTOM_ESM_DIR", "DeepPTMPred/pred/custom_esm")
+    )
+    DEEPPTMPRED_TIMEOUT_SECONDS: int = _env_int("DEEPPTMPRED_TIMEOUT_SECONDS", 3600)
+    # Los 17 tipos de PTM soportados, confirmado leyendo
+    # predict.py::PredictConfig.ptm_aa_map (nombres exactos del repo, no
+    # traducidos): a diferencia de DeepMVP (task=2 predice todos los tipos en
+    # una sola invocacion), DeepPTMPred predice UN tipo por invocacion -- el
+    # engine debe invocar el runner una vez POR TIPO, por accession.
+    DEEPPTMPRED_PTM_TYPES: tuple = (
+        "phosphorylation", "acetylation", "ubiquitination", "hydroxylation",
+        "gamma_carboxyglutamic_acid", "lys_methylation", "malonylation",
+        "arg_methylation", "crotonylation", "succinylation", "glutathionylation",
+        "sumoylation", "s_nitrosylation", "glutarylation", "citrullination",
+        "o_linked_glycosylation", "n_linked_glycosylation",
+    )
+
     @classmethod
     def ensure_dirs(cls) -> None:
         """Crea todas las carpetas de entrada/salida configuradas si no existen."""
