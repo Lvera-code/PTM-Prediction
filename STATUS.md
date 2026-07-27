@@ -4,6 +4,64 @@ Estado actual del proyecto, no un diario de sesiones — reescribir en vez de
 acumular. Ver `01-Proyectos/PTM-Prediction/` en el vault para el historial
 de decisiones.
 
+## DECISIÓN ARQUITECTÓNICA ABIERTA (no resuelta, no implementar sin confirmar)
+
+Enzo pidió reconsiderar que motor cubre Camino FASTA y cual Camino PDB,
+evaluando **MTPrompt-PTM** (`github.com/hanye311/MTPrompt-PTM`) como
+candidato. Verificado con el mismo nivel de profundidad que DeepMVP/
+DeepPTMPred el 2026-07-27 (repo clonado real, venv `mtprompt` creado,
+`pip install -r requirements.txt` sin errores, CLI real confirmado:
+`python test.py --config_path ... --model_path ... --data_path <fasta>
+--PTM_type <tipo> --save_path ...`).
+
+**Hallazgos clave:**
+- MTPrompt-PTM es **solo-secuencia** (input `protein_sequence`, confirmado
+  en `config/PTM_config_prompt_tuning_test.yaml`) — NO usa el PDB/
+  coordenadas 3D en absoluto durante la inferencia, pese a llamarse
+  "Structure-Aware": su "conciencia de estructura" viene de como se
+  PREENTRENÓ el backbone (S-PLM v2), no de features estructurales que se
+  calculen por proteina en tiempo de inferencia (a diferencia de
+  DeepPTMPred, que SI calcula SASA/phi/psi/secundaria reales via
+  PyRosetta sobre el PDB de cada proteina). Consecuencia: si sustituye a
+  DeepPTMPred, el pipeline pierde el ÚNICO motor que aprovecha estructura
+  3D real -- Camino PDB pasaria a ser, en la práctica, dos motores de
+  secuencia en consenso, no secuencia+estructura.
+- No requiere PyRosetta (confirmado, ausente de `environment.yml`/
+  `requirements.txt`) — resuelve el bloqueante real de hoy.
+- Instala limpio (Python 3.11, ~3 min, sin conflictos reales — un solo
+  warning cosmético de version de `packaging`).
+- **Hallazgo real nuevo, no trivial**: el propio código de MTPrompt-PTM
+  (`model.py::prepare_adapter_h_model`) construye su encoder ESM-2 via
+  `esm_adapterH.pretrained.esm2_t33_650M_UR50D()`, que internamente llama
+  `load_model_and_alphabet_HUB` (no la rama local que si usa nuestro
+  runner de DeepPTMPred) — **por defecto SI intenta descargar de red**
+  (`dl.fbaipublicfiles.com`) la primera vez que corre, a menos que el
+  checkpoint ya este cacheado en `~/.cache/torch/hub/checkpoints/` de
+  antemano. Parcheable (mismo patron que ya se aplico para DeepPTMPred:
+  forzar la rama local pre-poblando el cache o pasando ruta `.pt`
+  directamente), pero NO es "100% local de fabrica" como se asumio al
+  proponerlo -- requeriria el mismo tipo de ajuste que ya se hizo para
+  DeepPTMPred.
+- Pesos propios (`best_model_13ptm_final.pth`, un unico archivo
+  multi-tarea): descarga manual desde Google Drive, no descargados aun.
+  README tambien ofrece Docker (`hanye0311/mtprompt:v1`) como alternativa
+  de despliegue, no probado.
+- Cubre 13 tipos (le faltan los 6 que DeepPTMPred si tiene: hydroxylation,
+  gamma_carboxyglutamic_acid, glutarylation, glutathionylation,
+  s_nitrosylation, citrullination; suma palmitoilacion, que ni DeepMVP ni
+  DeepPTMPred cubren). Licencia MIT (mejor que DeepPTMPred, sin licencia
+  declarada).
+
+**No implementado, no decidido.** Requiere que Enzo elija entre: (a)
+mantener arquitectura actual (DeepMVP FASTA-solo, DeepMVP+DeepPTMPred
+consenso PDB con estructura real), (b) sustituir DeepPTMPred por
+MTPrompt-PTM (gana: sin PyRosetta, CLI real, corre en ambos caminos
+habilitando consenso tambien en FASTA; pierde: unico motor con estructura
+3D real, 6 tipos de cobertura), o (c) usar los tres motores (DeepMVP +
+DeepPTMPred + MTPrompt-PTM). Cualquiera de estas requiere rediseñar
+`ptm_annotation.py` (la correspondencia de tipos ya construida asume solo
+DeepMVP+DeepPTMPred).
+
 ## Hecho — pipeline completo end-to-end (2026-07-27), motores sin instalar
 
 Las 3 fases estan implementadas y conectadas en `pipeline.py`. Ningun motor

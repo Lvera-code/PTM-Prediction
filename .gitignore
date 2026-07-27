@@ -17,3 +17,9 @@ DeepMVP/
 # regenerable via git clone).
 DeepPTMPred/
 .venv-deepptmpred/
+
+# MTPrompt-PTM (candidato evaluado 2026-07-27, no adoptado todavia -- ver
+# STATUS.md): repo clonado para verificacion real, pesos NO incluidos
+# (descarga manual de Google Drive). Nunca debe subirse.
+MTPrompt-PTM/
+.venv-mtprompt/
