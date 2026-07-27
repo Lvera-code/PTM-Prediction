@@ -4,85 +4,105 @@ Estado actual del proyecto, no un diario de sesiones — reescribir en vez de
 acumular. Ver `01-Proyectos/PTM-Prediction/` en el vault para el historial
 de decisiones.
 
-## Hecho
+## Hecho — pipeline completo end-to-end (2026-07-27), motores sin instalar
 
-- **Fase 1** (`src/utils/fasta_parser.py`): saneamiento de FASTA crudo
-  (mayusculas, deteccion de accessions duplicados). Politica de residuos no
-  canonicos RELAJADA 2026-07-27 para igualar la tolerancia real de DeepMVP
-  (verificada leyendo `lib/PeptideEncode.py`, ver hallazgo abajo): ya no
-  rechaza fatal ningun caracter, solo reporta warning para los que DeepMVP
-  degrada (fuera de los 20 estandar + U + B; 'X' ni siquiera cuenta como
-  degradado, DeepMVP lo trata como "sin señal"). Diferente del
-  comportamiento de `BCell-Epitope-Prediction/src/utils/fasta_parser.py`
-  (rechazo fatal, correcto ahi porque BepiPred-3.0 SI aborta) a proposito:
-  cada Fase 1 refleja la tolerancia real de su unico motor consumidor.
-- **Fase 1.5** (`src/utils/structure_parser.py`): extraccion de secuencia
-  ATMSEQ + mapeo de posiciones desde PDB/mmCIF via `gemmi`. Identico al de
-  proyecto 1 (logica 100% generica, no especifica de epitopos).
-- **Enrutador de input** (`src/utils/input_router.py`): identico al de
-  proyecto 1 (extension + sniffing de contenido).
-- **Orquestador** (`pipeline.py`): CLI minima que corre Fase 1 o 1.5 segun
-  el tipo de input detectado. `DeepMVPEngine` todavia no esta enganchada
-  aqui (imprime un aviso, no falla en silencio) — el nucleo de Fase 3 (B+D)
-  tampoco existe todavia, ver mas abajo.
+Las 3 fases estan implementadas y conectadas en `pipeline.py`. Ningun motor
+(DeepMVP, DeepPTMPred) esta instalado todavia en esta maquina — correr el
+pipeline hoy falla con un error accionable en Fase 3 (`DeepMVPExecutionError`
+apenas invoca DeepMVP, confirmado con una corrida real). 67 tests
+(`pytest tests/`), sin binarios/modelos externos, subprocess mockeado donde
+aplica.
+
+- **Fase 1** (`src/utils/fasta_parser.py`): saneamiento FASTA. Politica de
+  residuos no canonicos RELAJADA (decision de Enzo 2026-07-27) para igualar
+  la tolerancia real de DeepMVP (verificada en `lib/PeptideEncode.py`): ya
+  no rechaza fatal ningun caracter, solo avisa para los que DeepMVP degrada
+  (fuera de 20 estandar + U + B; 'X' no cuenta, DeepMVP lo trata como "sin
+  señal"). A proposito distinto de `BCell-Epitope-Prediction` (rechazo
+  fatal ahi, correcto porque BepiPred-3.0 SI aborta): cada Fase 1 refleja
+  la tolerancia real de su motor.
+- **Fase 1.5** (`src/utils/structure_parser.py`): ATMSEQ + mapeo de
+  posiciones desde PDB/mmCIF via `gemmi`. Identico a proyecto 1 (logica
+  generica).
+- **Enrutador de input** (`src/utils/input_router.py`): identico a proyecto 1.
 - **DeepMVPEngine** (`src/engines/deepmvp_engine.py`, motor unico Camino
-  FASTA / motor 1 de 2 Camino PDB): wrapper de subprocess sobre
+  FASTA / motor 1 de 2 Camino PDB): subprocess sobre
   `github.com/bzhanglab/DeepMVP`, verificado leyendo el repo directamente
-  el 2026-07-27 (README.md, `DeepMVP.py`, `lib/PTModels.py`,
-  `lib/Metrics.py` — no resumen de buscador). CLI real: `python DeepMVP.py
-  predict -m <model_dir> -d <fasta> -t 2 -o <out_dir>`, salida fija
-  `site_prediction.tsv` (columnas `protein|aa|pos|x|y_pred|fpr|ptm`). 9
-  tests con `subprocess.run` mockeado (no se descargaron repo/pesos reales
-  todavia en esta maquina).
-- 48 tests (`pytest tests/`, sin binarios/modelos externos).
-- Repo local (`git init`), sin remoto todavia — decidido 2026-07-27, se
-  crea en GitHub (`Lvera-code/PTM-Prediction`, publico) cuando haya algo
-  funcional end-to-end.
+  (README.md, `DeepMVP.py`, `lib/PTModels.py`, `lib/Metrics.py`). CLI real
+  con flags propios (`predict -m <model_dir> -d <fasta> -t 2 -o <out_dir>`),
+  salida fija `site_prediction.tsv`.
+- **DeepPTMPredEngine** (`src/engines/deepptmpred_engine.py` +
+  `src/engines/_deepptmpred_runner.py`, motor 2/2 del consenso, Camino PDB
+  unicamente): verificado leyendo `github.com/kuikui-wang/DeepPTMPred`
+  directamente (README.md, `predict.py`, `e2_single_data.py`,
+  `environment.yml`). A diferencia de DeepMVP, ESTE REPO NO TIENE CLI —
+  `ptm_type`/`pdb_path`/`protein_id`/ruta del checkpoint ESM estan
+  hardcodeados dentro de su bloque `if __name__ == "__main__":`. Se
+  construyo un runner propio (`_deepptmpred_runner.py`) que importa las
+  clases parametrizadas de `predict.py` (`PredictConfig`, `PTMPredictor`) y
+  REIMPLEMENTA la extraccion de features ESM-2 en vez de usar
+  `e2_single_data.py::extract_full_sequence_esm`, que tiene un bug real
+  confirmado: redefine `custom_checkpoint_path` como variable LOCAL con una
+  ruta absoluta hardcodeada de AutoDL (`/root/autodl-tmp/...`), ignorando
+  cualquier valor pasado. Predice UN tipo de PTM por invocacion (17 en
+  total), no todos a la vez como DeepMVP — el engine invoca 17 veces por
+  accession y concatena.
+- **Nucleo de Fase 3** (`src/engines/ptm_annotation.py`, B: anotacion +
+  D: filtro): implementado segun el diseno de
+  `01-Proyectos/PTM-Prediction/Decisiones/2026-07-27-diseno-nucleo-fase3-anotacion-flujo.md`.
+  Correspondencia de tipos DeepMVP↔DeepPTMPred verificada leyendo ambos
+  repos (no asumida): de los 6 tipos biologicos de DeepMVP (8 modelos por
+  residuo), 7 tienen equivalente en DeepPTMPred; **`phosphorylation_y`
+  (fosforilacion en Y) NO tiene ningun modelo equivalente en DeepPTMPred**
+  (su unico modelo de fosforilacion cubre S/T, no Y) — hallazgo nuevo, ni
+  siquiera en Camino PDB hay consenso posible para ese tipo. Los 10 tipos
+  exclusivos de DeepPTMPred (no ~11 como se estimaba el 26: hydroxylation,
+  gamma_carboxyglutamic_acid, malonylation, crotonylation, succinylation,
+  glutathionylation, s_nitrosylation, glutarylation, citrullination,
+  o_linked_glycosylation) se incluyen en el nucleo, marcados
+  `consenso=false`. Umbral: `fpr <= DEEPMVP_MAX_FPR` para DeepMVP,
+  `probability >= DEEPPTMPRED_MIN_PROBABILITY` (0.5, PROVISIONAL — DeepPTMPred
+  no expone ningun mecanismo de calibracion, a diferencia del `fpr` de
+  DeepMVP) para DeepPTMPred-solo; en filas con consenso, `pasa_umbral` es la
+  UNION (pasa si al menos uno de los dos pasa su propio umbral), `consenso`
+  es la INTERSECCION (True solo si ambos pasan).
+- **Orquestador** (`pipeline.py`): las 3 fases conectadas end-to-end en
+  ambos caminos. Camino FASTA maneja FASTA multi-accession correctamente
+  (anota cada accession con su propia secuencia, no las concatena).
+  Confirmado con corrida real: Fase 1 se completa y persiste
+  (`<accession>_clean.fasta`), Fase 3 falla con `DeepMVPExecutionError`
+  accionable (repo no clonado) — no falla en silencio a mitad de camino.
+- Repo local (`git init`), sin remoto todavia — se crea en GitHub
+  (`Lvera-code/PTM-Prediction`, publico) cuando haya algo funcional
+  end-to-end CON los motores reales instalados.
 
-## Hallazgos reales que afectan diseño ya cerrado
+## Riesgos de instalacion identificados, no verificados todavia
 
-- **Tolerancia a residuos no canonicos** — RESUELTO 2026-07-27 (decision de
-  Enzo: relajar Fase 1 para igualar la tolerancia real de DeepMVP, ver
-  arriba). `lib/PeptideEncode.py` confirma que DeepMVP NO aborta ante
-  'X'/otros caracteres no canonicos (los codifica como vector de ceros o
-  0.5, con un aviso impreso, nunca `exit(1)` — esa linea esta comentada en
-  el codigo real).
-- **Umbral de confianza real**: no hay un cutoff de probabilidad publicado
-  por tipo de PTM. Cada carpeta de pesos trae su propio
-  `site_prediction.tsv` de validacion, y la columna `fpr` que DeepMVP ya
-  devuelve por fila es el FPR real de ese modelo especifico al usar esa
-  probabilidad como corte (`lib/Metrics.py::add_confidence_metrics`).
-  `Settings.DEEPMVP_MAX_FPR` (default 0.05) ya refleja esto — el nucleo de
-  Fase 3 debe filtrar por `fpr <= DEEPMVP_MAX_FPR`, no por `y_pred`, cuando
-  se construya.
+- **DeepPTMPred usa `tensorflow-addons`** (para su loss function
+  `SigmoidFocalCrossEntropy`), paquete archivado/deprecado por Google desde
+  2024, contra TensorFlow 2.15 — no se ha intentado instalar todavia, riesgo
+  real de incompatibilidad no descartado.
+- **DeepPTMPred requiere PyRosetta** (licencia academica gratuita via
+  registro, mismo matiz que otras herramientas de licencia restringida en
+  proyecto 1), checkpoint ESM-2 de ~2.5GB, GPU recomendada, ~50GB de disco.
+  Instalacion no iniciada en esta maquina.
+- **DeepPTMPred no declara licencia** en su repo (a diferencia de DeepMVP,
+  GPL-3.0) — verificar con Carlos antes de cualquier uso mas alla de
+  investigacion/TFG.
+- El runner propio (`_deepptmpred_runner.py`) esta escrito y con la logica
+  verificada contra el codigo fuente real, pero NUNCA se ha ejecutado
+  contra el entorno real (sin PyRosetta/TF/fair-esm instalados aqui) — solo
+  probado con `subprocess.run` mockeado.
 
-## Diseno cerrado, pendiente de construir
+## Proximos pasos reales
 
-**Fase 3 (nucleo)** — diseno completo en
-`01-Proyectos/PTM-Prediction/Decisiones/2026-07-27-diseno-nucleo-fase3-anotacion-flujo.md`:
-
-- Esquema de salida: `accesion | posicion | residuo_wt | tipo_PTM | motor(es)
-  | score_DeepMVP | score_DeepPTMPred (nullable) | consenso (bool, solo
-  Camino PDB) | ventana (nullable) | camino (FASTA/PDB)`.
-- Umbral por herramienta (no global), score crudo siempre conservado.
-- Los ~11 tipos exclusivos de DeepPTMPred en Camino PDB se incluyen en el
-  nucleo, marcados `consenso=false`.
-- Logica de flujo (D): filtro/prioridad de responsabilidad unica (umbral
-  generico pasa/no-pasa), sin rutas a Extension 3 (ΔΔG) ni Fase A
-  (modelado estructural) — esas fases no existen todavia.
-
-**Siguiente paso real**: construir `src/engines/deepmvp_engine.py` — primero
-verificar por lectura directa del repo (`raw.githubusercontent.com`, no
-resumen de buscador) el CLI real, el umbral recomendado publicado, y la
-tolerancia real a residuos no canonicos (para ajustar o confirmar la
-politica conservadora de `fasta_parser.py` de hoy). Repo/pesos de DeepMVP y
-DeepPTMPred ya verificados como instalables el 2026-07-26 (ver decision de
-esa fecha), pero ninguno de los dos se ha clonado/instalado todavia en esta
-maquina.
-
-## Explicitamente fuera del nucleo (no descartado, agendado)
-
-- Extension 3 (ΔΔG / impacto de estabilidad).
-- Fase A (modelado estructural real del PTM, Camino PDB unicamente).
-- Cross-validacion con StackGlyEmbed (proyecto 1) para N-glicosilacion —
-  ambos motores quedan independientes por ahora.
+1. Clonar DeepMVP + descargar sus pesos, clonar DeepPTMPred + descargar
+   checkpoint ESM-2 + instalar PyRosetta, verificar ambos venvs dedicados
+   (stacks incompatibles entre si: DeepMVP Python 3.7/TF 2.4, DeepPTMPred
+   Python 3.10/TF 2.15).
+2. Correr el pipeline real end-to-end sobre un caso real (validar que el
+   runner de DeepPTMPred funciona de verdad, no solo mockeado).
+3. Extension 3 (ΔΔG) y Fase A (modelado estructural real) — diseno cerrado
+   el 26-07, implementacion no empezada, deliberadamente pospuestas.
+4. Cross-validacion con StackGlyEmbed (proyecto 1) para N-glicosilacion —
+   deliberadamente sin integrar por ahora (decision 2026-07-26).

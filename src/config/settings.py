@@ -148,6 +148,16 @@ class Settings:
     # traducidos): a diferencia de DeepMVP (task=2 predice todos los tipos en
     # una sola invocacion), DeepPTMPred predice UN tipo por invocacion -- el
     # engine debe invocar el runner una vez POR TIPO, por accession.
+    # Filtro de confianza (Fase 3, nucleo): a diferencia de DeepMVP,
+    # DeepPTMPred no expone ningun mecanismo de calibracion tipo 'fpr' (ni en
+    # predict.py ni en su README) -- solo una probabilidad cruda 0-1. Su
+    # propio script usa un cutoff de 0.5 hardcodeado sin documentar de donde
+    # sale (no calibrado contra ningun validation set publicado, a
+    # diferencia del 'fpr' de DeepMVP). Este default de 0.5 es PROVISIONAL,
+    # heredado sin verificacion adicional -- revisar si aparece evidencia de
+    # un umbral mejor calibrado.
+    DEEPPTMPRED_MIN_PROBABILITY: float = _env_float("DEEPPTMPRED_MIN_PROBABILITY", 0.5)
+
     DEEPPTMPRED_PTM_TYPES: tuple = (
         "phosphorylation", "acetylation", "ubiquitination", "hydroxylation",
         "gamma_carboxyglutamic_acid", "lys_methylation", "malonylation",

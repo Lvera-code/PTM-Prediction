@@ -1,11 +1,19 @@
-"""Tests de integracion ligera del orquestador (pipeline.py) para Fase 1/1.5.
+"""Tests de integracion del orquestador (pipeline.py), las 3 fases.
 
-Cubre unicamente el enrutamiento + saneamiento/extraccion de hoy (Fase 3,
-DeepMVP/DeepPTMPred, todavia no implementada). Sin mocks de motores porque
-todavia no hay ningun motor que mockear.
+Fase 1/1.5 corren con logica real (sin mocks, sin binarios externos). Los
+motores de Fase 3 (DeepMVP/DeepPTMPred) se mockean a nivel de
+``Engine.run`` -- no de subprocess (eso ya lo cubren
+test_deepmvp_engine.py/test_deepptmpred_engine.py) -- porque ninguno de los
+dos esta instalado en esta maquina (repo/pesos no descargados, ver
+STATUS.md).
 """
 
-from pipeline import main
+import pandas as pd
+
+import pipeline
+from src.engines.deepmvp_engine import DeepMVPEngine, OUTPUT_COLUMNS as DEEPMVP_COLUMNS
+from src.engines.deepptmpred_engine import DeepPTMPredEngine, OUTPUT_COLUMNS as DEEPPTMPRED_COLUMNS
+from src.utils.exceptions import DeepMVPExecutionError
 
 FASTA_CONTENT = ">ACC1 test protein\nMKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQAPILSRVGDGTQDNLSGAEKAVQVKV\n"
 
@@ -25,32 +33,63 @@ def _write(tmp_path, name, content):
     return p
 
 
-def test_camino_fasta_produce_clean_fasta(tmp_path):
+def test_camino_fasta_produce_clean_fasta_y_reporte(tmp_path, monkeypatch):
     input_path = _write(tmp_path, "ACC1.fasta", FASTA_CONTENT)
     output_dir = tmp_path / "out"
 
-    exit_code = main(["--input", str(input_path), "--output-dir", str(output_dir)])
+    fake_deepmvp = pd.DataFrame(
+        [["ACC1", "K", 5, "xxx", 0.9, 0.01, "acetylation_k"]], columns=DEEPMVP_COLUMNS
+    )
+    monkeypatch.setattr(DeepMVPEngine, "run", lambda self, items, output_dir=None: [fake_deepmvp])
+
+    exit_code = pipeline.main(["--input", str(input_path), "--output-dir", str(output_dir)])
 
     assert exit_code == 0
     assert (output_dir / "ACC1_clean.fasta").is_file()
+    report = pd.read_csv(output_dir / "ACC1_ptm_sites.csv")
+    assert list(report["accession"]) == ["ACC1"]
+    assert list(report["tipo_ptm"]) == ["acetylation_k"]
 
 
-def test_camino_pdb_produce_fasta_derivado_y_position_mapping(tmp_path):
+def test_camino_pdb_produce_reporte_con_consenso(tmp_path, monkeypatch):
     input_path = _write(tmp_path, "1abc.pdb", PDB_CONTENT)
     output_dir = tmp_path / "out"
 
-    exit_code = main(["--input", str(input_path), "--output-dir", str(output_dir)])
+    fake_deepmvp = pd.DataFrame(
+        [["1abc", "M", 1, "xxx", 0.9, 0.01, "acetylation_k"]], columns=DEEPMVP_COLUMNS
+    )
+    fake_deepptmpred = pd.DataFrame(
+        [["1abc", 1, "M", 0.8, "acetylation"]], columns=DEEPPTMPRED_COLUMNS
+    )
+    monkeypatch.setattr(DeepMVPEngine, "run", lambda self, items, output_dir=None: [fake_deepmvp])
+    monkeypatch.setattr(DeepPTMPredEngine, "run", lambda self, items, output_dir=None: [fake_deepptmpred])
+
+    exit_code = pipeline.main(["--input", str(input_path), "--output-dir", str(output_dir)])
 
     assert exit_code == 0
     assert (output_dir / "1abc_derived.fasta").is_file()
     assert (output_dir / "1abc_position_mapping.csv").is_file()
-    assert (output_dir / "1abc_chain_A.pdb").is_file()
+    report = pd.read_csv(output_dir / "1abc_ptm_sites.csv")
+    assert report.iloc[0]["motor"] == "DeepMVP+DeepPTMPred"
+    assert bool(report.iloc[0]["consenso"]) is True
 
 
 def test_input_invalido_retorna_codigo_de_error(tmp_path):
     input_path = _write(tmp_path, "bad.fasta", "no es fasta valido\n")
     output_dir = tmp_path / "out"
 
-    exit_code = main(["--input", str(input_path), "--output-dir", str(output_dir)])
+    exit_code = pipeline.main(["--input", str(input_path), "--output-dir", str(output_dir)])
 
     assert exit_code == 1
+
+
+def test_motor_no_instalado_falla_con_error_accionable_no_en_silencio(tmp_path):
+    # Sin mock: DeepMVP no esta clonado en esta maquina todavia (ver STATUS.md).
+    # Fase 1 debe completarse igual (no falla en silencio a mitad de camino).
+    input_path = _write(tmp_path, "ACC1.fasta", FASTA_CONTENT)
+    output_dir = tmp_path / "out"
+
+    exit_code = pipeline.main(["--input", str(input_path), "--output-dir", str(output_dir)])
+
+    assert exit_code == 1
+    assert (output_dir / "ACC1_clean.fasta").is_file()
