@@ -120,6 +120,18 @@ horas antes (`diff` byte a byte contra `predict.py` confirmado).
 - **DeepPTMPred no declara licencia** en su repo (a diferencia de DeepMVP,
   GPL-3.0) — verificar con Carlos antes de cualquier uso mas alla de
   investigacion/TFG. Esto sigue sin resolver.
+- **Confirmado 100% local en toda la cadena (2026-07-27)**: verificado
+  leyendo `esm/pretrained.py` de github.com/facebookresearch/esm
+  directamente. `pretrained.load_model_and_alphabet(path)` solo llama a
+  red (`dl.fbaipublicfiles.com`) si el argumento NO termina en `.pt` (rama
+  hub); como el runner siempre pasa una ruta `.pt` local, siempre entra por
+  la rama `load_model_and_alphabet_local` (`torch.load()` puro sobre
+  disco). Detalle real (no de red, de archivos): esa rama tambien exige un
+  companero `<checkpoint>-contact-regression.pt` en el mismo directorio
+  (heuristica de fair-esm que no excluye `esm2_*`) — si falta, falla con
+  `FileNotFoundError` local al descargar solo el checkpoint principal.
+  Verificar al bajar el checkpoint que ese archivo companero tambien este
+  disponible junto a el.
 - El runner propio (`_deepptmpred_runner.py`) sigue sin ejecutarse contra
   el entorno real completo (falta PyRosetta + checkpoint ESM-2 + pesos) —
   solo probado con `subprocess.run` mockeado en tests.

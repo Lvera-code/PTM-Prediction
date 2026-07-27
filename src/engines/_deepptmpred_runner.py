@@ -57,6 +57,25 @@ def _extract_esm_features(sequence: str, checkpoint_path: Path, esm_dim: int = 1
     Misma logica (chunking a 1022 tokens, capa de representacion 33,
     descarte de CLS/SEP), pero ``checkpoint_path`` SI se respeta -- el
     original la ignora (ver docstring del modulo).
+
+    100% local, verificado 2026-07-27 leyendo directamente
+    ``esm/pretrained.py`` de github.com/facebookresearch/esm:
+    ``pretrained.load_model_and_alphabet(model_name)`` hace
+    ``if model_name.endswith(".pt"): return load_model_and_alphabet_local(...)``
+    -- como ``checkpoint_path`` siempre es una ruta ``.pt`` local (nunca un
+    nombre de modelo tipo ``"esm2_t33_650M_UR50D"``), SIEMPRE entra por la
+    rama local, que solo usa ``torch.load()`` sobre archivos en disco. La
+    rama que si descarga de red (``load_model_and_alphabet_hub``, contra
+    ``dl.fbaipublicfiles.com``) nunca se alcanza.
+
+    Detalle real (no un problema de red, pero si de archivos): la rama
+    local tambien intenta cargar un archivo COMPANERO
+    ``<checkpoint>-contact-regression.pt`` en el mismo directorio (la
+    heuristica interna de fair-esm, ``_has_regression_weights``, no excluye
+    los modelos ``esm2_*``). Si falta, revienta con ``FileNotFoundError``
+    LOCAL al intentar el ``torch.load()`` de ese archivo -- verificar que
+    este companero tambien se descargue junto al checkpoint principal (ver
+    ``Settings.DEEPPTMPRED_ESM_CHECKPOINT``).
     """
     import torch
     from esm import pretrained

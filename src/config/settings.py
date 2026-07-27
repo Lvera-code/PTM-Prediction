@@ -128,11 +128,23 @@ class Settings:
     # (Python 3.7 + TF 2.4), requiere su propio venv/conda dedicado, nunca
     # compartido con DEEPMVP_PYTHON_BIN. tensorflow-addons (usado por
     # predict.py para su loss function) esta archivado/deprecado por Google
-    # desde 2024 -- riesgo real de instalacion contra TF 2.15 sin verificar
-    # todavia, no asumido como resuelto.
+    # desde 2024 -- RIESGO DESCARTADO 2026-07-27: instalado e importado de
+    # verdad en un venv aislado contra TF 2.15, sin error (solo un
+    # UserWarning de deprecacion esperado). Ver STATUS.md.
     DEEPPTMPRED_PYTHON_BIN: str = _env_str("DEEPPTMPRED_PYTHON_BIN", sys.executable)
     # Checkpoint ESM-2 (fair-esm, ~2.5GB), descarga separada (no incluido en
     # el repo, a diferencia de los pesos .h5 de PTM que si vienen incluidos).
+    # IMPORTANTE (verificado 2026-07-27 leyendo esm/pretrained.py directamente):
+    # fair-esm exige un archivo COMPANERO junto al checkpoint principal,
+    # '<checkpoint>-contact-regression.pt' (mismo directorio, mismo nombre
+    # base) -- su heuristica interna (_has_regression_weights) no excluye
+    # los modelos esm2_*, asi que SIEMPRE lo busca salvo variantes esm1v/
+    # esm_if/270K/500K. Si falta, torch.load() falla con FileNotFoundError
+    # LOCAL (no es un intento de red -- ver docstring de
+    # _deepptmpred_runner.py::_extract_esm_features para el detalle
+    # completo de por que esto SI es 100% local pese a este archivo extra).
+    # Verificar al descargar el checkpoint que este archivo compañero
+    # tambien este disponible (mismo origen que el checkpoint principal).
     DEEPPTMPRED_ESM_CHECKPOINT: Path = Path(
         _env_str("DEEPPTMPRED_ESM_CHECKPOINT", "DeepPTMPred/esm/checkpoints/esm2_t33_650M_UR50D.pt")
     )
