@@ -21,12 +21,46 @@ de decisiones.
 - **Enrutador de input** (`src/utils/input_router.py`): identico al de
   proyecto 1 (extension + sniffing de contenido).
 - **Orquestador** (`pipeline.py`): CLI minima que corre Fase 1 o 1.5 segun
-  el tipo de input detectado. Fase 3 todavia no esta enganchada (imprime un
-  aviso, no falla en silencio).
-- 34 tests (`pytest tests/`, sin binarios/modelos externos).
+  el tipo de input detectado. `DeepMVPEngine` todavia no esta enganchada
+  aqui (imprime un aviso, no falla en silencio) — el nucleo de Fase 3 (B+D)
+  tampoco existe todavia, ver mas abajo.
+- **DeepMVPEngine** (`src/engines/deepmvp_engine.py`, motor unico Camino
+  FASTA / motor 1 de 2 Camino PDB): wrapper de subprocess sobre
+  `github.com/bzhanglab/DeepMVP`, verificado leyendo el repo directamente
+  el 2026-07-27 (README.md, `DeepMVP.py`, `lib/PTModels.py`,
+  `lib/Metrics.py` — no resumen de buscador). CLI real: `python DeepMVP.py
+  predict -m <model_dir> -d <fasta> -t 2 -o <out_dir>`, salida fija
+  `site_prediction.tsv` (columnas `protein|aa|pos|x|y_pred|fpr|ptm`). 9
+  tests con `subprocess.run` mockeado (no se descargaron repo/pesos reales
+  todavia en esta maquina).
+- 44 tests (`pytest tests/`, sin binarios/modelos externos).
 - Repo local (`git init`), sin remoto todavia — decidido 2026-07-27, se
   crea en GitHub (`Lvera-code/PTM-Prediction`, publico) cuando haya algo
   funcional end-to-end.
+
+## Hallazgos reales que afectan diseño ya cerrado (pendientes de decisión del usuario)
+
+- **Tolerancia a residuos no canonicos**: `lib/PeptideEncode.py` confirma
+  que DeepMVP NO aborta ante 'X'/otros caracteres no canonicos (los
+  codifica como vector de ceros o 0.5, con un aviso impreso, nunca
+  `exit(1)` — esa linea esta comentada en el codigo real). Esto es MAS
+  PERMISIVO que la politica de rechazo fatal que tiene hoy
+  `src/utils/fasta_parser.py` (ya documentada ahi como default
+  conservador, no verificado — ahora SI esta verificado). No se relajo
+  unilateralmente: decidir si Fase 1 se relaja para igualar la tolerancia
+  real de DeepMVP, o si se mantiene el rechazo fatal por consistencia con
+  el resto del pipeline (Camino PDB via `structure_parser.py` ya produce
+  'X' para residuos no resueltos, y ESE camino no pasa por
+  `fasta_parser.py` en absoluto -- la inconsistencia ya existe entre
+  caminos, esto solo la hace mas visible).
+- **Umbral de confianza real**: no hay un cutoff de probabilidad publicado
+  por tipo de PTM. Cada carpeta de pesos trae su propio
+  `site_prediction.tsv` de validacion, y la columna `fpr` que DeepMVP ya
+  devuelve por fila es el FPR real de ese modelo especifico al usar esa
+  probabilidad como corte (`lib/Metrics.py::add_confidence_metrics`).
+  `Settings.DEEPMVP_MAX_FPR` (default 0.05) ya refleja esto — el nucleo de
+  Fase 3 debe filtrar por `fpr <= DEEPMVP_MAX_FPR`, no por `y_pred`, cuando
+  se construya.
 
 ## Diseno cerrado, pendiente de construir
 
