@@ -472,19 +472,126 @@ motores externos: verificacion real documentada aqui en vez de mock).
    correr `conda run -n deepmvp python scripts/generate_deepmvp_calibration.py`
    una vez despues de instalar los pesos de DeepMVP, antes del primer uso
    real del pipeline.
-2. Repetir/promediar el relax en `ddg_estimate.py` (varias corridas por
-   estado) si se decide usarlo como metrica real de produccion, no solo de
-   verificacion puntual.
+2. ~~Repetir/promediar el relax en `ddg_estimate.py`~~ — RESUELTO 2026-07-28
+   noche: `--nstruct` (default 3), ver seccion de Fase A / Extension 3
+   arriba.
 3. ~~Fase A clase 2 (glicosilacion)~~ — IMPLEMENTADA 2026-07-28 noche (ver
    seccion arriba). Default de nucleo biosintetico documentado, no una
-   prediccion real de glicoforma -- revisar si en algun momento hace falta
-   mas precision que el nucleo conservado.
-4. Fase A clase 3 (ubiquitinacion/sumoilacion): investigada a fondo
-   2026-07-28 noche (ver seccion arriba) -- bloqueada por un patch de
-   Rosetta desactivado por sus propios desarrolladores ("something is
-   broken"), no por falta de intento. Pendiente: decidir si vale la pena
-   cargar el patch manualmente y validar con cuidado, o buscar una
-   herramienta externa distinta (no evaluada todavia mas alla de lo que ya
-   dice la decision del 28-07 por la mañana).
+   prediccion real de glicoforma. **Mejora real identificada, no
+   implementada todavia** (ver auditoria abajo): consultar GlyGen
+   (`api.glygen.org`) antes de caer al default generico, para proteinas ya
+   caracterizadas experimentalmente.
+4. Fase A clase 3 (ubiquitinacion/sumoilacion): investigada a fondo dos
+   veces (28-07 mañana y noche) -- el patch de Rosetta especifico para
+   esto esta desactivado por sus propios desarrolladores ("something is
+   broken"). Encontrado ademas: Rosetta SI tiene una aplicacion dedicada
+   (`UBQ_E2_thioester`/serie `UBQ_Gp`,
+   `docs.rosettacommons.org/.../ubq-conjugated`) pero son binarios C++
+   compilados, NO PyRosetta -- exige compilar el Rosetta completo desde
+   fuente (instalacion separada y mucho mas pesada que el wheel de
+   PyRosetta ya instalado). Alternativa moderna sin Rosetta: AlphaFold3 +
+   truco de "covalent linker" para poliubiquitina (bioRxiv/Cell Reports
+   Physical Science, 2025) -- no evaluado si hay acceso real a AF3 en esta
+   maquina. Pendiente que Enzo decida cual via seguir, ninguna es rapida.
 5. Cross-validacion con StackGlyEmbed (proyecto 1) para N-glicosilacion —
    deliberadamente sin integrar por ahora (decision 2026-07-26).
+6. **Calibracion real de DeepPTMPred (umbral 0.5 sigue siendo provisional)**:
+   investigado a fondo 2026-07-28 noche, ver seccion de auditoria abajo --
+   hay un camino real y verificado (dataset publico
+   `meilerlab/PTMPrediction/data/ptm_data.csv.gz`, 376557 filas etiquetadas,
+   mismas features estructurales que calcula DeepPTMPred), pero la
+   implementacion completa (reconstruir ventanas de 33/51 residuos vía
+   secuencia completa por entry, resolver el desfase de numeracion
+   PDB/UniProt, correr ESM-2 + el modelo real sobre una muestra
+   representativa de los 17 tipos) no esta hecha todavia -- coste real
+   estimado 1-2h de computo. Pendiente decision de Enzo.
+
+## Auditoria de robustez pre-checkpoint (2026-07-28, noche) -- pendiente de pulir mañana
+
+Revision sistematica de todo el codigo (no solo lo ya rastreado arriba)
+buscando fragilidad real de cara a un checkpoint estable. Nada de esto
+bloquea el uso actual del pipeline -- son mejoras reales de robustez para
+"pulir", ordenadas de mayor a menor severidad.
+
+**Severidad media (arreglar primero):**
+
+1. **Riesgo real de path traversal, sin sanitizar** (`src/engines/deepptmpred_engine.py:125`):
+   `DeepPTMPredEngine.run()` construye la carpeta de resultados con
+   `base_output_dir / record.accession` -- un join de path CRUDO, sin
+   sanitizar. `record.accession` viene de `structure_parser.py:188`
+   (`accession = path.stem`, el nombre del archivo PDB/mmCIF de entrada)
+   y NUNCA se sanea, a diferencia del accession de un registro FASTA
+   (`fasta_parser.py:170-178`, que SI reemplaza `/` y `\` explicitamente).
+   Un archivo de entrada llamado literalmente `..pdb` produce
+   `accession=".."` (`Path("..pdb").stem == ".."`, verificado), lo que
+   escapa el directorio de salida. Riesgo practico bajo hoy (CLI local,
+   el usuario controla sus propios archivos), pero es una inconsistencia
+   real entre los dos caminos y un problema real si esto se expone alguna
+   vez detras de un servicio (subida de archivos de terceros). Arreglo:
+   aplicar el mismo saneamiento que ya existe en `fasta_parser.py` tambien
+   en `structure_parser.py::parse_structure` al derivar `accession`.
+
+2. **Cache de features ESM de DeepPTMPred puede servir datos obsoletos sin
+   avisar** (`src/engines/_deepptmpred_runner.py`, funcion `main`): la
+   clave de cache es solo `protein_id` (`{accession}_full_esm.npz`), NO un
+   hash/huella de la secuencia real. Si se vuelve a correr el pipeline con
+   una secuencia DISTINTA bajo el mismo accession/nombre de archivo (p.ej.
+   una version actualizada del PDB con el mismo nombre), el runner
+   reutiliza en silencio el embedding ESM viejo -- predicciones
+   incorrectas sin ningun error ni warning. Arreglo: incluir un hash corto
+   de la secuencia en el nombre del archivo de cache, o verificar
+   `data['sequence'] == args.sequence` antes de reusar el cache.
+
+3. **`BaseEngine.run()` no coincide con las implementaciones reales**
+   (`src/engines/base_engine.py`): la interfaz abstracta declara
+   `run(self, items) -> List[TOut]`, pero `DeepMVPEngine.run` y
+   `DeepPTMPredEngine.run` en realidad requieren un segundo parametro
+   `output_dir: Path = None` no declarado en el contrato. El patron
+   Strategy que dice implementar el docstring esta roto en la practica --
+   no se puede tratar ambos motores polimorficamente a traves de la
+   interfaz declarada sin saber del parametro extra. Arreglo: anadir
+   `output_dir` a la firma abstracta.
+
+**Severidad baja (higiene, no urgente):**
+
+4. `requirements.txt` (comentario lineas 10-14) esta desactualizado --
+   sigue diciendo que los motores "no estan construidos todavia" y usa la
+   numeracion vieja "Fase 3", de antes del 27-07. Los motores llevan
+   semanas construidos y las fases se renombraron a Fase 2 hoy.
+5. `ModelLoadError` (`src/utils/exceptions.py`) esta definida pero nunca
+   se usa ni se lanza en ningun sitio del codigo -- clase muerta.
+6. `scripts/generate_deepmvp_calibration.py` sobreescribe
+   `site_prediction.tsv` en silencio si ya existe, sin comprobar ni
+   avisar -- no queda registro de que `--testing-suffix` genero el
+   archivo actualmente instalado si se corre mas de una vez con valores
+   distintos.
+7. El logger de consola solo muestra `WARNING` o mas grave
+   (`src/utils/logger_config.py:36`) -- todos los `logger.info(...)` de
+   progreso ("Fase 2 completa...", "Fase 3 completa...") NUNCA aparecen en
+   pantalla durante una corrida real, solo quedan en `logs/ptm_pipeline.log`.
+   Puede ser el comportamiento deseado (consola limpia), pero vale la pena
+   confirmar que es intencional dado que el pipeline puede tardar minutos
+   reales por corrida sin ninguna senal de progreso visible.
+8. Sin tests dedicados para `scripts/generate_deepmvp_calibration.py`,
+   `src/engines/base_engine.py`, `src/utils/logger_config.py` (menor
+   prioridad, codigo utilitario/simple). `src/structural/*.py` sigue sin
+   tests por diseno (requiere `pyrosetta`, ver nota ya existente arriba).
+
+**Salvedad cientifica a revisar (no es un bug de codigo):**
+
+9. `scripts/generate_deepmvp_calibration.py` usa `testing_70` por defecto
+   asumiendo que es un conjunto de validacion genuinamente separado del
+   entrenamiento de los pesos ya instalados (`models.tar.gz`) -- esto NO
+   esta confirmado contra el paper real (no se leyo el texto completo del
+   metodo, solo se verifico que el AUROC resultante coincide
+   razonablemente con las cifras publicadas). Si los pesos shipeados se
+   entrenaron sobre TODO `all_data.tar.gz` (incluido `testing_70`), el
+   AUROC ~0.9-0.99 medido seria optimista/circular. Revisar el texto del
+   paper (`academic.oup.com/bib/article/27/3/bbag321`, no solo el resumen
+   ya extraido) antes de confiar en esos numeros para publicacion/TFG.
+
+**Sin resolver, ya conocido, re-listado aqui por completitud:**
+
+10. DeepPTMPred no declara licencia (`src/config/settings.py:100-103`) --
+    verificar con Carlos antes de cualquier uso mas alla de
+    investigacion/TFG. Sigue exactamente igual que el 27-07, sin novedad.
