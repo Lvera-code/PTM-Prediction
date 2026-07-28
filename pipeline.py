@@ -1,20 +1,22 @@
 """Orquestador del pipeline de prediccion de zonas PTM.
 
-Estado actual (2026-07-27): las 3 fases estan implementadas end-to-end.
+Numeracion de fases alineada con `BCell-Epitope-Prediction` (proyecto 1):
+Fase 1 (saneamiento) -> Fase 1.5 (extraccion de estructura, Camino PDB
+unicamente) -> Fase 2 (motores: DeepMVP / DeepMVP+DeepPTMPred) -> Fase 3
+(nucleo: anotacion + filtro). Renombrado 2026-07-28 -- antes los motores se
+llamaban "Fase 3a" en vez de "Fase 2", inconsistente con el numerado del
+proyecto 1 sin que hubiera una decision documentada detras; ningun cambio
+de comportamiento, solo de nombres (funciones, docstrings, logs).
 
-Camino FASTA: Fase 1 (saneamiento) -> DeepMVP (unico motor) -> Fase 3
-nucleo (anotacion + filtro).
-Camino PDB: Fase 1.5 (extraccion ATMSEQ + pdb de una cadena) -> DeepMVP +
-DeepPTMPred en consenso -> Fase 3 nucleo (anotacion + filtro, fusiona
-consenso donde ambos motores coinciden en tipo+posicion).
+Camino FASTA: Fase 1 (saneamiento) -> Fase 2 (DeepMVP, unico motor) -> Fase 3
+(nucleo: anotacion + filtro).
+Camino PDB: Fase 1.5 (extraccion ATMSEQ + pdb de una cadena) -> Fase 2
+(DeepMVP + DeepPTMPred en consenso) -> Fase 3 (nucleo: anotacion + filtro,
+fusiona consenso donde ambos motores coinciden en tipo+posicion).
 
 Diseno del nucleo de Fase 3 (B: anotacion/filtrado, D: logica de flujo) en
 ``01-Proyectos/PTM-Prediction/Decisiones/2026-07-27-diseno-nucleo-fase3-anotacion-flujo.md``
-del vault. Ninguno de los dos motores (DeepMVP, DeepPTMPred) esta instalado
-todavia en esta maquina (repo/pesos no descargados, ver STATUS.md) -- correr
-este pipeline hoy fallara con un ``DeepMVPExecutionError``/
-``DeepPTMPredExecutionError`` accionable hasta que se complete esa
-instalacion manual.
+del vault.
 """
 
 import argparse
@@ -81,8 +83,20 @@ def run_fase1_5_structure(input_path: Path, output_dir: Path):
     return record
 
 
-def run_fase3_fasta_path(records, clean_fasta: Path, output_dir: Path, out_stem: str) -> Path:
-    """Camino FASTA: DeepMVP -> anotacion (B) -> filtro (D). Escribe el reporte final.
+def run_fase2_fasta_motor(clean_fasta: Path, output_dir: Path) -> pd.DataFrame:
+    """Camino FASTA: Fase 2, unico motor (DeepMVP). Devuelve las predicciones crudas."""
+    deepmvp_results = DeepMVPEngine().run([str(clean_fasta)], output_dir=output_dir)[0]
+    logger.info(
+        "Fase 2 completa (Camino FASTA): %d prediccion(es) crudas de DeepMVP.",
+        len(deepmvp_results),
+    )
+    return deepmvp_results
+
+
+def run_fase3_fasta_annotation(
+    records, deepmvp_results: pd.DataFrame, output_dir: Path, out_stem: str
+) -> Path:
+    """Camino FASTA: Fase 3, nucleo (B: anotacion + D: filtro). Escribe el reporte final.
 
     DeepMVP procesa el FASTA completo (posiblemente multi-accession) en una
     unica invocacion (columna ``protein`` distingue cada accession en su
@@ -90,8 +104,6 @@ def run_fase3_fasta_path(records, clean_fasta: Path, output_dir: Path, out_stem:
     el calculo de ventanas de cada una) y se concatena, en vez de tratar el
     FASTA como una unica secuencia fusionada.
     """
-    deepmvp_results = DeepMVPEngine().run([str(clean_fasta)], output_dir=output_dir)[0]
-
     per_accession = []
     for record in records:
         subset = deepmvp_results[deepmvp_results["protein"] == record.accession]
@@ -108,10 +120,21 @@ def run_fase3_fasta_path(records, clean_fasta: Path, output_dir: Path, out_stem:
     return report_path
 
 
-def run_fase3_pdb_path(record, output_dir: Path) -> Path:
-    """Camino PDB: DeepMVP + DeepPTMPred -> anotacion con consenso (B) -> filtro (D)."""
+def run_fase2_pdb_motors(record, output_dir: Path):
+    """Camino PDB: Fase 2, DeepMVP + DeepPTMPred. Devuelve ambos DataFrames crudos."""
     deepmvp_results = DeepMVPEngine().run([str(record.fasta_path)], output_dir=output_dir)[0]
     deepptmpred_results = DeepPTMPredEngine().run([record], output_dir=output_dir)[0]
+    logger.info(
+        "Fase 2 completa (Camino PDB): %d prediccion(es) crudas de DeepMVP, %d de DeepPTMPred.",
+        len(deepmvp_results), len(deepptmpred_results),
+    )
+    return deepmvp_results, deepptmpred_results
+
+
+def run_fase3_pdb_annotation(
+    record, deepmvp_results: pd.DataFrame, deepptmpred_results: pd.DataFrame, output_dir: Path
+) -> Path:
+    """Camino PDB: Fase 3, nucleo con consenso (B: anotacion + D: filtro)."""
     annotated = annotate_pdb_path(record.accession, record.sequence, deepmvp_results, deepptmpred_results)
     filtered = apply_workflow_filter(annotated)
 
@@ -141,11 +164,13 @@ def main(argv: List[str] = None) -> int:
             records = load_and_sanitize(input_path)
             out_stem = records[0].accession if len(records) == 1 else input_path.stem
             clean_path = run_fase1_fasta(input_path, output_dir)
-            report_path = run_fase3_fasta_path(records, clean_path, output_dir, out_stem)
+            deepmvp_results = run_fase2_fasta_motor(clean_path, output_dir)
+            report_path = run_fase3_fasta_annotation(records, deepmvp_results, output_dir, out_stem)
             print(f"Camino FASTA completo. Motor: DeepMVP. Reporte: {report_path}")
         else:
             record = run_fase1_5_structure(input_path, output_dir)
-            report_path = run_fase3_pdb_path(record, output_dir)
+            deepmvp_results, deepptmpred_results = run_fase2_pdb_motors(record, output_dir)
+            report_path = run_fase3_pdb_annotation(record, deepmvp_results, deepptmpred_results, output_dir)
             print(f"Camino PDB completo. Consenso DeepMVP+DeepPTMPred. Reporte: {report_path}")
 
     except PipelineError as exc:

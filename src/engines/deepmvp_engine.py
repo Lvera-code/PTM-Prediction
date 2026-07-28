@@ -1,4 +1,4 @@
-"""Fase 3a: prediccion de zonas PTM via DeepMVP LOCAL (subprocess puro).
+"""Fase 2: prediccion de zonas PTM via DeepMVP LOCAL (subprocess puro).
 
 Motor unico del Camino FASTA; motor 1 de 2 (junto a DeepPTMPred, no
 implementado todavia) del consenso en Camino PDB.

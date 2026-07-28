@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Runner standalone para DeepPTMPred (Fase 3a, motor 2/2 del consenso Camino PDB).
+"""Runner standalone para DeepPTMPred (Fase 2, motor 2/2 del consenso Camino PDB).
 
 NUNCA se importa desde el paquete ``src`` -- requiere torch/tensorflow/
 tensorflow-addons/pyrosetta/fair-esm, dependencias SOLO presentes en el venv

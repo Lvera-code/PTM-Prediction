@@ -1,4 +1,4 @@
-"""Fase 3a: prediccion de zonas PTM via DeepPTMPred LOCAL (subprocess sobre runner propio).
+"""Fase 2: prediccion de zonas PTM via DeepPTMPred LOCAL (subprocess sobre runner propio).
 
 Motor 2 de 2 del consenso, Camino PDB unicamente (DeepPTMPred exige
 ``pdb_path`` obligatorio -- sin modo solo-secuencia, decision 2026-07-26).

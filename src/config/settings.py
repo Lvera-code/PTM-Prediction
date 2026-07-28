@@ -57,7 +57,7 @@ class Settings:
     PDB_CHAIN_SELECTION_STRATEGY: str = _env_str("PDB_CHAIN_SELECTION_STRATEGY", "longest")
     PDB_EXPLICIT_CHAIN_ID: str = _env_str("PDB_EXPLICIT_CHAIN_ID", "")
 
-    # --- Fase 3a: DeepMVP (motor unico Camino FASTA, motor 1/2 Camino PDB) ---
+    # --- Fase 2: DeepMVP (motor unico Camino FASTA, motor 1/2 Camino PDB) ---
     # Verificado leyendo github.com/bzhanglab/DeepMVP directamente (README.md,
     # DeepMVP.py, lib/PTModels.py, lib/Metrics.py) el 2026-07-27. Repo real,
     # empaquetado (requirements.txt + environment.yml), GPL-3.0.
@@ -94,7 +94,7 @@ class Settings:
     # 'y_pred'. El score crudo (y_pred) se conserva siempre igual.
     DEEPMVP_MAX_FPR: float = _env_float("DEEPMVP_MAX_FPR", 0.05)
 
-    # --- Fase 3a: DeepPTMPred (motor 2/2 del consenso, Camino PDB unicamente) ---
+    # --- Fase 2: DeepPTMPred (motor 2/2 del consenso, Camino PDB unicamente) ---
     # Verificado leyendo github.com/kuikui-wang/DeepPTMPred directamente
     # (README.md, pred/train_PTM/predict.py, pred/train_PTM/e2_single_data.py,
     # pred/train_PTM/environment.yml) el 2026-07-27. Repo real, pesos SI

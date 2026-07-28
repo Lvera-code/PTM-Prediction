@@ -7,16 +7,20 @@ Oscar Sorzano), independiente de
 
 ## Arquitectura
 
-- **Camino FASTA**: Fase 1 (saneamiento) -> **DeepMVP** (motor unico, 6 tipos
-  de PTM: fosforilacion, acetilacion, metilacion, sumoilacion,
+Numeracion de fases alineada con el proyecto 1
+([BCell-Epitope-Prediction](https://github.com/Lvera-code/BCell-Epitope-Prediction)):
+Fase 1 -> Fase 1.5 (PDB unicamente) -> Fase 2 (motores) -> Fase 3 (nucleo).
+
+- **Camino FASTA**: Fase 1 (saneamiento) -> Fase 2: **DeepMVP** (motor unico,
+  6 tipos de PTM: fosforilacion, acetilacion, metilacion, sumoilacion,
   ubiquitinacion, N-glicosilacion).
 - **Camino PDB**: Fase 1.5 (extraccion de secuencia ATMSEQ + mapeo de
-  posiciones via `gemmi`) -> consenso **DeepMVP + DeepPTMPred** (17 tipos de
-  PTM; DeepPTMPred exige `pdb_path` obligatorio, sin modo solo-secuencia,
-  de ahi la asimetria entre caminos).
+  posiciones via `gemmi`) -> Fase 2: consenso **DeepMVP + DeepPTMPred** (17
+  tipos de PTM; DeepPTMPred exige `pdb_path` obligatorio, sin modo
+  solo-secuencia, de ahi la asimetria entre caminos).
 - **Fase 3 (nucleo)**: anotacion/filtrado + logica de decision de flujo sobre
-  las predicciones de Fase 3a (`src/engines/ptm_annotation.py`). Fusiona
-  consenso donde DeepMVP y DeepPTMPred coinciden en tipo+posicion.
+  las predicciones crudas de Fase 2 (`src/engines/ptm_annotation.py`).
+  Fusiona consenso donde DeepMVP y DeepPTMPred coinciden en tipo+posicion.
 
 ## Estado actual (2026-07-27)
 
