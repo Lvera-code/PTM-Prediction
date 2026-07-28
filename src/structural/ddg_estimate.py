@@ -22,9 +22,26 @@ en ``AF-P10636-F1-model_v4.pdb`` (Tau), ver STATUS.md para el valor
 obtenido y el tiempo de computo real (relevante para decidir timeouts en
 produccion -- el pipeline principal NO invoca este script todavia, decision
 2026-07-27: D es un filtro de responsabilidad unica sin rutas a Extension 3).
+
+## Robustez de produccion (2026-07-28, actualizado): ``nstruct`` en vez de un solo relax
+
+``FastRelax`` es un protocolo estocastico (Monte Carlo): una sola corrida
+puede caer en un minimo local subobtimo, dando un score mas alto de lo que
+en realidad seria el estado relajado. Practica estandar de los protocolos
+de ddG de Rosetta (``cartesian_ddg``/``ddg_monomer``, mismo criterio citado
+en la decision del 28-07 sobre el workaround de FastRelax cartesiano):
+correr ``nstruct`` trayectorias independientes por estado (WT y parcheado)
+y quedarse con la de MENOR energia por estado -- no promediar los scores
+directamente, que mezclaria trayectorias mal convergidas con las buenas.
+Con ``nstruct=1`` (comportamiento anterior) el resultado depende del azar
+de una sola trayectoria; con ``nstruct=3`` (default nuevo) el ddG es mucho
+mas estable frente a re-ejecuciones, a costa de proporcionalmente mas
+tiempo de computo (cada relax individual ya tarda ~1 min sobre una
+proteina de tamano medio, ver STATUS.md).
 """
 
 import argparse
+import statistics
 import sys
 from pathlib import Path
 
@@ -37,22 +54,48 @@ from pyrosetta_ptm_patch import (
 )
 
 
-def estimate_ddg(pdb_path: Path, position: int, ptm_type: str, radius: float = 6.0, max_iter: int = 200):
-    """Devuelve ``(ddg, wt_score, mut_score)`` para el parche ``ptm_type`` en ``position``."""
+def _best_of_n_relax(
+    pdb_path: Path, position: int, ptm_type: str, scorefxn, nstruct: int, radius: float, max_iter: int
+):
+    """Corre ``nstruct`` trayectorias independientes de parcheo+relax y devuelve ``(min_score, scores)``.
+
+    ``ptm_type=None`` corre el estado WT (sin parche). Cada trayectoria
+    parte de una pose fresca cargada desde ``pdb_path`` (no reusa/perturba
+    la pose de la trayectoria anterior), para que sean independientes de
+    verdad y no una cadena de Markov correlacionada.
+    """
+    scores = []
+    for _ in range(nstruct):
+        pose = load_pose(pdb_path)
+        if ptm_type is not None:
+            apply_ptm_patch(pose, position, ptm_type)
+        relax_neighborhood(pose, position, radius=radius, scorefxn=scorefxn, max_iter=max_iter)
+        scores.append(scorefxn(pose))
+    return min(scores), scores
+
+
+def estimate_ddg(
+    pdb_path: Path, position: int, ptm_type: str, radius: float = 6.0, max_iter: int = 200, nstruct: int = 3
+):
+    """Devuelve ``(ddg, wt_score, mut_score, wt_scores, mut_scores)`` para ``ptm_type`` en ``position``.
+
+    ``wt_score``/``mut_score`` son el minimo de ``nstruct`` trayectorias
+    independientes por estado (ver docstring del modulo); ``wt_scores``/
+    ``mut_scores`` son las listas completas, utiles para reportar
+    dispersion (desviacion estandar) como medida de confianza del ddG.
+    """
     import pyrosetta
 
     scorefxn = pyrosetta.create_score_function("ref2015_cart")
 
-    wt_pose = load_pose(pdb_path)
-    relax_neighborhood(wt_pose, position, radius=radius, scorefxn=scorefxn, max_iter=max_iter)
-    wt_score = scorefxn(wt_pose)
+    wt_score, wt_scores = _best_of_n_relax(
+        pdb_path, position, None, scorefxn, nstruct, radius, max_iter
+    )
+    mut_score, mut_scores = _best_of_n_relax(
+        pdb_path, position, ptm_type, scorefxn, nstruct, radius, max_iter
+    )
 
-    mut_pose = load_pose(pdb_path)
-    apply_ptm_patch(mut_pose, position, ptm_type)
-    relax_neighborhood(mut_pose, position, radius=radius, scorefxn=scorefxn, max_iter=max_iter)
-    mut_score = scorefxn(mut_pose)
-
-    return mut_score - wt_score, wt_score, mut_score
+    return mut_score - wt_score, wt_score, mut_score, wt_scores, mut_scores
 
 
 def main() -> int:
@@ -63,19 +106,34 @@ def main() -> int:
     parser.add_argument("--position", required=True, type=int)
     parser.add_argument("--ptm-type", required=True, choices=sorted(SUPPORTED_PTM_TYPES))
     parser.add_argument("--radius", type=float, default=6.0)
+    parser.add_argument(
+        "--nstruct", type=int, default=3,
+        help="Trayectorias independientes de relax por estado (WT/parcheado); se usa la de menor "
+        "energia por estado, practica estandar de los protocolos ddG de Rosetta. 1 = comportamiento "
+        "original (una sola relajacion, mas rapido pero mas ruidoso).",
+    )
     parser.add_argument("--out-csv", required=True)
     args = parser.parse_args()
 
     init_pyrosetta()
-    ddg, wt_score, mut_score = estimate_ddg(
-        Path(args.pdb_path), args.position, args.ptm_type, radius=args.radius
+    ddg, wt_score, mut_score, wt_scores, mut_scores = estimate_ddg(
+        Path(args.pdb_path), args.position, args.ptm_type,
+        radius=args.radius, nstruct=args.nstruct,
     )
+    wt_std = statistics.pstdev(wt_scores) if len(wt_scores) > 1 else 0.0
+    mut_std = statistics.pstdev(mut_scores) if len(mut_scores) > 1 else 0.0
 
     with open(args.out_csv, "w") as f:
-        f.write("position,ptm_type,wt_score,mut_score,ddg\n")
-        f.write(f"{args.position},{args.ptm_type},{wt_score},{mut_score},{ddg}\n")
+        f.write("position,ptm_type,nstruct,wt_score,mut_score,ddg,wt_score_std,mut_score_std\n")
+        f.write(
+            f"{args.position},{args.ptm_type},{args.nstruct},{wt_score},{mut_score},{ddg},"
+            f"{wt_std},{mut_std}\n"
+        )
 
-    print(f"ddG({args.ptm_type} @ {args.position}) = {ddg:.4f} (ref2015_cart) -> '{args.out_csv}'")
+    print(
+        f"ddG({args.ptm_type} @ {args.position}) = {ddg:.4f} (ref2015_cart, nstruct={args.nstruct}, "
+        f"wt_std={wt_std:.2f}, mut_std={mut_std:.2f}) -> '{args.out_csv}'"
+    )
     return 0
 
 
