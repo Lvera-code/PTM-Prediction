@@ -371,29 +371,82 @@ cheminformatica real, NO implementada, NO fabricada.
   3/Fase A porque esas fases no eran parte del nucleo. Se invocan por
   separado, manualmente o desde un futuro orquestador de Fase A/Extension 3.
 
-**Fase A clase 2 (glicosilacion)**: el bloqueante de la documentacion
-(403 en `docs.rosettacommons.org`, ver decision del 28-07) sigue sin
-resolverse por fetch directo (confirmado de nuevo hoy, mismo 403), PERO se
-resolvio por una via mejor: `pyrosetta.rosetta.protocols.carbohydrates.
-GlycanTreeModeler` existe y es importable de verdad en el PyRosetta
-instalado (introspeccion real, no documentacion) -- confirma que es
-utilizable via la API de Python sin coste de instalacion adicional, tal
-como se esperaba. Con eso resuelto, `GlycanTreeModeler` es la opcion mas
-natural sobre `Glycosylator` (misma logica de "cero coste nuevo" que ya
-goberno el resto de Fase A) -- pero la implementacion real (definir el
-arbol de glicano a modelar, que ni DeepMVP ni DeepPTMPred predicen -- solo
-predicen el SITIO, no la composicion del glicano) no se ha empezado.
+## Fase A clase 2 (glicosilacion) — IMPLEMENTADA Y VERIFICADA (2026-07-28, noche)
 
-**Fase A clase 3 (ubiquitinacion/sumoilacion)**: sin tocar, deliberadamente
-la ultima segun el orden decidido, ver razonamiento en la decision del
-28-07 (conjugacion de proteina entera, ni Rosetta tiene buena precision
-ahi, sin herramienta empaquetada encontrada).
+`GlycanTreeModeler` REFINA la conformacion de un glicano ya adjunto -- para
+adjuntarlo desde cero hacia falta otro Mover, `SimpleGlycosylateMover`
+(mismo namespace `protocols.carbohydrates`, tambien confirmado real por
+introspeccion). Ninguno de los dos motores (DeepMVP/DeepPTMPred) predice
+la COMPOSICION del glicano, solo el sitio -- se usa el nucleo biosintetico
+conservado como default documentado (no una prediccion):
+`N-glycan_core` (Man3GlcNAc2, presente en TODO N-glicano maduro, unico
+default universalmente defendible) para N-linked, `core_1_O-glycan`
+(antigeno T, el mas comun mamiferos pero no universal -- existen 8 cores
+distintos en `common_glycans/`) para O-linked. Ambos strings IUPAC
+verificados leyendo los `.iupac` reales del PyRosetta instalado.
 
-67 tests (`pytest tests/`) siguen pasando tras el parche de
-`_deepptmpred_runner.py` -- ningun test nuevo para `src/structural/`
-(requiere `pyrosetta`, ausente del entorno donde corre la suite principal,
-mismo criterio que el resto de codigo dependiente de motores externos:
-verificacion real documentada aqui en vez de mock).
+`src/structural/pyrosetta_glycan_patch.py`: `attach_glycan` (valida
+residuo real N/S/T antes de parchear) + `refine_glycan`
+(`GlycanTreeModeler`, rounds configurable). Verificado con dos corridas
+reales sobre `AF-P10636-F1-model_v4.pdb`: N-glycan_core en ASN484 (sequon
+real confirmado NAT) -- 5 residuos de azucar anadidos, `ASN484` pasa a
+`ASN:N-glycosylated`; core_1_O-glycan en THR52 -- 2 residuos anadidos,
+`THR52` pasa a `THR:O-conjugated`. Refinamiento con `GlycanTreeModeler`
+(1 round) corre sin error, ~64s para el caso N-glycan_core.
+
+## Fase A clase 3 (ubiquitinacion/sumoilacion) — INVESTIGADA A FONDO, NO IMPLEMENTADA (2026-07-28, noche)
+
+Enzo pidio terminar todo lo posible. Se investigo el mecanismo real de
+Rosetta para conjugacion covalente de proteina completa (isopeptidico
+Lys-NZ + Gly-Cterm de ubiquitina/SUMO), no solo se descarto por analogia:
+
+- **Lado de la Lisina: SI existe y funciona.** Patch `SidechainConjugation`
+  (real, cargado por defecto, confirmado con introspeccion de
+  `ResidueTypeSet.patches()`) convierte LYS en
+  `LYS:sidechain_conjugation` -- elimina los 3 hidrogenos de NZ y abre un
+  punto de conexion real (`ADD_CONNECT NZ`), listo para enlazar a otra
+  cadena.
+- **Lado de la ubiquitina/SUMO: NO disponible en este build, con motivo
+  documentado por los propios desarrolladores de Rosetta.** Existe un
+  patch construido especificamente para esto --
+  `patches/branching/C-terminal_conjugation.txt`, cuyo propio comentario
+  dice literalmente *"currently only implemented for glycine conjugated
+  ubiquitin"* -- pero esta **comentado/desactivado** en el manifiesto real
+  `chemical/residue_type_sets/fa_standard/patches.txt` (linea 85):
+  `#patches/branching/C-terminal_conjugation.txt  # Something is broken
+  with this patch. ~Labonte` (Labonte = colaborador real de RosettaCommons
+  especializado en quimica de carbohidratos). Confirmado con introspeccion
+  real (`ResidueTypeSet.patches()` sobre una pose con ubiquitina real
+  cargada, `1UBQ.pdb` de RCSB): el patch NO esta entre los 122 patches
+  cargados por defecto, mientras que `SidechainConjugation` si lo esta.
+- Esto CORROBORA de forma independiente y mas fuerte el hallazgo de la
+  investigacion del 28-07 por la manana (foro de RosettaCommons: "poor fit
+  for the isopeptide domain") -- no es solo que Rosetta tenga baja
+  precision ahi, es que la unica herramienta nativa construida
+  especificamente para esto esta desactivada por sus propios
+  desarrolladores por estar rota, sin indicar que especificamente falla.
+- **Decision: no se intento reconstruir el mecanismo a mano** (cirugia de
+  pose de bajo nivel: eliminar OXT manualmente, declarar el enlace via
+  `Conformation.declare_chemical_bond`, idealizar geometria sin ninguna
+  referencia para validar que el resultado es quimicamente correcto). Sin
+  el patch oficial como referencia de la geometria/bookkeeping de valencia
+  correcta, y sin capacidad de validar el resultado contra una estructura
+  real de conjugado (no existe superposicion trivial disponible), el
+  riesgo de producir una estructura con apariencia plausible pero
+  quimicamente incorrecta (bond lengths/angles no idealizados
+  correctamente, o un problema de valencia no detectado) es alto y no
+  detectable sin revision experta -- inaceptable para un pipeline de
+  investigacion real. Ubiquitina real (`1UBQ.pdb`, descargada de RCSB,
+  76 residuos, Gly75-Gly76 en el C-terminal) queda disponible en
+  `DeepPTMPred/data/` (o donde se guarde) para cuando se decida seguir por
+  esta via con mas tiempo, posiblemente cargando el patch manualmente
+  (`-chemical:patch_selectors` apuntando al archivo directamente pese a
+  estar excluido del manifiesto) y validando el resultado con cuidado.
+
+67 tests (`pytest tests/`) siguen pasando -- ningun test nuevo para
+`src/structural/` (requiere `pyrosetta`, ausente del entorno donde corre
+la suite principal, mismo criterio que el resto de codigo dependiente de
+motores externos: verificacion real documentada aqui en vez de mock).
 
 ## Proximos pasos reales
 
@@ -406,10 +459,16 @@ verificacion real documentada aqui en vez de mock).
 2. Repetir/promediar el relax en `ddg_estimate.py` (varias corridas por
    estado) si se decide usarlo como metrica real de produccion, no solo de
    verificacion puntual.
-3. Fase A clase 2 (glicosilacion): definir de donde sale la composicion del
-   glicano a modelar con `GlycanTreeModeler` (ninguno de los dos motores la
-   predice) antes de poder implementar de verdad.
-4. Fase A clase 3 (ubiquitinacion/sumoilacion): sin empezar, deliberadamente
-   al final.
+3. ~~Fase A clase 2 (glicosilacion)~~ — IMPLEMENTADA 2026-07-28 noche (ver
+   seccion arriba). Default de nucleo biosintetico documentado, no una
+   prediccion real de glicoforma -- revisar si en algun momento hace falta
+   mas precision que el nucleo conservado.
+4. Fase A clase 3 (ubiquitinacion/sumoilacion): investigada a fondo
+   2026-07-28 noche (ver seccion arriba) -- bloqueada por un patch de
+   Rosetta desactivado por sus propios desarrolladores ("something is
+   broken"), no por falta de intento. Pendiente: decidir si vale la pena
+   cargar el patch manualmente y validar con cuidado, o buscar una
+   herramienta externa distinta (no evaluada todavia mas alla de lo que ya
+   dice la decision del 28-07 por la mañana).
 5. Cross-validacion con StackGlyEmbed (proyecto 1) para N-glicosilacion —
    deliberadamente sin integrar por ahora (decision 2026-07-26).
