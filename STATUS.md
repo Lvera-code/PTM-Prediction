@@ -154,8 +154,8 @@ Ambos repos se clonaron de verdad en esta maquina (`git clone`, dentro de
 real, no solo leer codigo. Contenido identico al verificado por API/curl
 horas antes (`diff` byte a byte contra `predict.py` confirmado).
 
-- **DeepMVP — INSTALADO Y FUNCIONAL** (sin pesos, esos si requieren
-  descarga manual del Shiny app). Entorno conda real `deepmvp`
+- **DeepMVP — INSTALADO, CON PESOS, VERIFICADO CON UNA PREDICCION REAL
+  (2026-07-28).** Entorno conda real `deepmvp`
   (`/home/enzo/miniconda3/envs/deepmvp/bin/python`, Python 3.7.10):
   `pip install -r requirements.txt` completo sin errores (TensorFlow
   2.4.2 CPU, numpy 1.19.5, todo el stack). `python DeepMVP.py predict -h`
@@ -164,64 +164,232 @@ horas antes (`diff` byte a byte contra `predict.py` confirmado).
   DeepMVP.py revienta con `ValueError: No objects to concatenate` (traza
   cruda de pandas, opaca) — confirma que el chequeo proactivo de
   `DeepMVPEngine._validate_installation` (falla antes, con mensaje
-  accionable) es necesario, no cosmetico. Un warning benigno de numpy/API
-  mismatch aparece en stderr pero no afecta la ejecucion.
-- **DeepPTMPred — dependencias mas riesgosas YA VERIFICADAS, instalacion
-  completa NO intentada** (PyRosetta requiere su propio instalador +
-  registro, ESM-2 checkpoint ~2.5GB de descarga manual, ~50GB disco — fuera
-  del tiempo disponible hoy). Verificado en un venv Python 3.10 aislado:
-  `tensorflow==2.15` + `tensorflow-addons==0.23.0` instalan Y IMPORTAN sin
-  error (`from tensorflow_addons.losses import SigmoidFocalCrossEntropy`
-  funciona) — solo un `UserWarning` de deprecacion esperado (TFA en modo
-  mantenimiento desde 2024, fin de vida anunciado mayo 2024, pero el
-  paquete sigue siendo instalable e importable). Esto DESCARTA el riesgo
-  de incompatibilidad que se habia flageado sin verificar. `fair-esm` +
-  `torch` tambien instalan e importan limpio. **Unico bloqueante real
-  restante: PyRosetta.** Se intento la instalacion automatica real via
-  `pip install pyrosetta-installer` + `install_pyrosetta()` (el metodo que
-  documenta el propio README de DeepPTMPred) — el paquete instalador SI se
-  instala, pero la descarga del wheel real falla en esta maquina: el mirror
-  por defecto (`west.rosettacommons.org`) responde `404` en la ruta que el
-  instalador consulta (`.../latest.html`), y el mirror alternativo
-  (`graylab.jhu.edu`) falla la verificacion TLS (cadena de certificados no
-  confiable en este entorno). No investigado mas a fondo (puede ser un
-  cambio de ruta del lado de PyRosetta, o una restriccion de red/CA de este
-  entorno sandboxeado) — instalacion manual necesaria, confirmado que NO es
-  automatizable tal cual en esta maquina, no es simplemente "no intentado".
+  accionable) es necesario, no cosmetico. Pesos reales (`models.tar.gz`
+  del Shiny app, NO `all_data.tar.gz` — ese es solo el dataset de
+  train/test) instalados en `DeepMVP/models/`, los 8 tipos completos
+  (10 modelos .h5 por tipo, ensemble). **Corrida real end-to-end sobre el
+  FASTA de ejemplo del propio repo** (`example/Q5S007.fasta`):
+  `site_prediction.tsv` final con 1292 filas reales, scores sensatos para
+  los 8 tipos. Un mensaje "The file for computing FPR doesn't exist" sale
+  una vez por tipo en la primera corrida (recalcula el umbral porque no
+  habia un `site_prediction.tsv` previo dentro de `models/<tipo>/`) — no
+  bloqueante, confirmado corriendo dos veces. Warning benigno de numpy/API
+  mismatch tambien presente, tampoco afecta la ejecucion.
+- **DeepPTMPred — entorno conda real construido y verificado, ESM-2
+  funcional de punta a punta (2026-07-28).** Entorno conda `deepptmpred`
+  (`/home/enzo/miniconda3/envs/deepptmpred`, Python 3.10), instalado desde
+  `pred/train_PTM/environment.yml` (sin `cudatoolkit`/`cudnn`, esta maquina
+  no tiene GPU): `tensorflow==2.15.0` + `tensorflow-addons==0.23.0` +
+  `torch==2.13.0` + `fair-esm==2.0.0` instalan e importan sin error (mismo
+  `UserWarning` de deprecacion de TFA ya conocido, no bloqueante).
+  Checkpoint ESM-2 (`esm2_t33_650M_UR50D.pt`, 2.6GB, descarga manual del
+  usuario) y su companero `esm2_t33_650M_UR50D-contact-regression.pt`
+  (3.7KB) instalados en `DeepPTMPred/esm/checkpoints/`; ambos verificados
+  con `torch.load()` (claves `args`/`cfg`/`model` presentes, no es una
+  descarga corrupta). **`_extract_esm_features` de
+  `_deepptmpred_runner.py` ejecutado de verdad** (no mockeado) contra el
+  checkpoint real con una secuencia de prueba de 167 residuos: devuelve un
+  array `(167, 1280)` — longitud de secuencia × dimension de embedding de
+  `esm2_t33_650M`, exactamente lo esperado. **Unico bloqueante real
+  restante para DeepPTMPred: PyRosetta.** Se intento la instalacion
+  automatica real via `pip install pyrosetta-installer` +
+  `install_pyrosetta()` (el metodo que documenta el propio README de
+  DeepPTMPred) — el paquete instalador SI se instala, pero la descarga del
+  wheel real falla en esta maquina: el mirror por defecto
+  (`west.rosettacommons.org`) responde `404` en la ruta que el instalador
+  consulta (`.../latest.html`), y el mirror alternativo (`graylab.jhu.edu`)
+  falla la verificacion TLS (cadena de certificados no confiable en este
+  entorno). Pendiente: usuario descargando el wheel manualmente
+  (`PyRosetta4.Release.python310.ubuntu.wheel`, build mas reciente de
+  2026-07-25) para instalar con `pip install <wheel>` sin depender de esos
+  mirrors.
 - **DeepPTMPred no declara licencia** en su repo (a diferencia de DeepMVP,
   GPL-3.0) — verificar con Carlos antes de cualquier uso mas alla de
   investigacion/TFG. Esto sigue sin resolver.
-- **Confirmado 100% local en toda la cadena (2026-07-27)**: verificado
-  leyendo `esm/pretrained.py` de github.com/facebookresearch/esm
-  directamente. `pretrained.load_model_and_alphabet(path)` solo llama a
+- **Confirmado 100% local en toda la cadena (2026-07-27, re-verificado con
+  ejecucion real 2026-07-28)**: verificado leyendo `esm/pretrained.py` de
+  github.com/facebookresearch/esm directamente y ahora tambien con una
+  corrida real. `pretrained.load_model_and_alphabet(path)` solo llama a
   red (`dl.fbaipublicfiles.com`) si el argumento NO termina en `.pt` (rama
   hub); como el runner siempre pasa una ruta `.pt` local, siempre entra por
   la rama `load_model_and_alphabet_local` (`torch.load()` puro sobre
-  disco). Detalle real (no de red, de archivos): esa rama tambien exige un
-  companero `<checkpoint>-contact-regression.pt` en el mismo directorio
-  (heuristica de fair-esm que no excluye `esm2_*`) — si falta, falla con
-  `FileNotFoundError` local al descargar solo el checkpoint principal.
-  Verificar al bajar el checkpoint que ese archivo companero tambien este
-  disponible junto a el.
-- El runner propio (`_deepptmpred_runner.py`) sigue sin ejecutarse contra
-  el entorno real completo (falta PyRosetta + checkpoint ESM-2 + pesos) —
-  solo probado con `subprocess.run` mockeado en tests.
+  disco) — confirmado en la corrida real de arriba, sin acceso a red.
+- El runner propio (`_deepptmpred_runner.py`) tiene su pieza de extraccion
+  de features ESM-2 verificada contra el entorno real (ver arriba). Sigue
+  sin poder correrse de punta a punta (prediccion completa via
+  `PredictConfig`/`PTMPredictor`) porque falta PyRosetta -- solo esa pieza
+  sigue probada unicamente con `subprocess.run` mockeado en tests.
+
+## PyRosetta instalado y DeepPTMPred 100% funcional end-to-end (2026-07-28, tarde)
+
+Usuario descargo el wheel manualmente (`pyrosetta-2026.30+release.bc091c65b8-cp310-cp310-linux_x86_64.whl`,
+1.5GB) a `/mnt/c/Users/USUARIO/Downloads/` (WSL) y confirmo la instalacion.
+Instalado con `pip install <wheel>` en el conda env `deepptmpred`,
+verificado con `pyrosetta.init()` real (banner + version impresos, sin
+error). Bloqueante que quedaba abierto desde el 27-07, cerrado.
+
+**Corrida real end-to-end de `_deepptmpred_runner.py`** (no mockeada,
+`AF-P10636-F1-model_v4.pdb` = Tau/MAPT, tipo `phosphorylation`): revelo y
+arreglo 3 bugs reales adicionales, ninguno anticipado antes de tener
+PyRosetta real corriendo:
+- **Dependencias de `environment.yml` incompletas en el conda env real**:
+  `matplotlib`, `seaborn`, `scikit-learn`, `imbalanced-learn`, `tqdm`,
+  `joblib`, `logomaker` faltaban pese a estar listadas en
+  `pred/train_PTM/environment.yml` (el `pip install -r requirements.txt`
+  original del 27-07 no las trajo). Instaladas manualmente, confirmado
+  `import predict` ya no falla.
+- **Bug real en `predict.py::PTMPredictor.__init__`** (nueva clase de bug,
+  distinta a la de `e2_single_data.py` ya documentada): el modelo guardado
+  tiene una capa `Lambda` (`model.py::182`,
+  `Lambda(lambda xin: K.sum(xin, axis=1))`) cuya funcion serializada
+  referencia el simbolo `K` (alias de `tensorflow.keras.backend`) — Keras
+  SOLO resuelve esos simbolos via el diccionario `custom_objects` pasado a
+  `load_model`, nunca via los globals del modulo que la importa (aunque
+  `predict.py` si tiene `K` en su propio namespace). El `custom_objects`
+  real de `PTMPredictor.__init__` no incluye `'K'` -> `NameError: name 'K'
+  is not defined` al cargar cualquier modelo. Confirmado real corriendo sin
+  parche (revienta) y con parche (carga bien) antes de aplicarlo. Parcheado
+  en `src/engines/_deepptmpred_runner.py::_load_predict_module` (envuelve
+  `predict.load_model`, inyecta `'K': predict.K` en `custom_objects`) — NO
+  se edita `predict.py` (vendored), mismo criterio que el resto del runner.
+- Con ambos arreglos: corrida real completa, PyRosetta calcula SASA real +
+  extrae plDDT del B-factor, ESM-2 carga desde cache local, el modelo
+  predice — 130 filas de salida real para
+  `phosphorylation` sobre Tau, scores 0.13-0.91, sensatos.
+
+**`pipeline.py` completo (Camino PDB, consenso) corrido de verdad** sobre
+el mismo caso: descubrio un bloqueante REAL adicional, distinto y anterior
+al de DeepPTMPred, en el lado de DeepMVP -- ver seccion siguiente.
+
+## Bloqueante real nuevo: DeepMVP no calcula `fpr` en esta instalacion (2026-07-28)
+
+`DeepMVPEngine`/el nucleo de Fase 3 (`ptm_annotation.py`) dependen de la
+columna `fpr` que `DeepMVP.py` calcula via
+`lib/Metrics.py::add_confidence_metrics`, LEYENDO
+`DeepMVP/models/<tipo>/site_prediction.tsv` (un archivo de VALIDACION con
+columna `y` real, ground-truth) para calibrar el FPR de cada prediccion.
+Verificado leyendo el codigo real: si ese archivo no existe en la carpeta
+del modelo, `add_confidence_metrics` devuelve `None` SILENCIOSAMENTE y la
+columna `fpr` nunca se anade — no es un error, es un dato faltante que se
+propaga en silencio hasta que `DeepMVPEngine._load_predictions` lo detecta
+(columna esperada ausente) y falla con un error accionable.
+
+Confirmado en esta maquina: `DeepMVP/models/<tipo>/site_prediction.tsv` NO
+existe para NINGUNO de los 8 tipos (solo estan los `.h5` + `model.json` del
+`models.tar.gz` descargado el 27/28-07) — la nota anterior de STATUS.md
+("un mensaje 'The file for computing FPR doesn't exist' sale una vez... no
+bloqueante, confirmado corriendo dos veces") era un DIAGNOSTICO INCORRECTO:
+no "recalcula el umbral", simplemente omite la columna `fpr` para siempre
+en esta instalacion — el mensaje de aviso de DeepMVP.py se habia
+malinterpretado como transitorio sin haber verificado la columna de salida
+real. `Camino FASTA` (que tambien filtra por `fpr <= DEEPMVP_MAX_FPR`) tiene
+el mismo problema, no es exclusivo del Camino PDB.
+
+**No resuelto todavia** — verificado que no hay ningun archivo de
+calibracion descargado en esta maquina (`find` sobre el filesystem, sin
+resultados) ni disponible en la pagina de descarga
+(`deepmvp.ptmax.org`, contenido de la pestana de descarga real no
+accesible por fetch simple, requiere navegacion interactiva de la Shiny
+app). Pendiente que Enzo decida: (a) buscar manualmente en la Shiny app si
+hay un dataset de validacion/calibracion descargable por separado de
+`models.tar.gz`, o (b) cambiar la politica de umbral de Fase 3 para
+DeepMVP cuando `fpr` no este disponible (p. ej. fallback documentado sobre
+`y_pred` con un cutoff fijo, con las mismas salvedades de calibracion que
+ya se discutieron para DeepPTMPred). Pipeline falla alto y con mensaje
+accionable en vez de silenciar el problema (comportamiento correcto segun
+la filosofia del proyecto), simplemente no completa todavia end-to-end.
+
+## Fase A clase 1 + utilidad compartida + Extension 3 (ΔΔG) — implementadas y verificadas 2026-07-28
+
+Construidas en el orden decidido el 28-07 (utilidad compartida -> Fase A
+clase 1 -> Extension 3), en `src/structural/` (standalone, requiere
+`pyrosetta`, nunca se importa desde el paquete `src` principal — mismo
+patron que `_deepptmpred_runner.py`).
+
+**Hallazgo real que corrige la estimacion "12/17 tipos" de la decision del
+28-07** (esa cifra asumia cobertura por analogia con fosforilacion, sin
+inspeccionar el enum/patches reales todavia — la propia nota lo dejaba como
+pendiente explicito): verificado por DOS vias independientes contra el
+PyRosetta ya instalado —
+1. `ls database/chemical/residue_type_sets/fa_standard/patches/*.txt` (real).
+2. Introspeccion en caliente de `pyrosetta.rosetta.core.chemical.VariantType`.
+
+Solo **5 de los 17 tipos** tienen un `VariantType`/patch nativo listo para
+usar: `phosphorylation` (S/T/Y), `acetylation` (K), `hydroxylation` (P),
+`gamma_carboxyglutamic_acid` (E), `lys_methylation` (K, solo mono/di/tri
+sin distinguir grado -- los motores no lo distinguen). Los otros 8 tipos de
+"clase 1" (malonylation, arg_methylation, crotonylation, succinylation,
+glutathionylation, s_nitrosylation, glutarylation, citrullination) NO
+tienen patch nativo (grep de esos terminos sobre el directorio completo de
+patches: cero resultados) -- requeririan construir un residuo no-canonico
+propio (params file con topologia/cargas parciales/icoor), tarea de
+cheminformatica real, NO implementada, NO fabricada.
+
+- `src/structural/pyrosetta_ptm_patch.py`: `apply_ptm_patch` (aplica el
+  variant real via `add_variant_type_to_pose_residue`, valida que el
+  residuo real coincida con el esperado por tipo) + `relax_neighborhood`
+  (FastRelax cartesiano, 1 repeat, restringido a un radio del sitio via
+  `NeighborhoodResidueSelector` + `MoveMapFactory` + `PreventRepackingRLT`
+  sobre el resto). CLI que aplica un parche real y opcionalmente relaja,
+  volcando un PDB de salida.
+- Verificado con una ejecucion real: acetilacion sobre LYS24 de
+  `AF-P10636-F1-model_v4.pdb` -> `LYS` pasa a `LYS:acetylated`
+  (`pose.residue(24).name()` antes/despues).
+- `src/structural/ddg_estimate.py` (Extension 3): reutiliza la utilidad de
+  arriba, compara `ref2015_cart` de la pose WT relajada localmente contra
+  la pose parcheada relajada localmente (mismo protocolo en ambas). Corrida
+  real sobre el mismo sitio: WT relax+score 59s (score 1901.62), MUT
+  relax+score 68s (score 1845.40), ddG = **-56.22** (parche estabiliza segun
+  esta metrica). **Salvedad real no resuelta**: Tau es intrinsecamente
+  desordenada (plDDT medio 49.34 en este modelo AlphaFold, confirmado en el
+  log de PyRosetta) y el script hace UN solo relax por estado (sin repetir
+  ni promediar) -- el numero es real pero ruidoso/poco fiable como estimado
+  de estabilidad en una region de baja confianza estructural; un protocolo
+  de produccion querria repetir el relax varias veces por estado y
+  promediar/tomar el minimo, no implementado todavia (cada relax ya toma
+  ~1 min sobre una proteina de 758 residuos, multiplicar por N repeticiones
+  es un coste real a decidir).
+- Ninguno de los dos scripts esta conectado a `pipeline.py` todavia --
+  sigue la decision 2026-07-27 de que D (el filtro) no rutea a Extension
+  3/Fase A porque esas fases no eran parte del nucleo. Se invocan por
+  separado, manualmente o desde un futuro orquestador de Fase A/Extension 3.
+
+**Fase A clase 2 (glicosilacion)**: el bloqueante de la documentacion
+(403 en `docs.rosettacommons.org`, ver decision del 28-07) sigue sin
+resolverse por fetch directo (confirmado de nuevo hoy, mismo 403), PERO se
+resolvio por una via mejor: `pyrosetta.rosetta.protocols.carbohydrates.
+GlycanTreeModeler` existe y es importable de verdad en el PyRosetta
+instalado (introspeccion real, no documentacion) -- confirma que es
+utilizable via la API de Python sin coste de instalacion adicional, tal
+como se esperaba. Con eso resuelto, `GlycanTreeModeler` es la opcion mas
+natural sobre `Glycosylator` (misma logica de "cero coste nuevo" que ya
+goberno el resto de Fase A) -- pero la implementacion real (definir el
+arbol de glicano a modelar, que ni DeepMVP ni DeepPTMPred predicen -- solo
+predicen el SITIO, no la composicion del glicano) no se ha empezado.
+
+**Fase A clase 3 (ubiquitinacion/sumoilacion)**: sin tocar, deliberadamente
+la ultima segun el orden decidido, ver razonamiento en la decision del
+28-07 (conjugacion de proteina entera, ni Rosetta tiene buena precision
+ahi, sin herramienta empaquetada encontrada).
+
+67 tests (`pytest tests/`) siguen pasando tras el parche de
+`_deepptmpred_runner.py` -- ningun test nuevo para `src/structural/`
+(requiere `pyrosetta`, ausente del entorno donde corre la suite principal,
+mismo criterio que el resto de codigo dependiente de motores externos:
+verificacion real documentada aqui en vez de mock).
 
 ## Proximos pasos reales
 
-1. Descargar pesos de DeepMVP (manual, `https://deepmvp.ptmax.org/`,
-   Shiny app) y apuntar `DEEPMVP_MODEL_DIR` — el resto de la instalacion
-   ya esta lista y verificada (env conda `deepmvp` funcional).
-2. Instalar PyRosetta manualmente (la instalacion automatica via
-   `pyrosetta-installer` falla en esta maquina, ver arriba — probar desde
-   una red/maquina distinta, o instalar via conda con canal academico
-   registrado) + descargar checkpoint ESM-2 (~2.5GB) para DeepPTMPred —
-   unico bloqueante real restante de ese lado, ya que TF/tensorflow-addons/
-   fair-esm/torch se verificaron limpios.
-3. Correr el pipeline real end-to-end sobre un caso real una vez ambos
-   esten completos (validar que el runner de DeepPTMPred funciona de
-   verdad, no solo mockeado).
-4. Extension 3 (ΔΔG) y Fase A (modelado estructural real) — diseno cerrado
-   el 26-07, implementacion no empezada, deliberadamente pospuestas.
+1. **Decidir el gap de calibracion `fpr` de DeepMVP** (ver seccion arriba)
+   -- bloquea completar `pipeline.py` end-to-end en ambos caminos, no solo
+   PDB.
+2. Repetir/promediar el relax en `ddg_estimate.py` (varias corridas por
+   estado) si se decide usarlo como metrica real de produccion, no solo de
+   verificacion puntual.
+3. Fase A clase 2 (glicosilacion): definir de donde sale la composicion del
+   glicano a modelar con `GlycanTreeModeler` (ninguno de los dos motores la
+   predice) antes de poder implementar de verdad.
+4. Fase A clase 3 (ubiquitinacion/sumoilacion): sin empezar, deliberadamente
+   al final.
 5. Cross-validacion con StackGlyEmbed (proyecto 1) para N-glicosilacion —
    deliberadamente sin integrar por ahora (decision 2026-07-26).

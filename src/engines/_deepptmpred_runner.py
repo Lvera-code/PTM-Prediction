@@ -112,9 +112,36 @@ def _load_predict_module(train_ptm_dir: Path):
     dependencias pesadas de ``predict.py`` (tensorflow, pyrosetta,
     tensorflow_addons) solo deben cargarse cuando el runner realmente se
     ejecuta, nunca al parsear este archivo.
+
+    Tambien parchea aqui ``predict.load_model`` (bug real confirmado
+    2026-07-28, misma clase que el de ``e2_single_data.py`` documentado en
+    el docstring del modulo): el modelo guardado tiene una capa ``Lambda``
+    (``model.py::182``, ``Lambda(lambda xin: K.sum(xin, axis=1))``) cuya
+    funcion serializada referencia el simbolo ``K`` (alias de
+    ``tensorflow.keras.backend``) en tiempo de reconstruccion -- Keras SOLO
+    resuelve esos simbolos via el diccionario ``custom_objects`` pasado a
+    ``load_model``, nunca via los globals del modulo que la importa (aunque
+    ``predict.py`` si tiene ``K`` en su propio namespace). El
+    ``custom_objects`` real de ``PTMPredictor.__init__`` no incluye ``'K'``,
+    asi que cargar cualquier modelo revienta con
+    ``NameError: name 'K' is not defined``. Confirmado real corriendo el
+    modelo de fosforilacion sin parche (revienta) y con el parche (carga
+    correctamente) el 2026-07-28. No se edita ``predict.py`` (vendored,
+    mismo criterio que el resto del runner): se envuelve la funcion en el
+    modulo ya importado.
     """
     sys.path.insert(0, str(train_ptm_dir))
     import predict
+
+    _original_load_model = predict.load_model
+
+    def _patched_load_model(*args, **kwargs):
+        custom_objects = dict(kwargs.get("custom_objects") or {})
+        custom_objects.setdefault("K", predict.K)
+        kwargs["custom_objects"] = custom_objects
+        return _original_load_model(*args, **kwargs)
+
+    predict.load_model = _patched_load_model
 
     return predict
 
