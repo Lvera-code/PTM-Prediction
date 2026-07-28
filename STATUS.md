@@ -285,19 +285,56 @@ malinterpretado como transitorio sin haber verificado la columna de salida
 real. `Camino FASTA` (que tambien filtra por `fpr <= DEEPMVP_MAX_FPR`) tiene
 el mismo problema, no es exclusivo del Camino PDB.
 
-**No resuelto todavia** — verificado que no hay ningun archivo de
-calibracion descargado en esta maquina (`find` sobre el filesystem, sin
-resultados) ni disponible en la pagina de descarga
-(`deepmvp.ptmax.org`, contenido de la pestana de descarga real no
-accesible por fetch simple, requiere navegacion interactiva de la Shiny
-app). Pendiente que Enzo decida: (a) buscar manualmente en la Shiny app si
-hay un dataset de validacion/calibracion descargable por separado de
-`models.tar.gz`, o (b) cambiar la politica de umbral de Fase 3 para
-DeepMVP cuando `fpr` no este disponible (p. ej. fallback documentado sobre
-`y_pred` con un cutoff fijo, con las mismas salvedades de calibracion que
-ya se discutieron para DeepPTMPred). Pipeline falla alto y con mensaje
-accionable en vez de silenciar el problema (comportamiento correcto segun
-la filosofia del proyecto), simplemente no completa todavia end-to-end.
+**Investigado a fondo 2026-07-28 (tarde-noche)**: la pestana de descarga de
+la Shiny app (`deepmvp.ptmax.org`) es contenido dinamico via websocket, no
+accesible por fetch/curl simple (confirmado, HTML estatico no la incluye).
+Pero se encontro por otra via: **`https://deepmvp.ptmax.org/all_data.tar.gz`
+existe de verdad** (HTTP 200, 55MB, `curl -I` confirmado) y SI contiene
+datos etiquetados para los 8 tipos de DeepMVP (`acet_k_training.tsv`,
+`acet_k_testing_70/80/90.tsv`, etc. -- prefijos que mapean 1:1 a los 8
+tipos: acet_k, gly_n, met_k, met_r, phos_st, phos_y, sumo_k, ubi_k).
+Columnas reales: `protein, aa, pos, x, y` (y = etiqueta verdadera 0/1).
+
+**Tambien se confirmo, via el propio issue tracker de GitHub del repo
+(`bzhanglab/DeepMVP` issues #1 y #2), que este NO es un problema exclusivo
+de esta instalacion**: al menos dos usuarios externos (2025-09-02 y
+2026-06-09) reportaron el mismo `site_prediction.tsv` faltante corriendo el
+propio ejemplo del repo (`example/Q5S007.fasta`). El PR #2 que cerro el
+issue #1 solo arreglaba un crash NO relacionado (calculo de e-valor
+incondicional) -- el comentario de 2026-06-09 ("This is still an issue")
+confirma que el problema real de calibracion sigue sin arreglarse upstream.
+`models.tar.gz` nunca ha incluido el `site_prediction.tsv` de validacion.
+
+**Intento real de generar el `site_prediction.tsv` faltante nosotros
+mismos** (correr el modelo sobre `all_data/acet_k_testing_70.tsv`, que ya
+tiene la columna `y`, para producir `y_pred` y ensamblar el archivo que
+falta): reveló un bug adicional real en `DeepMVP.py` -- `-i/--input` (el
+flag correcto para pasar un test-set ya tabulado) SI activa la rama
+correcta de `ptm_predict`, pero `PTModels.py::dl_models_predict` llama
+INCONDICIONALMENTE a `processing_prediction_data(test_file, db=db,
+flank_length=...)`, que ignora la columna `x` YA presente en el test-set y
+SIEMPRE intenta reconstruirla leyendo las secuencias completas desde un
+FASTA `db` (obligatorio, no doc en el CLI que sea requerido para este
+caso). El archivo `all_data.tar.gz` NO incluye ese FASTA de secuencias
+completas. Numero de proteinas distintas necesarias por tipo (`testing_70`,
+conteo real): acetylation_k 628, phosphorylation_st 1261,
+glycosylation_n 276, methylation_k 325, methylation_r 370,
+phosphorylation_y 456, sumoylation_k 609, ubiquitination_k 1105 -- factible
+de resolver descargando las secuencias completas desde UniProt (accesiones
+ya identificadas, batch real, no exploratorio), pero es un paso de
+ingenieria de datos genuino (miles de secuencias, construir un FASTA `db`
+por tipo, volver a correr `predict` para los 8 tipos x hasta 10 modelos de
+ensemble cada uno) -- NO ejecutado todavia, pendiente de que Enzo confirme
+si seguir por este camino antes de lanzar la descarga masiva.
+
+Tambien sin resolver: que subconjunto usar de los 3 disponibles
+(`testing_70/80/90`, sufijos que no aparecen documentados en el codigo del
+repo -- muy probablemente umbrales de identidad de secuencia estilo CD-HIT
+usados en el paper para medir generalizacion a distintos niveles de
+redundancia con el training set, INFERIDO por convencion estandar en este
+tipo de papers, no confirmado leyendo el texto del paper). Pipeline sigue
+fallando alto con mensaje accionable en vez de silenciar el problema
+(comportamiento correcto segun la filosofia del proyecto).
 
 ## Fase A clase 1 + utilidad compartida + Extension 3 (ΔΔG) — implementadas y verificadas 2026-07-28
 
