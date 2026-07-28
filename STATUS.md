@@ -261,80 +261,60 @@ PyRosetta real corriendo:
 el mismo caso: descubrio un bloqueante REAL adicional, distinto y anterior
 al de DeepPTMPred, en el lado de DeepMVP -- ver seccion siguiente.
 
-## Bloqueante real nuevo: DeepMVP no calcula `fpr` en esta instalacion (2026-07-28)
+## RESUELTO: DeepMVP no calculaba `fpr` — calibracion generada de verdad (2026-07-28, noche)
 
-`DeepMVPEngine`/el nucleo de Fase 3 (`ptm_annotation.py`) dependen de la
-columna `fpr` que `DeepMVP.py` calcula via
-`lib/Metrics.py::add_confidence_metrics`, LEYENDO
-`DeepMVP/models/<tipo>/site_prediction.tsv` (un archivo de VALIDACION con
-columna `y` real, ground-truth) para calibrar el FPR de cada prediccion.
-Verificado leyendo el codigo real: si ese archivo no existe en la carpeta
-del modelo, `add_confidence_metrics` devuelve `None` SILENCIOSAMENTE y la
-columna `fpr` nunca se anade — no es un error, es un dato faltante que se
-propaga en silencio hasta que `DeepMVPEngine._load_predictions` lo detecta
-(columna esperada ausente) y falla con un error accionable.
+Bloqueante encontrado horas antes en esta misma sesion (ver commit
+`9fddb8c`): `DeepMVPEngine`/el nucleo de Fase 3 dependen de la columna
+`fpr`, que `DeepMVP.py` solo calcula si existe
+`DeepMVP/models/<tipo>/site_prediction.tsv` (archivo de VALIDACION con
+columna `y` real) -- ausente en `models.tar.gz` para los 8 tipos,
+confirmado ademas como bug conocido upstream (issues #1/#2 de
+`bzhanglab/DeepMVP` en GitHub, dos usuarios externos independientes
+reportaron lo mismo).
 
-Confirmado en esta maquina: `DeepMVP/models/<tipo>/site_prediction.tsv` NO
-existe para NINGUNO de los 8 tipos (solo estan los `.h5` + `model.json` del
-`models.tar.gz` descargado el 27/28-07) — la nota anterior de STATUS.md
-("un mensaje 'The file for computing FPR doesn't exist' sale una vez... no
-bloqueante, confirmado corriendo dos veces") era un DIAGNOSTICO INCORRECTO:
-no "recalcula el umbral", simplemente omite la columna `fpr` para siempre
-en esta instalacion — el mensaje de aviso de DeepMVP.py se habia
-malinterpretado como transitorio sin haber verificado la columna de salida
-real. `Camino FASTA` (que tambien filtra por `fpr <= DEEPMVP_MAX_FPR`) tiene
-el mismo problema, no es exclusivo del Camino PDB.
+**Enzo pidio verificar mas a fondo antes de lanzar una descarga masiva de
+UniProt** ("¿buscaste exhaustivamente? los datos deberían estar en DeepMVP,
+¿no?"). Al revisar con mas cuidado, la respuesta era si: **no hacia falta
+ningun FASTA externo**. La columna `x` de `all_data.tar.gz` (encontrado
+antes, ver commit `9fddb8c`) ya viene con el ancho MAXIMO que pide
+cualquier submodelo del ensemble (61 = flank 30, verificado leyendo los 8
+`model.json`: ningun submodelo de ningun tipo pide `peptide_length` > 61).
+Los submodelos que piden una ventana mas angosta se derivan recortando esa
+misma ventana centrada (mismo criterio que
+`DeepMVP/lib/DataIO.py::getPeptideSequence`) -- el requisito de un FASTA
+`db` completo solo aparece si se usa el CLI (`DeepMVP.py predict -i`, que
+llama incondicionalmente a `processing_prediction_data`, otro bug real
+confirmado ahi), no si se reusa directamente la logica interna de
+codificacion/ensemble (`lib.PeptideEncode.encodePeptides`,
+`lib.Utils.combine_rts`).
 
-**Investigado a fondo 2026-07-28 (tarde-noche)**: la pestana de descarga de
-la Shiny app (`deepmvp.ptmax.org`) es contenido dinamico via websocket, no
-accesible por fetch/curl simple (confirmado, HTML estatico no la incluye).
-Pero se encontro por otra via: **`https://deepmvp.ptmax.org/all_data.tar.gz`
-existe de verdad** (HTTP 200, 55MB, `curl -I` confirmado) y SI contiene
-datos etiquetados para los 8 tipos de DeepMVP (`acet_k_training.tsv`,
-`acet_k_testing_70/80/90.tsv`, etc. -- prefijos que mapean 1:1 a los 8
-tipos: acet_k, gly_n, met_k, met_r, phos_st, phos_y, sumo_k, ubi_k).
-Columnas reales: `protein, aa, pos, x, y` (y = etiqueta verdadera 0/1).
+Construido `scripts/generate_deepmvp_calibration.py` (standalone, conda
+env `deepmvp`): descarga `all_data.tar.gz`, para cada uno de los 8 tipos
+corre los `.h5` del ensemble ya instalado sobre `<tipo>_testing_70.tsv`
+(recortando la ventana por submodelo como se describe arriba), promedia
+con `combine_rts` (identico al `ptm_predict` real) y escribe
+`DeepMVP/models/<tipo>/site_prediction.tsv`. **Verificado con AUROC real
+por tipo, no solo "corre sin error"**: acetylation_k 0.986,
+glycosylation_n 0.996, methylation_k 0.906, methylation_r 0.932,
+phosphorylation_st 0.991, phosphorylation_y 0.992, sumoylation_k 0.974,
+ubiquitination_k 0.989 -- coincide con las cifras publicadas en el paper,
+confirma que la calibracion generada es correcta.
 
-**Tambien se confirmo, via el propio issue tracker de GitHub del repo
-(`bzhanglab/DeepMVP` issues #1 y #2), que este NO es un problema exclusivo
-de esta instalacion**: al menos dos usuarios externos (2025-09-02 y
-2026-06-09) reportaron el mismo `site_prediction.tsv` faltante corriendo el
-propio ejemplo del repo (`example/Q5S007.fasta`). El PR #2 que cerro el
-issue #1 solo arreglaba un crash NO relacionado (calculo de e-valor
-incondicional) -- el comentario de 2026-06-09 ("This is still an issue")
-confirma que el problema real de calibracion sigue sin arreglarse upstream.
-`models.tar.gz` nunca ha incluido el `site_prediction.tsv` de validacion.
+**Pipeline completo (Camino PDB) corrido de verdad end-to-end con la
+calibracion ya en su sitio**: `AF-P10636-F1-model_v4.pdb` (Tau) -> 572
+sitios PTM reales pasan el umbral (17 tipos representados), 98 con
+consenso real DeepMVP+DeepPTMPred. Primera vez que el pipeline completa de
+punta a punta sin fallar. `Camino FASTA` (mismo filtro `fpr`) queda
+tambien desbloqueado por el mismo fix.
 
-**Intento real de generar el `site_prediction.tsv` faltante nosotros
-mismos** (correr el modelo sobre `all_data/acet_k_testing_70.tsv`, que ya
-tiene la columna `y`, para producir `y_pred` y ensamblar el archivo que
-falta): reveló un bug adicional real en `DeepMVP.py` -- `-i/--input` (el
-flag correcto para pasar un test-set ya tabulado) SI activa la rama
-correcta de `ptm_predict`, pero `PTModels.py::dl_models_predict` llama
-INCONDICIONALMENTE a `processing_prediction_data(test_file, db=db,
-flank_length=...)`, que ignora la columna `x` YA presente en el test-set y
-SIEMPRE intenta reconstruirla leyendo las secuencias completas desde un
-FASTA `db` (obligatorio, no doc en el CLI que sea requerido para este
-caso). El archivo `all_data.tar.gz` NO incluye ese FASTA de secuencias
-completas. Numero de proteinas distintas necesarias por tipo (`testing_70`,
-conteo real): acetylation_k 628, phosphorylation_st 1261,
-glycosylation_n 276, methylation_k 325, methylation_r 370,
-phosphorylation_y 456, sumoylation_k 609, ubiquitination_k 1105 -- factible
-de resolver descargando las secuencias completas desde UniProt (accesiones
-ya identificadas, batch real, no exploratorio), pero es un paso de
-ingenieria de datos genuino (miles de secuencias, construir un FASTA `db`
-por tipo, volver a correr `predict` para los 8 tipos x hasta 10 modelos de
-ensemble cada uno) -- NO ejecutado todavia, pendiente de que Enzo confirme
-si seguir por este camino antes de lanzar la descarga masiva.
-
-Tambien sin resolver: que subconjunto usar de los 3 disponibles
-(`testing_70/80/90`, sufijos que no aparecen documentados en el codigo del
+Sin resolver (menor, no bloqueante): que subconjunto usar de los 3
+disponibles (`testing_70/80/90`, sufijos no documentados en el codigo del
 repo -- muy probablemente umbrales de identidad de secuencia estilo CD-HIT
-usados en el paper para medir generalizacion a distintos niveles de
-redundancia con el training set, INFERIDO por convencion estandar en este
-tipo de papers, no confirmado leyendo el texto del paper). Pipeline sigue
-fallando alto con mensaje accionable en vez de silenciar el problema
-(comportamiento correcto segun la filosofia del proyecto).
+usados en el paper para medir generalizacion a distinta redundancia con el
+training set, INFERIDO por convencion estandar en este tipo de papers, no
+confirmado leyendo el texto del paper). El script usa `testing_70` (el mas
+conservador, menos redundante con training) por defecto, parametrizable
+via `--testing-suffix`.
 
 ## Fase A clase 1 + utilidad compartida + Extension 3 (ΔΔG) — implementadas y verificadas 2026-07-28
 
@@ -417,9 +397,12 @@ verificacion real documentada aqui en vez de mock).
 
 ## Proximos pasos reales
 
-1. **Decidir el gap de calibracion `fpr` de DeepMVP** (ver seccion arriba)
-   -- bloquea completar `pipeline.py` end-to-end en ambos caminos, no solo
-   PDB.
+1. ~~Decidir el gap de calibracion `fpr` de DeepMVP~~ — RESUELTO 2026-07-28
+   noche (ver seccion arriba). `pipeline.py` corre end-to-end de verdad en
+   Camino PDB (572 sitios, 98 con consenso real). En una maquina nueva:
+   correr `conda run -n deepmvp python scripts/generate_deepmvp_calibration.py`
+   una vez despues de instalar los pesos de DeepMVP, antes del primer uso
+   real del pipeline.
 2. Repetir/promediar el relax en `ddg_estimate.py` (varias corridas por
    estado) si se decide usarlo como metrica real de produccion, no solo de
    verificacion puntual.
