@@ -98,9 +98,11 @@ class Settings:
     # Verificado leyendo github.com/kuikui-wang/DeepPTMPred directamente
     # (README.md, pred/train_PTM/predict.py, pred/train_PTM/e2_single_data.py,
     # pred/train_PTM/environment.yml) el 2026-07-27. Repo real, pesos SI
-    # incluidos en el repo (.h5 por tipo, ~19MB c/u), pero SIN licencia
-    # declarada (a diferencia de DeepMVP, GPL-3.0) -- verificar con Carlos
-    # antes de cualquier uso mas alla de investigacion/TFG.
+    # incluidos en el repo (.h5 por tipo, ~19MB c/u). Licencia RESUELTA
+    # 2026-07-29: el repo no tiene LICENSE declarado, pero Junwen Wang
+    # (autor de correspondencia del paper, CC BY-NC 4.0) confirmo
+    # directamente por email que el codigo del repo sigue esos mismos
+    # terminos -- uso no comercial (investigacion/TFG, Scipion/CNB) cubierto.
     #
     # HALLAZGO IMPORTANTE: a diferencia de DeepMVP, ni predict.py ni
     # e2_single_data.py tienen CLI real -- ptm_type/pdb_path/protein_id/ruta

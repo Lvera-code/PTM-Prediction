@@ -203,9 +203,16 @@ horas antes (`diff` byte a byte contra `predict.py` confirmado).
   (`PyRosetta4.Release.python310.ubuntu.wheel`, build mas reciente de
   2026-07-25) para instalar con `pip install <wheel>` sin depender de esos
   mirrors.
-- **DeepPTMPred no declara licencia** en su repo (a diferencia de DeepMVP,
-  GPL-3.0) — verificar con Carlos antes de cualquier uso mas alla de
-  investigacion/TFG. Esto sigue sin resolver.
+- **RESUELTO 2026-07-29: licencia de DeepPTMPred confirmada por el propio
+  autor de correspondencia.** El repo no tenia LICENSE declarado, pero el
+  paper si es CC BY-NC 4.0 (Oxford University Press) -- se le pregunto
+  directamente a los autores de correspondencia (Yong Liu, Junwen Wang) si
+  el codigo del repo sigue los mismos terminos. **Junwen Wang respondio
+  2026-07-29 confirmando que si**: "I confirm that the GitHub code follows
+  the same CC BY-NC terms." Uso no comercial (investigacion/TFG, e
+  integracion futura como plugin de Scipion por el CNB, institucion
+  publica) encaja dentro de CC BY-NC sin problema. Sin mas pasos
+  pendientes en este punto.
 - **Confirmado 100% local en toda la cadena (2026-07-27, re-verificado con
   ejecucion real 2026-07-28)**: verificado leyendo `esm/pretrained.py` de
   github.com/facebookresearch/esm directamente y ahora tambien con una
@@ -635,6 +642,7 @@ no solo el resumen):**
 
 **Sin resolver, ya conocido, re-listado aqui por completitud:**
 
-10. DeepPTMPred no declara licencia (`src/config/settings.py:100-103`) --
-    verificar con Carlos antes de cualquier uso mas alla de
-    investigacion/TFG. Sigue exactamente igual que el 27-07, sin novedad.
+10. ~~DeepPTMPred no declara licencia~~ -- RESUELTO 2026-07-29: confirmado
+    CC BY-NC 4.0 (mismos terminos que el paper) directamente por Junwen
+    Wang, autor de correspondencia. Ver seccion de instalacion arriba para
+    la cita completa de su respuesta.
