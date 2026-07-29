@@ -531,10 +531,9 @@ Revision sistematica de todo el codigo (no solo lo ya rastreado arriba)
 buscando fragilidad real de cara a un checkpoint estable. Nada de esto
 bloqueaba el uso actual del pipeline -- eran mejoras reales de robustez para
 "pulir", ordenadas de mayor a menor severidad. **Pulido 2026-07-29: items
-1/2/3/4/5/6/8 resueltos (todo lo que no requeria una decision de producto).
-Quedan abiertos, a proposito, solo los 2 que si la requieren: item 7
-(verbosidad del logger) e item 10 (licencia de DeepPTMPred) -- ver el
-detalle de cada uno.**
+1/2/3/4/5/6/7/8 resueltos.** Queda abierto, a proposito, solo el item 10
+(licencia de DeepPTMPred) -- requiere contactar a Carlos, no es algo
+resoluble desde el codigo. Ver detalle abajo.
 
 **Severidad media (arreglar primero):**
 
@@ -587,12 +586,10 @@ detalle de cada uno.**
    RESUELTO 2026-07-29: ahora imprime un aviso explicito con el
    `testing_suffix` usado cuando `site_prediction.tsv` ya existe y va a
    sobreescribirse.
-7. **El logger de consola solo muestra `WARNING` o mas grave** — SIN
-   RESOLVER, deliberadamente: la propia nota original decia que podia ser
-   el comportamiento DESEADO (consola limpia) y pedia confirmar la
-   intencion antes de cambiarlo -- es una decision de producto, no un bug
-   claro, asi que no se toco sin que Enzo lo confirme. Sigue en
-   `src/utils/logger_config.py:36`.
+7. ~~El logger de consola solo muestra `WARNING` o mas grave~~ —
+   CONFIRMADO INTENCIONAL 2026-07-29 (Enzo). Comportamiento deseado
+   (consola limpia); el progreso INFO real sigue disponible en
+   `logs/ptm_pipeline.log`. No se cambia codigo. `src/utils/logger_config.py:36`.
 8. ~~Sin tests dedicados para `scripts/generate_deepmvp_calibration.py`,
    `src/engines/base_engine.py`, `src/utils/logger_config.py`~~ — RESUELTO
    2026-07-29: `tests/test_generate_deepmvp_calibration.py` (10, cubre
