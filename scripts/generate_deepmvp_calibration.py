@@ -116,8 +116,13 @@ def generate_for_type(ptm_type: str, prefix: str, models_dir: Path, all_data_dir
     out = df.copy()
     out["y_pred"] = y_pred
     out_path = model_dir / "site_prediction.tsv"
+    if out_path.is_file():
+        print(
+            f"  AVISO: '{out_path}' ya existe (generado con un --testing-suffix "
+            f"previo, posiblemente distinto a '{testing_suffix}') -- se sobreescribe."
+        )
     out.to_csv(out_path, sep="\t", index=False)
-    print(f"'{ptm_type}' -> '{out_path}' ({len(out)} filas)")
+    print(f"'{ptm_type}' -> '{out_path}' ({len(out)} filas, testing_suffix='{testing_suffix}')")
 
 
 def main() -> int:
@@ -125,9 +130,12 @@ def main() -> int:
     parser.add_argument("--deepmvp-home", default="DeepMVP", help="Raiz del repo DeepMVP clonado (contiene models/).")
     parser.add_argument("--work-dir", default="DeepMVP/.calibration_data", help="Donde descargar/extraer all_data.tar.gz.")
     parser.add_argument("--testing-suffix", default="70", choices=["70", "80", "90"],
-                        help="Subconjunto de test a usar (70/80/90, umbral de identidad de secuencia tipo CD-HIT "
-                             "inferido por convencion -- no confirmado leyendo el paper, ver STATUS.md). "
-                             "70 = menos redundante con training, mas conservador.")
+                        help="Subconjunto de test a usar. Confirmado leyendo el Methods real del paper "
+                             "(Nature Methods 2025, PMC12446062): los tres son EL MISMO 10%% de test "
+                             "genuinamente separado del 90%% train+validation con el que se entrenaron "
+                             "los pesos shipeados, filtrado ADEMAS por CD-HIT contra train+validation al "
+                             "umbral de identidad indicado -- 70 = filtro mas estricto (excluye cualquier "
+                             "peptido con >=70%% identidad a train/val), el mas conservador de los tres.")
     parser.add_argument("--types", nargs="*", default=list(TYPE_TO_PREFIX), choices=list(TYPE_TO_PREFIX))
     args = parser.parse_args()
 

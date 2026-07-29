@@ -7,10 +7,13 @@ numpy>=1.22.0
 # pipeline.
 gemmi>=0.6.0
 
-# NOTA: DeepMVP y DeepPTMPred (Fase 3, motores de prediccion de PTMs) NO se
-# instalan aqui todavia -- sus engine wrappers no estan construidos (ver
-# STATUS.md). Cuando se construyan, lo mas probable es que necesiten un venv
-# dedicado cada uno (DeepMVP: TensorFlow 2.4.x; DeepPTMPred: PyRosetta +
-# checkpoint ESM-2), mismo patron que los motores de B-Cell-Epitope-Prediction.
+# NOTA: DeepMVP y DeepPTMPred (Fase 2, motores de prediccion de PTMs) NO se
+# instalan aqui -- cada uno vive en su propio venv/conda env dedicado
+# (DeepMVP: conda env 'deepmvp', TensorFlow 2.4.x/Python 3.7.10; DeepPTMPred:
+# conda env 'deepptmpred', TensorFlow 2.15 + PyRosetta + checkpoint ESM-2),
+# mismo patron que los motores de B-Cell-Epitope-Prediction. Los wrappers
+# (src/engines/deepmvp_engine.py, deepptmpred_engine.py) SI estan construidos
+# e invocan esos entornos por subprocess -- ver STATUS.md para el estado real
+# de instalacion en esta maquina.
 
 pytest>=7.0.0

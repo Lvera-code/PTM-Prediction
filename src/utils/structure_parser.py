@@ -94,6 +94,33 @@ def _resolve_residue_letter(resname: str) -> str:
     return code if len(code) == 1 and code.isalpha() else "X"
 
 
+def _sanitize_accession(accession: str, source_name: str) -> str:
+    """Sanea un accession derivado de ``path.stem`` (mismo criterio que ``fasta_parser.py``).
+
+    ``path.stem`` nunca contiene separadores de ruta reales, pero un nombre
+    de archivo literal como ``"..pdb"`` produce ``stem == ".."`` (verificado:
+    ``Path("..pdb").stem == ".."``) -- si ese valor se usa despues para
+    construir ``base_output_dir / record.accession`` (como hace
+    ``DeepPTMPredEngine.run()``), el resultado escapa el directorio de salida
+    (riesgo real de path traversal, ver STATUS.md - auditoria 2026-07-28,
+    item 1). El accession de un registro FASTA ya sanea '/' y '\\'
+    (``fasta_parser.py``); este helper aplica el mismo criterio aqui, mas el
+    caso especifico de accession vacio/'.'/'..' que solo puede darse via
+    nombre de archivo, no via cabecera FASTA.
+    """
+    sane = accession.replace("/", "_").replace("\\", "_")
+    if sane in ("", ".", ".."):
+        sane = "UNKNOWN"
+    if sane != accession:
+        logger.warning(
+            "Accession '%s' derivado del nombre de archivo '%s' es inseguro para construir "
+            "rutas de salida (vacio, '.', '..' o con separador de ruta): renombrado a '%s' "
+            "por seguridad.",
+            accession, source_name, sane,
+        )
+    return sane
+
+
 def _select_chain(model: "gemmi.Model", strategy: str, explicit_chain_id: str) -> "gemmi.Chain":
     """Elige la cadena de referencia segun ``strategy``, siempre logueando el motivo.
 
@@ -185,7 +212,7 @@ def parse_structure(
     if not path.is_file():
         raise FileNotFoundError(f"No se encontro el archivo de estructura de entrada: {path}")
 
-    accession = path.stem
+    accession = _sanitize_accession(path.stem, path.name)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     try:

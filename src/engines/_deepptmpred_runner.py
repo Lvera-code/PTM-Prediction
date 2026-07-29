@@ -37,6 +37,7 @@ checkpoint ESM-2 no instalados en esta maquina) -- ver STATUS.md.
 """
 
 import argparse
+import hashlib
 import sys
 from pathlib import Path
 
@@ -49,6 +50,24 @@ import pandas as pd
 # ningun validation set) se descarta deliberadamente -- el filtro real lo
 # aplica el nucleo de Fase 3, no este runner.
 OUTPUT_COLUMNS = ["protein_id", "position", "residue", "probability", "ptm_type"]
+
+
+def _esm_cache_path(custom_esm_dir: Path, protein_id: str, sequence: str) -> Path:
+    """Nombre de archivo de cache de features ESM, con hash de la secuencia real.
+
+    Antes la clave de cache era solo ``protein_id``
+    (``{protein_id}_full_esm.npz``): re-correr el pipeline con una secuencia
+    DISTINTA bajo el mismo accession (p. ej. un PDB actualizado con el mismo
+    nombre de archivo) reutilizaba en silencio el embedding ESM viejo,
+    prediciendo sobre la secuencia equivocada sin ningun error ni warning
+    (STATUS.md - auditoria 2026-07-28, item 2). El hash (sha256, 12 hex
+    primeros caracteres, suficiente para evitar colisiones accidentales sin
+    alargar demasiado el nombre) hace que una secuencia distinta sea SIEMPRE
+    una cache distinta -- no hay que leer/comparar el .npz existente para
+    decidir si reusarlo.
+    """
+    sequence_hash = hashlib.sha256(sequence.encode("utf-8")).hexdigest()[:12]
+    return custom_esm_dir / f"{protein_id}_{sequence_hash}_full_esm.npz"
 
 
 def _extract_esm_features(sequence: str, checkpoint_path: Path, esm_dim: int = 1280) -> np.ndarray:
@@ -175,7 +194,7 @@ def main() -> int:
 
     custom_esm_dir = Path(args.custom_esm_dir)
     custom_esm_dir.mkdir(parents=True, exist_ok=True)
-    esm_path = custom_esm_dir / f"{args.protein_id}_full_esm.npz"
+    esm_path = _esm_cache_path(custom_esm_dir, args.protein_id, args.sequence)
     if not esm_path.is_file():
         features = _extract_esm_features(args.sequence, Path(args.esm_checkpoint))
         np.savez_compressed(

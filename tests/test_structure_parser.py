@@ -140,3 +140,35 @@ def test_accession_deriva_del_stem_del_archivo(tmp_path):
     pdb_path = _write(tmp_path, "mi_estructura_custom.pdb", PDB_WITH_MODIFIED_RESIDUES)
     record = parse_structure(pdb_path, tmp_path / "out")
     assert record.accession == "mi_estructura_custom"
+
+
+def test_accession_dotdot_se_sanea_evita_path_traversal(tmp_path):
+    """Regresion: un nombre de archivo como '...pdb' produce ``stem == ".."``.
+
+    Verificado empiricamente ('Path("...pdb").stem == ".."', 3 puntos --
+    'Path("..pdb").stem' con 2 puntos en realidad da '.', no '..'; la nota
+    original en STATUS.md tenia el ejemplo con un punto de menos). Ambos
+    casos ('.' y '..') son igual de inseguros para construir
+    ``base_output_dir / record.accession`` (DeepPTMPredEngine), asi que
+    ``_sanitize_accession`` los cubre a los dos. Ver STATUS.md - auditoria
+    2026-07-28, item 1.
+    """
+    pdb_path = _write(tmp_path, "...pdb", PDB_WITH_MODIFIED_RESIDUES)
+    output_dir = tmp_path / "out"
+
+    record = parse_structure(pdb_path, output_dir)
+
+    assert record.accession == "UNKNOWN"
+    assert record.fasta_path.parent == output_dir
+    assert (record.position_mapping["accession"] == "UNKNOWN").all()
+
+
+def test_sanitize_accession_reemplaza_separadores_de_ruta():
+    # El sistema de archivos no permite '/' real en un nombre de archivo
+    # individual, pero un stem ya obtenido en memoria (p. ej. reusado desde
+    # otra fuente) debe sanearse igual que fasta_parser.py.
+    from src.utils.structure_parser import _sanitize_accession
+
+    assert _sanitize_accession("foo\\bar", "foo\\bar.pdb") == "foo_bar"
+    assert _sanitize_accession("foo/bar", "foo/bar.pdb") == "foo_bar"
+    assert _sanitize_accession(".", "..pdb") == "UNKNOWN"

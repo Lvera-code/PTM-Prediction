@@ -41,12 +41,6 @@ class InputRoutingError(PipelineError):
     """
 
 
-class ModelLoadError(PipelineError):
-    """Fallo fatal al cargar pesos/checkpoint de un motor de prediccion de PTMs
-    (DeepMVP o DeepPTMPred). Detiene el pipeline.
-    """
-
-
 class EngineExecutionError(PipelineError):
     """Error durante la ejecucion de un motor de prediccion de PTMs (subprocess
     o forward pass). Recuperable a nivel de lote: se loggea y se propaga para

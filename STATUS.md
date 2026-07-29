@@ -459,10 +459,15 @@ Lys-NZ + Gly-Cterm de ubiquitina/SUMO), no solo se descarto por analogia:
   (`-chemical:patch_selectors` apuntando al archivo directamente pese a
   estar excluido del manifiesto) y validando el resultado con cuidado.
 
-67 tests (`pytest tests/`) siguen pasando -- ningun test nuevo para
-`src/structural/` (requiere `pyrosetta`, ausente del entorno donde corre
-la suite principal, mismo criterio que el resto de codigo dependiente de
-motores externos: verificacion real documentada aqui en vez de mock).
+67 tests (`pytest tests/`) seguian pasando en ese momento (2026-07-28) --
+ningun test nuevo para `src/structural/` (requiere `pyrosetta`, ausente del
+entorno donde corre la suite principal, mismo criterio que el resto de
+codigo dependiente de motores externos: verificacion real documentada aqui
+en vez de mock). **Actualizado 2026-07-29: 97 tests** tras cerrar los items
+1/2/8 de la auditoria de robustez mas el cliente GlyGen (ver seccion de
+auditoria abajo y "Proximos pasos" item 3) -- `src/structural/*.py` que
+dependen de `pyrosetta` siguen sin tests, mismo motivo; `glygen_client.py`
+es la unica excepcion (no requiere `pyrosetta`, si tiene tests).
 
 ## Proximos pasos reales
 
@@ -477,10 +482,24 @@ motores externos: verificacion real documentada aqui en vez de mock).
    arriba.
 3. ~~Fase A clase 2 (glicosilacion)~~ — IMPLEMENTADA 2026-07-28 noche (ver
    seccion arriba). Default de nucleo biosintetico documentado, no una
-   prediccion real de glicoforma. **Mejora real identificada, no
-   implementada todavia** (ver auditoria abajo): consultar GlyGen
-   (`api.glygen.org`) antes de caer al default generico, para proteinas ya
-   caracterizadas experimentalmente.
+   prediccion real de glicoforma. ~~**Mejora: consultar GlyGen antes de caer
+   al default generico**~~ — IMPLEMENTADA 2026-07-29: nuevo
+   `src/structural/glygen_client.py` (endpoint real descubierto leyendo
+   `api.glygen.org/swagger.json`, `POST /protein/detail/{accession}/`,
+   verificado con una consulta real en vivo contra P10636/Tau -- 14 sitios
+   reales devueltos, confirma el esquema `type`/`start_pos`/`site_category`/
+   `glytoucan_ac` usado por el cliente). Wireado como corroboracion PURAMENTE
+   INFORMATIVA en `pyrosetta_glycan_patch.py` (`check_glygen_evidence`,
+   flag opcional `--uniprot-accession`): no cambia el glicano adjuntado (el
+   `glytoucan_ac` que reporta GlyGen identifica un glicano especifico que
+   requeriria traducirlo a un nucleo IUPAC construible por PyRosetta -- un
+   problema de mapeo real no resuelto por esta mejora, documentado como
+   limite explicito), solo informa si el sitio ya tiene evidencia
+   experimental conocida. Fallos de red degradan a un aviso, nunca abortan
+   el flujo principal. 8 tests nuevos (`tests/test_glygen_client.py`, red
+   mockeada -- a diferencia del resto de `src/structural/`, este cliente NO
+   requiere `pyrosetta`, solo `urllib`/`json` de la stdlib, asi que si corre
+   en la suite principal).
 4. Fase A clase 3 (ubiquitinacion/sumoilacion): investigada a fondo dos
    veces (28-07 mañana y noche) -- el patch de Rosetta especifico para
    esto esta desactivado por sus propios desarrolladores ("something is
@@ -506,89 +525,116 @@ motores externos: verificacion real documentada aqui en vez de mock).
    representativa de los 17 tipos) no esta hecha todavia -- coste real
    estimado 1-2h de computo. Pendiente decision de Enzo.
 
-## Auditoria de robustez pre-checkpoint (2026-07-28, noche) -- pendiente de pulir mañana
+## Auditoria de robustez pre-checkpoint (2026-07-28, noche) -- pulida 2026-07-29
 
 Revision sistematica de todo el codigo (no solo lo ya rastreado arriba)
 buscando fragilidad real de cara a un checkpoint estable. Nada de esto
-bloquea el uso actual del pipeline -- son mejoras reales de robustez para
-"pulir", ordenadas de mayor a menor severidad.
+bloqueaba el uso actual del pipeline -- eran mejoras reales de robustez para
+"pulir", ordenadas de mayor a menor severidad. **Pulido 2026-07-29: items
+1/2/3/4/5/6/8 resueltos (todo lo que no requeria una decision de producto).
+Quedan abiertos, a proposito, solo los 2 que si la requieren: item 7
+(verbosidad del logger) e item 10 (licencia de DeepPTMPred) -- ver el
+detalle de cada uno.**
 
 **Severidad media (arreglar primero):**
 
-1. **Riesgo real de path traversal, sin sanitizar** (`src/engines/deepptmpred_engine.py:125`):
+1. ~~**Riesgo real de path traversal, sin sanitizar**~~ — RESUELTO 2026-07-29.
    `DeepPTMPredEngine.run()` construye la carpeta de resultados con
-   `base_output_dir / record.accession` -- un join de path CRUDO, sin
-   sanitizar. `record.accession` viene de `structure_parser.py:188`
-   (`accession = path.stem`, el nombre del archivo PDB/mmCIF de entrada)
-   y NUNCA se sanea, a diferencia del accession de un registro FASTA
-   (`fasta_parser.py:170-178`, que SI reemplaza `/` y `\` explicitamente).
-   Un archivo de entrada llamado literalmente `..pdb` produce
-   `accession=".."` (`Path("..pdb").stem == ".."`, verificado), lo que
-   escapa el directorio de salida. Riesgo practico bajo hoy (CLI local,
-   el usuario controla sus propios archivos), pero es una inconsistencia
-   real entre los dos caminos y un problema real si esto se expone alguna
-   vez detras de un servicio (subida de archivos de terceros). Arreglo:
-   aplicar el mismo saneamiento que ya existe en `fasta_parser.py` tambien
-   en `structure_parser.py::parse_structure` al derivar `accession`.
+   `base_output_dir / record.accession` -- un join de path CRUDO. `record.accession`
+   venia de `structure_parser.py:188` (`accession = path.stem`, el nombre del
+   archivo PDB/mmCIF de entrada) y NUNCA se saneaba, a diferencia del accession
+   de un registro FASTA (`fasta_parser.py:170-178`, que SI reemplaza `/` y `\`
+   explicitamente). Un archivo de entrada llamado literalmente `...pdb` (3
+   puntos) produce `accession=".."` (`Path("...pdb").stem == ".."`, verificado
+   empiricamente -- la nota original decia `..pdb` con 2 puntos, que en
+   realidad da `stem == "."`, no `".."`; corregido aqui), lo que escapa el
+   directorio de salida. Arreglo aplicado: nuevo helper
+   `structure_parser._sanitize_accession` (mismo criterio que `fasta_parser.py`
+   para `/`/`\`, mas fallback a `"UNKNOWN"` para accession vacio/`.`/`..`),
+   llamado al derivar `accession` en `parse_structure`. 2 tests nuevos
+   (`test_accession_dotdot_se_sanea_evita_path_traversal`,
+   `test_sanitize_accession_reemplaza_separadores_de_ruta`).
 
-2. **Cache de features ESM de DeepPTMPred puede servir datos obsoletos sin
-   avisar** (`src/engines/_deepptmpred_runner.py`, funcion `main`): la
-   clave de cache es solo `protein_id` (`{accession}_full_esm.npz`), NO un
-   hash/huella de la secuencia real. Si se vuelve a correr el pipeline con
+2. ~~**Cache de features ESM de DeepPTMPred puede servir datos obsoletos sin
+   avisar**~~ — RESUELTO 2026-07-29. La clave de cache era solo `protein_id`
+   (`{accession}_full_esm.npz`), NO un hash/huella de la secuencia real --
    una secuencia DISTINTA bajo el mismo accession/nombre de archivo (p.ej.
-   una version actualizada del PDB con el mismo nombre), el runner
-   reutiliza en silencio el embedding ESM viejo -- predicciones
-   incorrectas sin ningun error ni warning. Arreglo: incluir un hash corto
-   de la secuencia en el nombre del archivo de cache, o verificar
-   `data['sequence'] == args.sequence` antes de reusar el cache.
+   una version actualizada del PDB con el mismo nombre) reutilizaba en
+   silencio el embedding ESM viejo. Arreglo aplicado: nuevo helper
+   `_deepptmpred_runner._esm_cache_path` incluye un hash corto (sha256,
+   12 hex) de la secuencia real en el nombre del archivo de cache
+   (`{protein_id}_{hash}_full_esm.npz`) -- una secuencia distinta ya no
+   puede colisionar con una cache existente. 3 tests nuevos en
+   `tests/test_deepptmpred_runner.py`.
 
-3. **`BaseEngine.run()` no coincide con las implementaciones reales**
-   (`src/engines/base_engine.py`): la interfaz abstracta declara
+3. ~~**`BaseEngine.run()` no coincide con las implementaciones reales**~~ —
+   RESUELTO 2026-07-29. La interfaz abstracta declaraba
    `run(self, items) -> List[TOut]`, pero `DeepMVPEngine.run` y
-   `DeepPTMPredEngine.run` en realidad requieren un segundo parametro
-   `output_dir: Path = None` no declarado en el contrato. El patron
-   Strategy que dice implementar el docstring esta roto en la practica --
-   no se puede tratar ambos motores polimorficamente a traves de la
-   interfaz declarada sin saber del parametro extra. Arreglo: anadir
-   `output_dir` a la firma abstracta.
+   `DeepPTMPredEngine.run` en realidad requerian un segundo parametro
+   `output_dir: Path = None` no declarado en el contrato. Arreglo aplicado:
+   `output_dir: Optional[Path] = None` anadido a la firma abstracta de
+   `src/engines/base_engine.py`. 3 tests nuevos en `tests/test_base_engine.py`.
 
 **Severidad baja (higiene, no urgente):**
 
-4. `requirements.txt` (comentario lineas 10-14) esta desactualizado --
-   sigue diciendo que los motores "no estan construidos todavia" y usa la
-   numeracion vieja "Fase 3", de antes del 27-07. Los motores llevan
-   semanas construidos y las fases se renombraron a Fase 2 hoy.
-5. `ModelLoadError` (`src/utils/exceptions.py`) esta definida pero nunca
-   se usa ni se lanza en ningun sitio del codigo -- clase muerta.
-6. `scripts/generate_deepmvp_calibration.py` sobreescribe
-   `site_prediction.tsv` en silencio si ya existe, sin comprobar ni
-   avisar -- no queda registro de que `--testing-suffix` genero el
-   archivo actualmente instalado si se corre mas de una vez con valores
-   distintos.
-7. El logger de consola solo muestra `WARNING` o mas grave
-   (`src/utils/logger_config.py:36`) -- todos los `logger.info(...)` de
-   progreso ("Fase 2 completa...", "Fase 3 completa...") NUNCA aparecen en
-   pantalla durante una corrida real, solo quedan en `logs/ptm_pipeline.log`.
-   Puede ser el comportamiento deseado (consola limpia), pero vale la pena
-   confirmar que es intencional dado que el pipeline puede tardar minutos
-   reales por corrida sin ninguna senal de progreso visible.
-8. Sin tests dedicados para `scripts/generate_deepmvp_calibration.py`,
-   `src/engines/base_engine.py`, `src/utils/logger_config.py` (menor
-   prioridad, codigo utilitario/simple). `src/structural/*.py` sigue sin
-   tests por diseno (requiere `pyrosetta`, ver nota ya existente arriba).
+4. ~~`requirements.txt` desactualizado~~ — RESUELTO 2026-07-29: comentario
+   reescrito, ya no dice "no estan construidos todavia" ni usa la
+   numeracion vieja "Fase 3".
+5. ~~`ModelLoadError` sin usar~~ — RESUELTO 2026-07-29: clase muerta
+   eliminada de `src/utils/exceptions.py` (confirmado por grep que no se
+   usaba en ningun otro sitio antes de borrarla).
+6. ~~`generate_deepmvp_calibration.py` sobreescribe en silencio~~ —
+   RESUELTO 2026-07-29: ahora imprime un aviso explicito con el
+   `testing_suffix` usado cuando `site_prediction.tsv` ya existe y va a
+   sobreescribirse.
+7. **El logger de consola solo muestra `WARNING` o mas grave** — SIN
+   RESOLVER, deliberadamente: la propia nota original decia que podia ser
+   el comportamiento DESEADO (consola limpia) y pedia confirmar la
+   intencion antes de cambiarlo -- es una decision de producto, no un bug
+   claro, asi que no se toco sin que Enzo lo confirme. Sigue en
+   `src/utils/logger_config.py:36`.
+8. ~~Sin tests dedicados para `scripts/generate_deepmvp_calibration.py`,
+   `src/engines/base_engine.py`, `src/utils/logger_config.py`~~ — RESUELTO
+   2026-07-29: `tests/test_generate_deepmvp_calibration.py` (10, cubre
+   `trim_window` y `download_all_data` mockeado -- `generate_for_type` sigue
+   sin test directo, requiere TensorFlow/`lib` de DeepMVP real, conda env
+   `deepmvp`), `tests/test_base_engine.py` (3), `tests/test_logger_config.py`
+   (4). `src/structural/*.py` sigue sin tests por diseno (requiere
+   `pyrosetta`, ver nota ya existente arriba).
 
-**Salvedad cientifica a revisar (no es un bug de codigo):**
+**Salvedad cientifica -- RESUELTA 2026-07-29 (leido el texto real del Methods,
+no solo el resumen):**
 
-9. `scripts/generate_deepmvp_calibration.py` usa `testing_70` por defecto
-   asumiendo que es un conjunto de validacion genuinamente separado del
-   entrenamiento de los pesos ya instalados (`models.tar.gz`) -- esto NO
-   esta confirmado contra el paper real (no se leyo el texto completo del
-   metodo, solo se verifico que el AUROC resultante coincide
-   razonablemente con las cifras publicadas). Si los pesos shipeados se
-   entrenaron sobre TODO `all_data.tar.gz` (incluido `testing_70`), el
-   AUROC ~0.9-0.99 medido seria optimista/circular. Revisar el texto del
-   paper (`academic.oup.com/bib/article/27/3/bbag321`, no solo el resumen
-   ya extraido) antes de confiar en esos numeros para publicacion/TFG.
+9. ~~`testing_70` podria ser circular/optimista~~ -- CONFIRMADO NO CIRCULAR.
+   Texto real de Methods (DeepMVP, Nature Methods 2025, via PMC12446062,
+   texto completo libre):
+
+   > "Ninety per cent of the data was used for training (81%) and
+   > validation (9%), and the remaining 10% was used for independent
+   > testing."
+
+   > "To control for sequence similarity, peptides in the testing set
+   > were filtered to remove those with identities above predefined
+   > thresholds (90%, 80% or 70%) compared with peptides in the training
+   > and validation sets. This filtering was performed using the
+   > clustering tool CD-HIT."
+
+   Es decir: el split primario ES un 10% genuinamente separado del 90%
+   train+validation (los pesos shipeados en `models.tar.gz` se entrenaron
+   sobre ese 90%, nunca sobre el 10% de test). Los sufijos `70/80/90` NO
+   son splits alternativos del dataset -- son el MISMO 10% de test,
+   filtrado ADEMAS por similitud de secuencia via CD-HIT contra
+   train+validation (70/80/90 = umbral de identidad maximo permitido:
+   `testing_70` es el subconjunto MAS estricto, con CUALQUIER peptido de
+   ≥70% identidad respecto a train/val ya excluido -- el mas conservador
+   de los tres, confirma que `--testing-suffix 70` (default actual del
+   script) era ya la eleccion correcta por intuicion, ahora verificada).
+   El propio paper reporta que el AUROC se mantiene estable bajo este
+   filtro mas estricto ("AUROC values remained stable across all PTMs,
+   with changes < 0.03 compared to the original models"), consistente con
+   el AUROC 0.90-0.99 medido localmente. **Conclusion: el AUROC medido por
+   `generate_deepmvp_calibration.py` es real, no circular** -- seguro de
+   citar para TFG/publicacion.
 
 **Sin resolver, ya conocido, re-listado aqui por completitud:**
 
