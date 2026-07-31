@@ -162,6 +162,33 @@ def _load_predict_module(train_ptm_dir: Path):
 
     predict.load_model = _patched_load_model
 
+    # Parche real 2: distribution mismatch train/inferencia confirmado
+    # 2026-07-31 -- ``data_loader.py::L139-141`` (pipeline de entrenamiento
+    # Y de evaluacion del paper) calcula ``phi_center``/``psi_center`` con
+    # ``half_window = (max(window_sizes)-1)//2 = 25``, pero el array
+    # phi/psi del CSV fuente solo tiene 11 elementos -- la condicion
+    # ``len(x) > half_window`` es SIEMPRE falsa, asi que el modelo shippeado
+    # nunca vio nada distinto de 0.0 en esos dos angulos, ni en entrenamiento
+    # ni en el test set que produce los AUC publicados en el paper. Pero
+    # ``PyRosettaCalculator.calculate_features`` (inferencia real, la que usa
+    # este runner) SI calcula phi/psi reales via PyRosetta -- eso saca al
+    # modelo de su distribucion de entrenamiento. Verificado empiricamente
+    # (script de calibracion, n=75): forzar phi=psi=0.0 en inferencia sube
+    # el AUROC real de hydroxylation 0.342->0.934 (paper: 0.965) y el de
+    # lys_methylation 0.462->0.883 (paper: 0.899) -- recupera el rendimiento
+    # publicado. Igualar la inferencia a lo que el modelo realmente aprendio,
+    # no una mejora de features: el modelo no sabe usar phi/psi reales.
+    _original_calculate_features = predict.PyRosettaCalculator.calculate_features
+
+    def _patched_calculate_features(self, residue_number):
+        feat = _original_calculate_features(self, residue_number)
+        feat = feat.copy()
+        feat[1] = 0.0  # phi
+        feat[2] = 0.0  # psi
+        return feat
+
+    predict.PyRosettaCalculator.calculate_features = _patched_calculate_features
+
     return predict
 
 

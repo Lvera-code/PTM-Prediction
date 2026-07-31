@@ -476,6 +476,55 @@ auditoria abajo y "Proximos pasos" item 3) -- `src/structural/*.py` que
 dependen de `pyrosetta` siguen sin tests, mismo motivo; `glygen_client.py`
 es la unica excepcion (no requiere `pyrosetta`, si tiene tests).
 
+## Calibracion real de DeepPTMPred + bug de distribucion phi/psi (2026-07-30/31)
+
+**2026-07-30**: implementado `scripts/generate_deepptmpred_calibration.py`
+(corre el modelo real -- los `.h5` ya instalados via `predict.PTMPredictor`,
+el mismo codigo que `_deepptmpred_runner.py` usa en produccion -- sobre una
+muestra real de `DeepPTMPred/data/ptm_data.csv.gz`, secuencia+estructura real
+por proteina descargada de AlphaFold DB). AUROC/umbral (Youden's J) medidos
+por cada uno de los 17 tipos soportados, no asumidos. `scripts/
+_rebuild_calibration_summary.py` agrega los 17 TSV por tipo en un
+`summary.tsv` sin re-correr el modelo (necesario porque el script principal
+solo escribe `summary.tsv` una vez, al final de su propia corrida -- dos
+corridas parciales se pisaban entre si).
+
+**2026-07-31: bug real encontrado y corregido, afecta la fiabilidad de TODO
+lo calibrado hasta ese momento.** Los AUROC medidos salian sistematicamente
+muy por debajo de los publicados en el paper (Briefings in Bioinformatics,
+DOI bbag321) para practicamente los 17 tipos -- 2 de ellos (`hydroxylation`
+0.34, `lys_methylation` 0.46) incluso por debajo de azar. Verificado leyendo
+`DeepPTMPred/pred/train_PTM/data_loader.py` linea 139-141: `phi_center`/
+`psi_center` se calculan con `half_window = (max(window_sizes)-1)//2 = 25`,
+pero el array `phi`/`psi` del CSV de origen solo tiene 11 elementos -- la
+condicion `len(x) > half_window` es SIEMPRE falsa, asi que el modelo
+shippeado nunca vio nada distinto de 0.0 en esos dos angulos, ni en
+entrenamiento ni en el test set que produce los AUC del paper (`trainer.py`
+usa el mismo `load_dataset()` para train Y test). Pero `predict.py`'s
+`PyRosettaCalculator.calculate_features` (inferencia REAL, la que usa
+`_deepptmpred_runner.py` en produccion) SI calcula phi/psi reales via
+PyRosetta -- un mismatch real train/inferencia, no un bug de esta calibracion.
+
+Verificado empiricamente forzando `phi=psi=0.0` en inferencia (monkeypatch
+de `PyRosettaCalculator.calculate_features`, aplicado en
+`_deepptmpred_runner.py::_load_predict_module`, el mismo punto ya usado
+para el parche real de `'K'`/`custom_objects`): AUROC de `hydroxylation`
+sube 0.342->0.934 (paper: 0.965), `lys_methylation` 0.462->0.883 (paper:
+0.899) -- recupera el rendimiento publicado. SASA/estructura
+secundaria/plDDT NO estan afectados (solo phi_center/psi_center), asi que
+el modelo no queda ciego a estructura, solo a la geometria fina de phi/psi
+-- un techo de precision real y permanente de estos pesos concretos
+(irreversible sin reentrenar con el bug de `data_loader.py` corregido, fuera
+de alcance de este proyecto).
+
+**Todos los datos de calibracion anteriores a este fix son invalidos**
+(median el comportamiento roto). Movidos a
+`DeepPTMPred/data/calibration_STALE_prephifix_2026-07-31/` (gitignored, no
+borrados). Relanzada la calibracion completa de los 17 tipos a n=75 con el
+parche puesto -- corriendo en background al momento de escribir esto, ver
+`summary.tsv` en `DeepPTMPred/data/calibration/` para el resultado final
+una vez termine.
+
 ## Proximos pasos reales
 
 1. ~~Decidir el gap de calibracion `fpr` de DeepMVP~~ — RESUELTO 2026-07-28
@@ -521,16 +570,10 @@ es la unica excepcion (no requiere `pyrosetta`, si tiene tests).
    maquina. Pendiente que Enzo decida cual via seguir, ninguna es rapida.
 5. Cross-validacion con StackGlyEmbed (proyecto 1) para N-glicosilacion —
    deliberadamente sin integrar por ahora (decision 2026-07-26).
-6. **Calibracion real de DeepPTMPred (umbral 0.5 sigue siendo provisional)**:
-   investigado a fondo 2026-07-28 noche, ver seccion de auditoria abajo --
-   hay un camino real y verificado (dataset publico
-   `meilerlab/PTMPrediction/data/ptm_data.csv.gz`, 376557 filas etiquetadas,
-   mismas features estructurales que calcula DeepPTMPred), pero la
-   implementacion completa (reconstruir ventanas de 33/51 residuos vía
-   secuencia completa por entry, resolver el desfase de numeracion
-   PDB/UniProt, correr ESM-2 + el modelo real sobre una muestra
-   representativa de los 17 tipos) no esta hecha todavia -- coste real
-   estimado 1-2h de computo. Pendiente decision de Enzo.
+6. ~~Calibracion real de DeepPTMPred~~ — IMPLEMENTADA 2026-07-30/31, ver
+   seccion "Calibracion real de DeepPTMPred + bug de distribucion
+   phi/psi" abajo. **Pendiente decision de Enzo**: si conectar los umbrales
+   calibrados a `Settings.py`/produccion (nada wireado todavia).
 
 ## Auditoria de robustez pre-checkpoint (2026-07-28, noche) -- pulida 2026-07-29
 
