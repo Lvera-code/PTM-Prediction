@@ -61,6 +61,19 @@ git clone https://github.com/kuikui-wang/DeepPTMPred
 Ver `STATUS.md` para el detalle completo de que ya se verifico (ambos
 repos clonados y probados en esta maquina el 2026-07-27) y que falta.
 
+## Licencias
+
+- **DeepMVP**: MIT (declarada en `DeepMVP/LICENSE` del repo original).
+- **DeepPTMPred**: el repo (`github.com/kuikui-wang/DeepPTMPred`, vendorizado
+  en `DeepPTMPred/`) no declara licencia propia, pero el paper asociado es
+  CC BY-NC 4.0 (Oxford University Press). Se contacto directamente a los
+  autores de correspondencia (Yong Liu, Junwen Wang) para confirmar que el
+  codigo sigue los mismos terminos. **Junwen Wang confirmo por email el
+  2026-07-29**: *"I confirm that the GitHub code follows the same CC BY-NC
+  terms."* Uso no comercial (investigacion/TFG + integracion futura como
+  plugin de Scipion por el CNB, institucion publica) encaja sin problema
+  dentro de CC BY-NC. Detalle completo en `STATUS.md`.
+
 ## Decisiones de arquitectura
 
 Documentadas en el vault, no en este repo:
