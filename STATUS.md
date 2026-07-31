@@ -521,9 +521,39 @@ de alcance de este proyecto).
 (median el comportamiento roto). Movidos a
 `DeepPTMPred/data/calibration_STALE_prephifix_2026-07-31/` (gitignored, no
 borrados). Relanzada la calibracion completa de los 17 tipos a n=75 con el
-parche puesto -- corriendo en background al momento de escribir esto, ver
-`summary.tsv` en `DeepPTMPred/data/calibration/` para el resultado final
-una vez termine.
+parche puesto -- **terminada 2026-07-31**, resultado en
+`DeepPTMPred/data/calibration/summary.tsv` (gitignored):
+
+```
+ptm_type                     auroc     suggested_threshold  n_proteins
+gamma_carboxyglutamic_acid   0.970133  0.214867              44
+hydroxylation                0.934372  0.375260              69
+malonylation                 0.888000  0.422340             145
+lys_methylation              0.882629  0.410402             143
+glutathionylation            0.872889  0.472519             145
+ubiquitination                0.870222  0.543494             149
+phosphorylation              0.859970  0.243480             137
+arg_methylation               0.850450  0.343200             139
+sumoylation                   0.840180  0.409133             139
+acetylation                   0.833538  0.629997             140
+o_linked_glycosylation        0.823447  0.310599             121
+succinylation                 0.808711  0.482645             144
+s_nitrosylation                0.683243  0.500678             139
+glutarylation                  0.673067  0.461801             103
+citrullination                 0.657401  0.391692              46
+crotonylation                  0.606957  0.935762              34
+n_linked_glycosylation         0.490667  0.997414             110
+```
+
+14/17 tipos quedan en rango solido-a-excelente, muchos igualando o
+superando el paper (confirma que el bug de phi/psi era la causa real de
+los AUROC bajos, no motores debiles). 4 tipos quedan mediocres
+(s_nitrosylation/glutarylation/citrullination/crotonylation, 0.61-0.68 --
+`crotonylation` con muestra pequena, solo 34 proteinas unicas). **Un tipo
+sigue realmente roto: `n_linked_glycosylation` (AUROC 0.49, peor que
+azar) incluso tras el fix** -- no investigado todavia, causa distinta al
+bug de phi/psi (que ya se corrigio), pendiente de mirar aparte, no
+bloqueante para el resto.
 
 ## Proximos pasos reales
 
