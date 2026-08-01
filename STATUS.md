@@ -417,7 +417,7 @@ real confirmado NAT) -- 5 residuos de azucar anadidos, `ASN484` pasa a
 `THR52` pasa a `THR:O-conjugated`. Refinamiento con `GlycanTreeModeler`
 (1 round) corre sin error, ~64s para el caso N-glycan_core.
 
-## Fase A clase 3 (ubiquitinacion/sumoilacion) — INVESTIGADA A FONDO, NO IMPLEMENTADA (2026-07-28, noche)
+## Fase A clase 3 (ubiquitinacion/sumoilacion) — IMPLEMENTADA (2026-08-01), corrige la conclusion de 2026-07-28
 
 Enzo pidio terminar todo lo posible. Se investigo el mecanismo real de
 Rosetta para conjugacion covalente de proteina completa (isopeptidico
@@ -475,6 +475,73 @@ en vez de mock). **Actualizado 2026-07-29: 97 tests** tras cerrar los items
 auditoria abajo y "Proximos pasos" item 3) -- `src/structural/*.py` que
 dependen de `pyrosetta` siguen sin tests, mismo motivo; `glygen_client.py`
 es la unica excepcion (no requiere `pyrosetta`, si tiene tests).
+
+### CORRECCION 2026-08-01: la conclusion de arriba era incorrecta -- IMPLEMENTADA via `UBQ_GTPaseMover`
+
+La investigacion del 28-07 solo miro el patch (`C-terminal_conjugation.txt`,
+desactivado por Rosetta) y concluyo "no hay via nativa disponible en este
+build". Un subagente Opus (investigacion de robustez/produccion, pedida por
+Enzo) encontro leyendo el .cc real de
+`RosettaCommons/rosetta` (`source/src/protocols/chemically_conjugated_docking/UBQ_GTPaseMover.cc`
+y la app `UBQ_Gp_LYX-Cterm.cc`) que existe una via COMPLETAMENTE
+INDEPENDIENTE del patch roto: `UBQ_GTPaseMover`, un `protocols::moves::Mover`
+normal que PyRosetta expone automaticamente (cero compilacion), que usa un
+`ResidueType` completo (`LYX`) en vez del patch para el enlace isopeptidico.
+Verificado real, no solo leido:
+
+- `pyrosetta.rosetta.protocols.chemically_conjugated_docking.UBQ_GTPaseMover`
+  se instancia sin error contra el wheel YA instalado (`deepptmpred`, PyRosetta
+  2026.30) -- cero instalacion nueva.
+- Requiere DOS flags de init no obvias, ambas confirmadas por prueba y error
+  real contra el mismo error que reporta Rosetta si falta cualquiera de las
+  dos: `-chemical:exclude_patches SidechainConjugation` (la misma flag que usa
+  el test de integracion oficial de Rosetta para esta app) + `-extra_res_fa
+  <ruta a LYX.params>` (sin esta segunda, `ResidueTypeSet` revienta con "The
+  residue LYX could not be generated" pese a tener la primera flag puesta).
+- Corrida real end-to-end contra `DeepPTMPred/data/AF-P10636-F1-model_v4.pdb`
+  (Tau, LYS24, mismo residuo que ya usa Extension 3 para el ddG de
+  acetilacion): `initialize()` solo -> pose de 834 residuos (758 Tau + 76
+  ubiquitina), residuo objetivo mutado a `LYX`. `apply()` completo
+  (`refine_cycles=3`, valor rapido de desarrollo) -> `MS_SUCCESS` en 16.4s,
+  5 metricas de torsion de la cola movil recalculadas con valores reales no
+  triviales. Mismo mecanismo verificado tambien para SUMO1 (pose de 857 =
+  758 + 99 residuos) -- un solo Mover sirve para ambos tipos, solo cambia el
+  PDB de referencia.
+- Dos hallazgos reales de integracion (documentados en el docstring del
+  modulo, no solo aqui): (1) `initialize()` escribe siempre
+  `starting_pose_EMPTY_JOB_use_jd2_0000.pdb` en el cwd actual del proceso
+  (confirmado, no un supuesto) porque `JobDistributor::current_job()` fuera
+  de una corrida real via JobDistributor devuelve un job dummy en vez de
+  `nullptr` -- no revienta, pero hay que confinarlo a un directorio temporal
+  desechable; (2) las 5 metricas por-decoy que Rosetta escribe en ese mismo
+  job dummy son inaccesibles desde Python -- se recalculan directamente
+  desde la pose de salida via `mover.get_atom_IDs()` (expuesto, real) en vez
+  de intentar leerlas del job.
+- Un tercer hallazgo real, no de integracion sino de seguridad de tipo:
+  Rosetta mismo NO valida que el residuo objetivo sea una Lisina antes de
+  forzarlo a `LYX` (el `runtime_assert` real para eso esta comentado en el
+  .cc) -- validado en nuestro wrapper en su lugar. Tambien se valida que la
+  pose sea de una sola cadena (`runtime_assert` real de Rosetta, la
+  violacion revienta alto en vez de silenciosa) y que la numeracion PDB
+  coincida 1:1 con la numeracion de pose (`initialize()` hace una doble
+  conversion pdb2pose sobre un indice que ya es de pose -- solo correcta si
+  ambas numeraciones coinciden; verificado que es el caso para los PDBs de
+  AlphaFold de una sola cadena que usa este pipeline, pero no asumido para
+  cualquier PDB futuro).
+
+Implementado en `src/structural/ubiquitin_sumo.py` (ver su docstring para el
+detalle completo verificado linea por linea del .cc real). PDBs de
+referencia empaquetados en `src/structural/data/`: `ubiquitin_reference.pdb`
+(RCSB 1UBQ, el mismo que usa el propio equipo de Rosetta en sus tests de
+integracion) y `sumo1_reference.pdb` (RCSB 1A5R, modelo 1 de la NMR,
+recortado programaticamente -- buscando el motivo real "QTGG" en la
+secuencia, no un numero de residuo asumido -- hasta la diglicina C-terminal
+madura real, descartando 4 residuos de cola de maduracion sin procesar que
+tiene el constructo original). Sirve tambien para SUMO sin cambios de
+codigo (mismo mecanismo Gly-Gly terminal). Sin tests nuevos en la suite
+principal (mismo motivo que el resto de `src/structural/`: requiere
+`pyrosetta`; 101 tests siguen pasando sin cambios, verificado). Vault:
+decision pendiente de escribir en `01-Proyectos/PTM-Prediction/Decisiones/`.
 
 ## Calibracion real de DeepPTMPred + bug de distribucion phi/psi (2026-07-30/31)
 
@@ -714,18 +781,12 @@ los 17 umbrales de esta tabla. 101 tests pasan.
    mockeada -- a diferencia del resto de `src/structural/`, este cliente NO
    requiere `pyrosetta`, solo `urllib`/`json` de la stdlib, asi que si corre
    en la suite principal).
-4. Fase A clase 3 (ubiquitinacion/sumoilacion): investigada a fondo dos
-   veces (28-07 mañana y noche) -- el patch de Rosetta especifico para
-   esto esta desactivado por sus propios desarrolladores ("something is
-   broken"). Encontrado ademas: Rosetta SI tiene una aplicacion dedicada
-   (`UBQ_E2_thioester`/serie `UBQ_Gp`,
-   `docs.rosettacommons.org/.../ubq-conjugated`) pero son binarios C++
-   compilados, NO PyRosetta -- exige compilar el Rosetta completo desde
-   fuente (instalacion separada y mucho mas pesada que el wheel de
-   PyRosetta ya instalado). Alternativa moderna sin Rosetta: AlphaFold3 +
-   truco de "covalent linker" para poliubiquitina (bioRxiv/Cell Reports
-   Physical Science, 2025) -- no evaluado si hay acceso real a AF3 en esta
-   maquina. Pendiente que Enzo decida cual via seguir, ninguna es rapida.
+4. ~~Fase A clase 3 (ubiquitinacion/sumoilacion)~~ — IMPLEMENTADA 2026-08-01,
+   ver seccion "Fase A clase 3 ... CORRECCION 2026-08-01" arriba. La
+   conclusion previa (exige compilar Rosetta completo) era incorrecta:
+   `UBQ_GTPaseMover` (via PyRosetta, cero compilacion nueva) cubre ambos
+   tipos con el mismo mecanismo, verificado con corridas reales en
+   `src/structural/ubiquitin_sumo.py`.
 5. Cross-validacion con StackGlyEmbed (proyecto 1) para N-glicosilacion —
    deliberadamente sin integrar por ahora (decision 2026-07-26).
 6. ~~Calibracion real de DeepPTMPred~~ — IMPLEMENTADA 2026-07-30/31, ver
