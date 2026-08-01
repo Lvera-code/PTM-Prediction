@@ -634,12 +634,54 @@ aunque se quisiera: la corrida ya uso TODOS los negativos que existen en
 el dataset (23), igual que citrullination con sus 59 positivos -- limite
 real de los datos fuente, no de `--n-per-class`.
 
-**Pendiente decision de Enzo** (dos decisiones independientes, ninguna
-aplicada todavia): (a) si excluir `n_linked_glycosylation` del consenso de
-produccion; (b) si aplicar el parche de plDDT en `_deepptmpred_runner.py`
-(mismo patron que el parche de phi/psi ya existente) y relanzar la
-recalibracion completa de 17 tipos (coste real: horas, mismo orden que la
-corrida del 31/07).
+**Ambas decisiones tomadas y ejecutadas 2026-08-01** (Enzo eligio "aplicar
+ahora" en las dos): (a) `n_linked_glycosylation` excluido del consenso de
+produccion (`CONSENSUS_EXCLUDED_TYPES` en `ptm_annotation.py`, commit
+`05cc4d0`); (b) parche de plDDT aplicado en
+`_deepptmpred_runner.py::_load_predict_module` (mismo `05cc4d0`, lee el
+B-factor CA real desde `self.pose` de PyRosetta en vez del array
+`plDDT_values` mal indexado) y recalibracion completa de los 17 tipos
+relanzada con el fix (`--n-per-class 75`, calibracion previa movida a
+`DeepPTMPred/data/calibration_STALE_preplddtfix_2026-08-01/`, no borrada).
+
+### Resultado real de la recalibracion post-fix de plDDT (2026-08-01)
+
+```
+ptm_type                     auroc     suggested_threshold  n_proteins
+gamma_carboxyglutamic_acid   0.989689  0.24807824            44
+hydroxylation                0.969697  0.35899624            69
+o_linked_glycosylation       0.900667  0.26193630            121
+malonylation                 0.890667  0.41699925            145
+glutathionylation            0.884444  0.46646200            145
+lys_methylation              0.877559  0.43064716            143
+ubiquitination                0.876622  0.53213940            149
+sumoylation                   0.875315  0.37326753            139
+acetylation                   0.878378  0.63506210            140
+phosphorylation                0.870244  0.24020174            137
+arg_methylation                0.860360  0.34068727            139
+crotonylation                  0.815072  0.86312497            34
+succinylation                  0.811911  0.50403893            144
+citrullination                 0.778079  0.36854228            46
+glutarylation                  0.772444  0.47470970            103
+s_nitrosylation                0.769730  0.51403310            139
+n_linked_glycosylation         0.507200  0.99802846            110
+```
+
+**Confirma al 100% el diagnostico del subagente**: los 4 tipos antes
+"mediocres" ahora son solidos -- crotonylation 0.607->0.815,
+citrullination 0.657->0.778, glutarylation 0.673->0.772, s_nitrosylation
+0.683->0.770. El fix de plDDT (validado solo en 3/17 tipos antes de esta
+corrida) resulto generalizar a los 4, no solo a los 2 medidos entonces.
+**16/17 tipos en rango solido-a-excelente (0.77-0.99)**. Unico tipo que
+sigue roto: `n_linked_glycosylation` (0.507, practicamente identico al
+0.491 pre-fix) -- confirma que su problema es independiente del bug de
+plDDT (SMOTE no-op + dataset 85.6% positivo, ver seccion de arriba), la
+exclusion del consenso ya aplicada es la decision correcta.
+
+`Settings.DEEPPTMPRED_CALIBRATED_THRESHOLDS` (wireado 2026-08-01,
+`ae327cd` -> reemplazado con estos valores finales) y
+`tests/test_settings.py`/`tests/test_ptm_annotation.py` actualizados con
+los 17 umbrales de esta tabla. 101 tests pasan.
 
 ## Proximos pasos reales
 
@@ -689,17 +731,20 @@ corrida del 31/07).
 6. ~~Calibracion real de DeepPTMPred~~ — IMPLEMENTADA 2026-07-30/31, ver
    seccion "Calibracion real de DeepPTMPred + bug de distribucion
    phi/psi" abajo. ~~**Pendiente decision de Enzo**: si conectar los
-   umbrales calibrados a `Settings.py`/produccion~~ — WIREADO 2026-08-01:
-   `Settings.DEEPPTMPRED_CALIBRATED_THRESHOLDS` (dict, 17 tipos) +
-   `Settings.deepptmpred_threshold_for(tipo)` (fallback a
-   `DEEPPTMPRED_MIN_PROBABILITY`=0.5 si el tipo no esta calibrado).
-   `ptm_annotation.py` usa el umbral por tipo en los 3 puntos donde antes
-   usaba el umbral fijo 0.5 (ambos loops de `annotate_pdb_path`). Nota:
-   esto conecta los umbrales calibrados incluso para `n_linked_glycosylation`
-   y los 4 tipos mediocres (AUROC bajo, ver items 2/3 de la sesion 2026-08-01
-   abajo) -- el umbral esta bien calibrado para esos tipos, el problema es
-   poder discriminativo del modelo, no del corte elegido. 3 tests nuevos
-   (`tests/test_settings.py`).
+   umbrales calibrados a `Settings.py`/produccion~~ — WIREADO 2026-08-01,
+   **actualizado el mismo dia** tras encontrar y corregir el bug de plDDT
+   (ver seccion "investigacion de n_linked_glycosylation y los 4 tipos
+   mediocres" + "Resultado real de la recalibracion post-fix de plDDT"
+   abajo): `Settings.DEEPPTMPRED_CALIBRATED_THRESHOLDS` (dict, 17 tipos,
+   valores finales post-fix) + `Settings.deepptmpred_threshold_for(tipo)`
+   (fallback a `DEEPPTMPRED_MIN_PROBABILITY`=0.5 si el tipo no esta
+   calibrado). `ptm_annotation.py` usa el umbral por tipo en los 3 puntos
+   donde antes usaba el umbral fijo 0.5 (ambos loops de
+   `annotate_pdb_path`); `n_linked_glycosylation` ademas excluido del
+   consenso (`CONSENSUS_EXCLUDED_TYPES`) por tener AUROC 0.51 pese al
+   umbral bien calibrado -- problema de poder discriminativo del modelo,
+   no del corte. 4 tests nuevos (`tests/test_settings.py` +1 en
+   `tests/test_ptm_annotation.py` para la exclusion de consenso).
 
 ## Auditoria de robustez pre-checkpoint (2026-07-28, noche) -- pulida 2026-07-29
 

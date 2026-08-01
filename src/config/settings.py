@@ -169,43 +169,52 @@ class Settings:
     # sale (no calibrado contra ningun validation set publicado, a
     # diferencia del 'fpr' de DeepMVP).
     #
-    # CALIBRADO 2026-07-31: umbrales reales por tipo, calculados por
-    # `scripts/generate_deepptmpred_calibration.py` + `_rebuild_calibration_summary.py`
-    # sobre `github.com/meilerlab/PTMPrediction/data/ptm_data.csv.gz`
-    # (376,557 filas reales, n=75 proteinas/clase), CON el fix de
-    # 2026-07-31 ya aplicado (phi/psi=0.0 forzado en inferencia para igualar
-    # la distribucion de entrenamiento -- ver STATUS.md, seccion "Calibracion
-    # real de DeepPTMPred + bug de distribucion phi/psi"). Regla real
-    # (bug-fixed respecto al paper, no literal): FPR<=0.18 TPR-max para
-    # phosphorylation, FPR<=0.20 TPR-max para el resto; fallback a 0.5 si
-    # ningun punto de operacion cumple el FPR maximo en la muestra
-    # (arg_methylation, lys_methylation cayeron en este caso).
+    # CALIBRADO 2026-08-01 (reemplaza la calibracion 2026-07-31, invalidada
+    # por el bug de plDDT -- ver abajo): umbrales reales por tipo, calculados
+    # por `scripts/generate_deepptmpred_calibration.py` +
+    # `_rebuild_calibration_summary.py` sobre
+    # `github.com/meilerlab/PTMPrediction/data/ptm_data.csv.gz`
+    # (n=75 proteinas/clase), CON dos fixes de train/inferencia ya aplicados
+    # en `_deepptmpred_runner.py::_load_predict_module`: (1) phi/psi=0.0
+    # forzado en inferencia (2026-07-31, igualaba la distribucion de
+    # entrenamiento) y (2) local_plDDT recalculado desde el B-factor CA real
+    # del pose de PyRosetta en vez del array `plDDT_values` de `predict.py`
+    # (mal indexado por atomo en vez de por residuo, 2026-08-01) -- ver
+    # STATUS.md, secciones "Calibracion real de DeepPTMPred + bug de
+    # distribucion phi/psi" e "investigacion de n_linked_glycosylation y los
+    # 4 tipos mediocres". Regla real (bug-fixed respecto al paper, no
+    # literal): FPR<=0.18 TPR-max para phosphorylation, FPR<=0.20 TPR-max
+    # para el resto; fallback a 0.5 si ningun punto de operacion cumple el
+    # FPR maximo en la muestra.
     # Fuente exacta: `DeepPTMPred/data/calibration/summary.tsv` (gitignored,
-    # regenerable con los dos scripts de arriba). AUROC de referencia y
-    # salvedades por tipo en STATUS.md -- 14/17 tipos en rango solido-a-
-    # excelente; `n_linked_glycosylation` (AUROC 0.49, peor que azar) y los
-    # 4 tipos mediocres (s_nitrosylation/glutarylation/citrullination/
-    # crotonylation, 0.61-0.68) usan igual su umbral calibrado aqui pese al
-    # AUROC bajo -- son limitaciones de PODER DISCRIMINATIVO del modelo, no
-    # de calibracion del umbral; investigacion de causa raiz pendiente.
+    # regenerable con los dos scripts de arriba). Con el fix de plDDT, 16/17
+    # tipos quedan en rango solido-a-excelente (AUROC 0.77-0.99) -- incluye
+    # los 4 tipos que antes eran "mediocres" (crotonylation 0.61->0.82,
+    # citrullination 0.66->0.78, glutarylation 0.67->0.77, s_nitrosylation
+    # 0.68->0.77), confirmando que el bug de plDDT (no un techo del modelo)
+    # era la causa real. `n_linked_glycosylation` sigue AUROC 0.51 (peor que
+    # azar, limite real de los pesos publicados -- ver STATUS.md) -- por eso
+    # esta EXCLUIDO del consenso en `ptm_annotation.py` pese a tener un
+    # umbral calibrado aqui (el umbral no es el problema, es el poder
+    # discriminativo del modelo).
     DEEPPTMPRED_CALIBRATED_THRESHOLDS: dict = {
-        "acetylation": 0.6299973,
-        "arg_methylation": 0.34319976,
-        "citrullination": 0.39169243,
-        "crotonylation": 0.93576247,
-        "gamma_carboxyglutamic_acid": 0.21486656,
-        "glutarylation": 0.4618006,
-        "glutathionylation": 0.47251946,
-        "hydroxylation": 0.3752605,
-        "lys_methylation": 0.41040188,
-        "malonylation": 0.4223403,
-        "n_linked_glycosylation": 0.99741435,
-        "o_linked_glycosylation": 0.3105993,
-        "phosphorylation": 0.24348031,
-        "s_nitrosylation": 0.500678,
-        "succinylation": 0.48264492,
-        "sumoylation": 0.4091335,
-        "ubiquitination": 0.5434938,
+        "acetylation": 0.6350621,
+        "arg_methylation": 0.34068727,
+        "citrullination": 0.36854228,
+        "crotonylation": 0.86312497,
+        "gamma_carboxyglutamic_acid": 0.24807824,
+        "glutarylation": 0.4747097,
+        "glutathionylation": 0.466462,
+        "hydroxylation": 0.35899624,
+        "lys_methylation": 0.43064716,
+        "malonylation": 0.41699925,
+        "n_linked_glycosylation": 0.99802846,
+        "o_linked_glycosylation": 0.2619363,
+        "phosphorylation": 0.24020174,
+        "s_nitrosylation": 0.5140331,
+        "succinylation": 0.50403893,
+        "sumoylation": 0.37326753,
+        "ubiquitination": 0.5321394,
     }
     # Fallback si DEEPPTMPRED_CALIBRATED_THRESHOLDS no tiene el tipo (no
     # deberia ocurrir con los 17 tipos de DEEPPTMPRED_PTM_TYPES, pero

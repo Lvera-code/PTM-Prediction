@@ -2,7 +2,7 @@ from src.config.settings import Settings
 
 
 def test_deepptmpred_threshold_for_tipo_calibrado():
-    assert Settings.deepptmpred_threshold_for("phosphorylation") == 0.24348031
+    assert Settings.deepptmpred_threshold_for("phosphorylation") == 0.24020174
 
 
 def test_deepptmpred_threshold_for_tipo_desconocido_usa_fallback():
