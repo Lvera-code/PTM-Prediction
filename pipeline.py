@@ -134,8 +134,20 @@ def run_fase2_pdb_motors(record, output_dir: Path):
 def run_fase3_pdb_annotation(
     record, deepmvp_results: pd.DataFrame, deepptmpred_results: pd.DataFrame, output_dir: Path
 ) -> Path:
-    """Camino PDB: Fase 3, nucleo con consenso (B: anotacion + D: filtro)."""
-    annotated = annotate_pdb_path(record.accession, record.sequence, deepmvp_results, deepptmpred_results)
+    """Camino PDB: Fase 3, nucleo con consenso (B: anotacion + D: filtro).
+
+    ``record.chain_pdb_path`` (no ``record.pdb_path``, que puede tener mas
+    de una cadena) se pasa a ``annotate_pdb_path`` para habilitar la
+    corroboracion opcional de tipo via MeToken -- sus posiciones 1-based
+    deben coincidir exactamente con ``record.sequence``, mismo criterio que
+    usa ``record.chain_id`` (ver Fase 1.5). Se activa/desactiva solo con
+    ``Settings.METOKEN_ENABLED`` (ver ``src/engines/ptm_annotation.py``), sin
+    tocar este orquestador.
+    """
+    annotated = annotate_pdb_path(
+        record.accession, record.sequence, deepmvp_results, deepptmpred_results,
+        pdb_path=record.chain_pdb_path, chain_id=record.chain_id,
+    )
     filtered = apply_workflow_filter(annotated)
 
     report_path = output_dir / f"{record.accession}_ptm_sites.csv"

@@ -58,8 +58,25 @@ git clone https://github.com/kuikui-wang/DeepPTMPred
 # + pyrosetta-installer (ver README del repo) + checkpoint ESM-2 (~2.5GB)
 ```
 
-Ver `STATUS.md` para el detalle completo de que ya se verifico (ambos
-repos clonados y probados en esta maquina el 2026-07-27) y que falta.
+MeToken (corroboracion OPCIONAL e informativa del tipo, Camino PDB, ver
+STATUS.md 2026-08-01 -- NUNCA un motor de consenso, se puede omitir sin
+perder funcionalidad del pipeline principal, `Settings.METOKEN_ENABLED`
+degrada solo con un aviso si no esta instalado):
+
+```bash
+git clone https://github.com/A4Bio/MeToken
+conda create -n metoken python=3.10 -y
+conda run -n metoken pip install --index-url https://download.pytorch.org/whl/cpu torch
+conda run -n metoken pip install numpy scipy biopython transformers omegaconf tqdm pandas huggingface-hub h5py
+conda run -n metoken pip install --no-build-isolation torch_scatter  # sin wheel prebuilt, compila desde fuente
+export METOKEN_PYTHON_BIN=$(conda run -n metoken which python)
+# Pesos: descarga release 1.0 (~88MB) y descomprime en MeToken/pretrained_model/
+curl -L -o /tmp/pretrained_model.zip https://github.com/A4Bio/MeToken/releases/download/1.0/pretrained_model.zip
+python -c "import zipfile; zipfile.ZipFile('/tmp/pretrained_model.zip').extractall('MeToken')"
+```
+
+Ver `STATUS.md` para el detalle completo de que ya se verifico (los 3 repos
+clonados y probados en esta maquina) y que falta.
 
 ## Licencias
 
@@ -73,6 +90,7 @@ repos clonados y probados en esta maquina el 2026-07-27) y que falta.
   terms."* Uso no comercial (investigacion/TFG + integracion futura como
   plugin de Scipion por el CNB, institucion publica) encaja sin problema
   dentro de CC BY-NC. Detalle completo en `STATUS.md`.
+- **MeToken**: MIT (declarada en `MeToken/LICENSE` del repo original).
 
 ## Decisiones de arquitectura
 

@@ -23,3 +23,11 @@ DeepPTMPred/
 # (descarga manual de Google Drive). Nunca debe subirse.
 MTPrompt-PTM/
 .venv-mtprompt/
+
+# MeToken (corroboracion informativa de TIPO en sitios ya aceptados por el
+# consenso, no un motor de consenso -- ver STATUS.md 2026-08-01): repo
+# clonado, pesos SI incluidos en el zip de la release (checkpoint.ckpt +
+# lightning_checkpoint.ckpt, ~88MB). Nunca debe subirse (pesado +
+# regenerable via git clone + descarga del release).
+MeToken/
+.venv-metoken/

@@ -236,6 +236,42 @@ class Settings:
         "o_linked_glycosylation", "n_linked_glycosylation",
     )
 
+    # --- Corroboracion opcional: MeToken (Camino PDB unicamente, NUNCA un motor
+    # de consenso -- Decision 2 sigue pausada) ---
+    # Verificado leyendo github.com/A4Bio/MeToken (ICLR 2025) el 2026-08-01: el
+    # checkpoint publicado es un CLASIFICADOR DE TIPO en sitios YA CONOCIDOS
+    # (confirmado en model_interface.py:40, la clase "no-PTM" queda enmascarada
+    # cuando with_null_ptm=0, como viene el checkpoint publicado -- y
+    # verificado empiricamente: predice tipos con alta confianza tambien en
+    # posiciones sin PTM real). Por eso NUNCA decide pasa_umbral/consenso --
+    # mismo patron puramente informativo que GlyGen
+    # (src/structural/glygen_client.py): solo corrobora el TIPO en sitios que
+    # el consenso YA acepto (pasa_umbral=true), ver
+    # src/engines/ptm_annotation.py::annotate_pdb_path y
+    # src/engines/metoken_engine.py.
+    METOKEN_ENABLED: bool = _env_bool("METOKEN_ENABLED", True)
+    METOKEN_HOME: Path = Path(_env_str("METOKEN_HOME", "MeToken"))
+    METOKEN_RUNNER_SCRIPT: Path = Path(
+        _env_str(
+            "METOKEN_RUNNER_SCRIPT",
+            str(Path(__file__).resolve().parent.parent / "engines" / "_metoken_runner.py"),
+        )
+    )
+    # Python 3.10 + torch (CPU) + torch_scatter (compilado desde fuente, sin
+    # wheel prebuilt para esta combinacion torch/CPU) + transformers +
+    # biopython>=1.80 (ver bug 1 parcheado en _metoken_runner.py) -- venv
+    # dedicado, nunca compartido con DEEPMVP_PYTHON_BIN/DEEPPTMPRED_PYTHON_BIN.
+    METOKEN_PYTHON_BIN: str = _env_str("METOKEN_PYTHON_BIN", sys.executable)
+    # Pesos reales (release 1.0, pretrained_model.zip, ~88MB, verificado
+    # descargable el 2026-08-01): checkpoint.ckpt es un state_dict plano
+    # (confirmado con torch.load + model.load_state_dict -> "<All keys
+    # matched successfully>"), no un checkpoint completo de pytorch-lightning
+    # (ese es lightning_checkpoint.ckpt, sin usar aqui).
+    METOKEN_CHECKPOINT: Path = Path(
+        _env_str("METOKEN_CHECKPOINT", "MeToken/pretrained_model/checkpoint.ckpt")
+    )
+    METOKEN_TIMEOUT_SECONDS: int = _env_int("METOKEN_TIMEOUT_SECONDS", 600)
+
     @classmethod
     def ensure_dirs(cls) -> None:
         """Crea todas las carpetas de entrada/salida configuradas si no existen."""

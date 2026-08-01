@@ -921,3 +921,254 @@ no solo el resumen):**
     CC BY-NC 4.0 (mismos terminos que el paper) directamente por Junwen
     Wang, autor de correspondencia. Ver seccion de instalacion arriba para
     la cita completa de su respuesta.
+
+## MeToken: corroboracion informativa de TIPO (IMPLEMENTADA 2026-08-01)
+
+Investigado a fondo el 2026-08-01 (subagente Opus) que
+`github.com/A4Bio/MeToken` (ICLR 2025) es el motor estructural mas potente
+evaluado hasta ahora para PTM -- consume coordenadas backbone reales (N/CA/
+C/O) via grafo 3D-kNN + marcos locales por cuaternion, mucho mas rico que
+los 4 escalares (SASA/phi/psi/plDDT) que usa DeepPTMPred -- pero el
+checkpoint publicado es un CLASIFICADOR DE TIPO en sitios YA CONOCIDOS, no
+un detector de sitio (confirmado en `model_interface.py:40`, la clase
+"no-PTM" queda enmascarada en entrenamiento cuando `with_null_ptm=0`, como
+viene el checkpoint publicado -- y verificado empiricamente contra
+`AF-P10636-F1-model_v4.pdb`: predice tipos con alta confianza tambien en
+posiciones sin PTM real, prolinas/glicinas). Por eso NO se implemento como
+segundo motor de consenso (Decision 2 sigue pausada) sino como corroboracion
+PURAMENTE INFORMATIVA del tipo en sitios que el consenso YA acepto
+(`pasa_umbral=true`), mismo patron no-decisorio que GlyGen.
+
+### Instalacion real -- verificada, no asumida
+
+- Conda env dedicado `metoken` (`/home/enzo/miniconda3/envs/metoken`, Python
+  3.10, CPU-only -- confirmado que esta maquina no tiene `nvidia-smi`).
+  `torch==2.13.0+cpu` (indice oficial CPU de PyTorch) + `numpy`/`scipy`/
+  `biopython`/`transformers`/`omegaconf`/`tqdm`/`pandas`/`huggingface-hub`/
+  `h5py` instalados sin error.
+- **`torch_scatter` sin wheel prebuilt para esta combinacion** (confirmado:
+  `data.pyg.org/whl/torch-2.13.0+cpu.html` solo lista variantes
+  macOS/Windows/aarch64 de `pyg_lib`, ninguna de `torch_scatter` para
+  `linux_x86_64` en esa version) -- `pip install --no-build-isolation
+  torch_scatter` compilo desde fuente sin error, mas rapido de lo estimado
+  de antemano (pocos minutos reales en esta maquina, no los ~15 min
+  previstos).
+- Repo clonado (`git clone https://github.com/A4Bio/MeToken`, gitignorado,
+  mismo patron que `DeepMVP/`/`DeepPTMPred/`). Pesos reales descargados y
+  verificados vivos: `https://github.com/A4Bio/MeToken/releases/download/1.0/pretrained_model.zip`
+  respondio HTTP 200 real (`content-length: 88260083`, confirmado con
+  `curl -sIL` antes de descargar), contiene `checkpoint.ckpt` (36MB, el
+  state_dict plano que usa `inference.py` -- confirmado con `torch.load` +
+  `model.load_state_dict()` -> `"<All keys matched successfully>"`) y
+  `lightning_checkpoint.ckpt` (60MB, checkpoint completo de
+  pytorch-lightning con estado de optimizador, sin usar aqui).
+- Tokenizer `facebook/esm2_t33_650M_UR50D` (solo el tokenizer, NO el encoder
+  ESM-2 completo -- MeToken usa su propio `nn.Embedding` entrenado desde
+  cero, `wo_esm`, pese al nombre del atributo) ya estaba cacheado en
+  `~/.cache/huggingface/hub/` de una sesion anterior de este mismo dia
+  (StackGlyEmbed, proyecto hermano) -- confirmado con `find`, cero descarga
+  nueva necesaria para esta corrida. `HF_HUB_OFFLINE=1`/
+  `TRANSFORMERS_OFFLINE=1` fijados en `_metoken_runner.py` (mismo patron que
+  `stackglyembed_predict_local.py` del proyecto 1).
+
+### Dos bugs reales confirmados corriendo el repo (no asumidos de antemano)
+
+1. **`inference.py:61` llama a `PDB.Polypeptide.three_to_one`**, eliminado
+   de Biopython en la version >=1.80. Confirmado real:
+   `hasattr(PDB.Polypeptide, 'three_to_one')` -> `False` en Biopython 1.87
+   (la version que instala `pip install biopython` hoy). Parcheado en
+   `_metoken_runner.py::_patch_three_to_one` -- monkeypatch sobre el modulo
+   `Bio.PDB.Polypeptide` ya importado, usando
+   `protein_letters_3to1`/`protein_letters_3to1_extended` (los diccionarios
+   que SI existen en Biopython moderno) en su lugar. No se edita
+   `inference.py` (vendored).
+2. **`src/metoken_model.py:213` tiene `device='cuda'` hardcodeado**
+   (`codebook_mask = torch.ones(len(codebook), dtype=torch.int32,
+   device='cuda')`, dentro de `MeToken_Model.__init__`). Confirmado real
+   corriendo SIN parche: revienta con `AssertionError: Torch not compiled
+   with CUDA enabled`. Es la UNICA linea de todo `src/` con `device='cuda'`
+   hardcodeado (confirmado por grep -- el resto de tensores usan
+   `device=x.device`/`device=index.device`, siguiendo el tensor de entrada).
+   Parcheado en `_metoken_runner.py::_force_cpu_ones` -- context manager que
+   envuelve `torch.ones` SOLO durante la construccion del modelo,
+   redirigiendo `device='cuda'`->`'cpu'` cuando CUDA no esta disponible. No
+   se edita `src/metoken_model.py` (vendored).
+
+Ambos parches verificados de forma diferencial: corriendo
+`examples/Q16613.pdb` (el ejemplo del propio repo, posicion 31) SIN el
+parche 2 revienta con el `AssertionError` de arriba; CON ambos parches
+reproduce EXACTO el resultado documentado en el propio
+`quick_inference.ipynb` del repo (`"PTM type at the position 31 is
+Phosphorylation"`) -- confirma que los parches no alteran el comportamiento
+numerico del modelo, solo lo hacen correr en CPU.
+
+### Vendorizado
+
+- `src/engines/_metoken_runner.py`: runner standalone (patron
+  `_deepptmpred_runner.py`), corre en el venv dedicado `metoken`, recibe un
+  PDB de una sola cadena + lista de posiciones 1-based ya aceptadas por el
+  consenso, devuelve el tipo con mayor probabilidad de las 24 clases reales
+  (excluye indice 0 = "Not a PTM type", la clase null enmascarada en
+  entrenamiento, e indice 25 = "in Rare PTM Types", un cubo de tipos raros
+  agrupados no interpretable como tipo especifico -- `src/constant.py::
+  PTMtype_list` tiene 26 entradas en total, verificado leyendo el archivo
+  real).
+- `src/engines/metoken_engine.py`: `get_type_corroboration(pdb_path,
+  positions, chain_id="A") -> dict[int, dict]`, invoca el runner via
+  subprocess. Degradacion NO fatal en todos los modos de fallo (repo no
+  instalado, checkpoint ausente, exit code != 0, timeout, `python_bin`
+  inexistente, CSV de salida ausente/malformado) -- siempre devuelve `{}` y
+  registra un aviso, nunca lanza. 10 tests (`tests/test_metoken_engine.py`,
+  `subprocess.run` mockeado, mismo patron que
+  `tests/test_deepptmpred_engine.py`).
+- `src/engines/ptm_annotation.py::annotate_pdb_path` acepta ahora
+  `pdb_path`/`chain_id` opcionales (`None`/`"A"` por defecto -- llamarla sin
+  ellos es identico al comportamiento de antes de esta mejora, confirmado
+  por los tests ya existentes sin modificar). Si se proveen y
+  `Settings.METOKEN_ENABLED`, anade 3 columnas SOLO en filas con
+  `pasa_umbral=true`: `metoken_type`, `metoken_probability`,
+  `metoken_type_coincide` (`True`/`False` si `tipo_ptm` tiene equivalente
+  mapeado en `CANONICAL_TO_METOKEN_TYPE` y coincide o no con
+  `metoken_type`, `None` si no hay equivalente conocido). NUNCA toca
+  `pasa_umbral`/`consenso` -- doble seguro: el propio `metoken_engine`
+  degrada a `{}` sin lanzar, y ademas la llamada esta envuelta en un
+  `try/except` en `annotate_pdb_path` por si un fallo no anticipado
+  ocurriera en el wiring mismo. 7 tests nuevos en
+  `tests/test_ptm_annotation.py` (columnas ausentes sin `pdb_path`, columnas
+  solo en filas elegibles, `coincide=True`/`False`/`None`, degradacion a
+  `None` si MeToken devuelve `{}`, respeta `METOKEN_ENABLED=False`, no
+  tumba la anotacion si el wiring lanza una excepcion inesperada).
+- **Hallazgo real durante el testing del wiring, no solo teorico**: `tipo_ptm`
+  en las filas DeepMVP-solo (sin match de DeepPTMPred) llega con el nombre
+  CRUDO de DeepMVP (`acetylation_k`, `methylation_r`, etc.), no el nombre
+  canonico -- si `_add_metoken_corroboration` buscara directamente en
+  `CANONICAL_TO_METOKEN_TYPE` sin normalizar primero via
+  `DEEPMVP_TO_CANONICAL_TYPE`, `metoken_type_coincide` habria quedado
+  `None` incorrectamente para TODA fila DeepMVP-solo (la mayoria de filas
+  del reporte). Corregido antes de dar el wiring por terminado -- 2 tests
+  (`test_annotate_pdb_path_con_pdb_path_agrega_columnas_solo_en_filas_pasa_umbral`,
+  `test_annotate_pdb_path_metoken_type_coincide_false_si_discrepa`) fallaron
+  primero SIN la normalizacion, confirmando el bug antes de arreglarlo.
+- `pipeline.py::run_fase3_pdb_annotation` pasa `record.chain_pdb_path`
+  (el PDB de UNA sola cadena derivado en Fase 1.5, NO `record.pdb_path`
+  original que puede tener mas de una cadena) + `record.chain_id` --
+  necesario para que las posiciones 1-based que usa MeToken coincidan
+  exactamente con `record.sequence`, mismo criterio que ya usa
+  `_deepptmpred_runner.py`. Confirmado leyendo `structure_parser.py` que el
+  PDB de una sola cadena conserva el nombre de cadena original (nunca lo
+  renombra).
+- `Settings.py`: `METOKEN_ENABLED` (default `True`, degradacion silenciosa
+  si no esta instalado -- no hace falta desactivarlo a mano en una maquina
+  sin MeToken), `METOKEN_HOME`, `METOKEN_RUNNER_SCRIPT`, `METOKEN_PYTHON_BIN`,
+  `METOKEN_CHECKPOINT`, `METOKEN_TIMEOUT_SECONDS` -- mismo patron que
+  `DEEPPTMPRED_*`/`DEEPMVP_*`.
+
+### Verificacion real end-to-end contra Tau (`AF-P10636-F1-model_v4.pdb`)
+
+`pipeline.py` completo (Camino PDB) corrido de verdad TRES veces en esta
+sesion con los 3 venvs reales (`deepmvp`, `deepptmpred`, `metoken`)
+encadenados via `DEEPMVP_PYTHON_BIN`/`DEEPPTMPRED_PYTHON_BIN`/
+`METOKEN_PYTHON_BIN`; los numeros de esta seccion son de la corrida FINAL
+(la que ya incluye la normalizacion `phosphorylation_y`->`Phosphorylation`
+en `CANONICAL_TO_METOKEN_TYPE`, ver hallazgo abajo). MeToken corrio UNA SOLA
+VEZ sobre las 353 posiciones unicas que el consenso acepto
+(`pasa_umbral=true`), no una vez por sitio -- ~6s de inferencia real en CPU
+para las 353 posiciones (confirmado en el log: `Fase 2 completa` a
+`17:56:45`, `Fase 3 completa` a `17:56:51`, incluye la invocacion completa
+de MeToken entre medias).
+
+Reporte final (`fasta_outputs/AF-P10636-F1-model_v4_ptm_sites.csv`, 749
+filas que pasan el umbral, 116 con consenso real DeepMVP+DeepPTMPred):
+`metoken_type` poblado en las 749/749 filas (MeToken predijo algo para
+TODAS las posiciones pedidas, ninguna cayo fuera de rango). Desglose real
+por `tipo_ptm` (columna `metoken_type_coincide`, solo cuenta filas con
+equivalente mapeado en `CANONICAL_TO_METOKEN_TYPE`; `phosphorylation` y
+`phosphorylation_y` agregados en una sola fila porque MeToken no distingue
+residuo para fosforilacion):
+
+```
+tipo_ptm                     coincide/evaluadas   tasa
+phosphorylation (+_y)             115/115         100.0%
+arg_methylation                    21/26           80.8%
+ubiquitination                     37/64           57.8%
+acetylation                        26/61           42.6%
+sumoylation                         1/59            1.7%
+hydroxylation                       0/70            0.0%
+gamma_carboxyglutamic_acid          0/57            0.0%
+malonylation                        0/53            0.0%
+lys_methylation                     0/45            0.0%
+succinylation                       0/23            0.0%
+o_linked_glycosylation              0/112           0.0%
+glycosylation_n                     0/3             0.0%
+glutathionylation                   0/3             0.0%
+```
+(sin equivalente en MeToken, `coincide=None` para 58 filas: crotonylation
+50, glutarylation 7, citrullination 1 -- ver `CANONICAL_TO_METOKEN_TYPE`,
+estos 3 tipos no tienen clase correspondiente entre las 24 reales de
+`src/constant.py::PTMtype_list`.) Conteo total de la columna
+`metoken_type_coincide`: `True`=200, `False`=491, `None`=58 (200+491+58=749).
+Tasa global sobre las 691 filas evaluables: 200/691 (28.9%).
+
+**Lectura real de estos numeros, no solo la tabla**: MeToken predijo SOLO 6
+etiquetas distintas de las 24 posibles en todo Tau (`Phosphorylation` 294,
+`Ubiquitination` 272, `Acetylation` 153, `Methylation` 21, `Sumoylation` 7,
+`S-palmitoylation` 2) -- fuerte sesgo hacia los 3 tipos de PTM mas comunes
+(fosforilacion/ubiquitinacion/acetilacion probablemente dominantes en su
+dataset de entrenamiento), casi nunca predice tipos mas raros aunque se le
+pregunte directamente en un sitio que otro motor SI acepto para ese tipo:
+
+- **Fosforilacion: acuerdo perfecto (115/115, incluye los 6 sitios
+  `phosphorylation_y` -- MeToken no distingue S/T de Y, una sola clase
+  "Phosphorylation" para las 3, verificado en `src/constant.py`)**. Unico
+  tipo donde MeToken corrobora consistentemente.
+- **Sumoilacion: casi nunca corrobora (1/59)** -- pero el patron es
+  biologicamente coherente, no ruido aleatorio: de los 59 sitios de
+  sumoilacion (residuo K, confirmado), MeToken predice `Ubiquitination` en
+  37 y `Acetylation` en 21 (las otras 2 modificaciones de Lys que si estan
+  entre sus 6 etiquetas usadas, ver distribucion completa abajo). Ubiquitina
+  y SUMO comparten exactamente el mismo mecanismo quimico (enlace
+  isopeptidico Lys-Gly, ver `src/structural/ubiquitin_sumo.py` de Fase A
+  clase 3) -- una confusion microambiente-nivel entre las modificaciones mas
+  parecidas quimicamente del set (todas requieren K), no un fallo
+  arbitrario. Ejemplo real: posicion 657 (K657, `score_deepmvp=0.9997`,
+  `score_deepptmpred=0.79`, consenso=True) es el UNICO sitio de sumoilacion
+  donde MeToken si dice "Sumoylation" (probabilidad 0.426); en el resto
+  (44, 67, 87, 130, 189, 204...) dice "Ubiquitination" o "Acetylation" con
+  probabilidades 0.44-0.62.
+- **Hidroxilacion: 0/70, con un hallazgo mas fuerte que "no corrobora"**:
+  las 70 posiciones son TODAS prolina (`residuo_wt='P'`, confirmado),
+  correcto para hidroxilacion -- pero MeToken predice `Phosphorylation` (49
+  veces) o `Ubiquitination` (21 veces), tipos que biologicamente exigen
+  S/T/Y o K, NUNCA P. El top-1 de MeToken en estos 70 sitios ignora la
+  identidad quimica del propio residuo -- mas que "MeToken no conoce
+  hidroxilacion", sugiere que el microambiente de estas prolinas en Tau
+  (proteina intrinsecamente desordenada, plDDT medio 49.34 en este modelo
+  AlphaFold, ver Extension 3 arriba) no produce una senal fuerte y el
+  modelo cae de vuelta a sus clases mayoritarias.
+- **`S-palmitoylation` (tipo sin ningun equivalente en el pipeline, ninguno
+  de los 17 tipos de DeepMVP/DeepPTMPred lo cubre) aparecio 2 veces**, ambas
+  en sitios que el pipeline etiqueta `glutathionylation` (posiciones 608 y
+  639) -- otra confusion quimicamente plausible (ambas son modificaciones de
+  cisteina).
+- **Acetilacion (42.6%) y ubiquitinacion (57.8%, contando SOLO cuando
+  `tipo_ptm='ubiquitination'`, no las 37 confusiones de sumoilacion de
+  arriba) son parcialmente corroboradas** -- ambas comparten LYS como
+  residuo objetivo con `arg_methylation`/`lys_methylation`/`sumoylation`,
+  consistente con que MeToken distinga razonablemente bien "algo le pasa a
+  esta Lys" pero no siempre acierte cual de las 4 modificaciones especificas
+  de Lys es la correcta.
+
+**Conclusion practica**: MeToken corrobora con alta fiabilidad SOLO
+fosforilacion en este caso real; para el resto de tipos, sus discrepancias
+son mayoritariamente explicables por confusion entre modificaciones
+quimicamente relacionadas (mismo residuo objetivo) en vez de ruido -- util
+como corroboracion informativa tal como esta diseñado (nunca decide
+`pasa_umbral`/`consenso`), pero NO deberia leerse como "MeToken desmiente
+estos sitios": su cobertura de tipo esta fuertemente sesgada hacia las PTMs
+mas comunes de su propio dataset de entrenamiento, un limite real del
+checkpoint publicado (no del wiring de este proyecto).
+
+118 tests (`pytest tests/`, subio de 101 -- 10 de
+`tests/test_metoken_engine.py` + 7 de `tests/test_ptm_annotation.py`; el
+resto de `src/engines/`/`src/utils/` no cambiaron). `MeToken/` gitignorado
+(mismo patron que `DeepMVP/`/`DeepPTMPred/`/`MTPrompt-PTM/`).

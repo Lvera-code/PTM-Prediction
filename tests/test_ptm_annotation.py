@@ -1,8 +1,16 @@
-"""Tests del nucleo de Fase 3 (src/engines/ptm_annotation.py). Logica 100% pura."""
+"""Tests del nucleo de Fase 3 (src/engines/ptm_annotation.py). Logica 100% pura.
+
+Los tests de la corroboracion opcional MeToken mockean
+``src.engines.ptm_annotation.get_type_corroboration`` (nunca invocan el
+subproceso real, ver ``tests/test_metoken_engine.py`` para esos) --
+verifican unicamente el WIRING (que columnas se agregan/no, en que filas,
+que nunca cambia pasa_umbral/consenso, que un fallo no tumba la anotacion).
+"""
 
 import pandas as pd
 import pytest
 
+import src.engines.ptm_annotation as ptm_annotation
 from src.config.settings import Settings
 from src.engines.ptm_annotation import (
     OUTPUT_COLUMNS,
@@ -161,3 +169,136 @@ def test_annotate_fasta_path_vacio_devuelve_dataframe_vacio_con_columnas():
     result = annotate_fasta_path("ACC1", "AAAA", pd.DataFrame(columns=DEEPMVP_COLUMNS))
     assert list(result.columns) == OUTPUT_COLUMNS
     assert len(result) == 0
+
+
+# --- Corroboracion opcional de tipo (MeToken, decision 2026-08-01) ---
+
+
+def test_annotate_pdb_path_sin_pdb_path_no_agrega_columnas_metoken(monkeypatch):
+    called = []
+    monkeypatch.setattr(ptm_annotation, "get_type_corroboration", lambda *a, **k: called.append(1))
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "K", 17, "xxx", 0.9, 0.01, "acetylation_k"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(
+        [["ACC1", 17, "K", 0.8, "acetylation"]], columns=DEEPPTMPRED_COLUMNS
+    )
+    result = annotate_pdb_path("ACC1", "A" * 20, deepmvp_df, deepptmpred_df)  # pdb_path=None (default)
+
+    assert list(result.columns) == OUTPUT_COLUMNS  # ninguna columna metoken_* agregada
+    assert called == []  # nunca se invoca si no hay pdb_path
+
+
+def test_annotate_pdb_path_con_pdb_path_agrega_columnas_solo_en_filas_pasa_umbral(monkeypatch, tmp_path):
+    def _fake_corroboration(pdb_path, positions, chain_id="A", result_dir=None):
+        assert sorted(positions) == [17]  # solo la fila con pasa_umbral=True
+        return {17: {"metoken_type": "Acetylation", "metoken_probability": 0.77}}
+
+    monkeypatch.setattr(ptm_annotation, "get_type_corroboration", _fake_corroboration)
+
+    deepmvp_df = pd.DataFrame(
+        [
+            ["ACC1", "K", 17, "xxx", 0.9, 0.01, "acetylation_k"],  # pasa_umbral=True (fpr bajo)
+            ["ACC1", "K", 30, "xxx", 0.9, 0.5, "acetylation_k"],   # pasa_umbral=False (fpr alto, sin consenso)
+        ],
+        columns=DEEPMVP_COLUMNS,
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path(
+        "ACC1", "A" * 40, deepmvp_df, deepptmpred_df, pdb_path=tmp_path / "fake.pdb", chain_id="A",
+    )
+
+    by_pos = result.set_index("posicion")
+    assert by_pos.loc[17, "metoken_type"] == "Acetylation"
+    assert by_pos.loc[17, "metoken_probability"] == 0.77
+    assert by_pos.loc[17, "metoken_type_coincide"] is True  # tipo_ptm='acetylation_k' -> canonico 'acetylation'
+    assert by_pos.loc[30, "metoken_type"] is None  # no eligible (pasa_umbral=False), nunca se evalua
+    # pasa_umbral/consenso identicos a los que calcularia sin MeToken:
+    assert bool(by_pos.loc[17, "pasa_umbral"]) is True
+    assert bool(by_pos.loc[30, "pasa_umbral"]) is False
+
+
+def test_annotate_pdb_path_metoken_type_coincide_false_si_discrepa(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        ptm_annotation, "get_type_corroboration",
+        lambda *a, **k: {17: {"metoken_type": "Ubiquitination", "metoken_probability": 0.6}},
+    )
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "K", 17, "xxx", 0.9, 0.01, "acetylation_k"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path(
+        "ACC1", "A" * 20, deepmvp_df, deepptmpred_df, pdb_path=tmp_path / "fake.pdb",
+    )
+
+    assert result.iloc[0]["metoken_type_coincide"] is False
+
+
+def test_annotate_pdb_path_metoken_type_coincide_none_si_tipo_sin_equivalente(monkeypatch, tmp_path):
+    # 'crotonylation' no tiene equivalente en MeToken (ver CANONICAL_TO_METOKEN_TYPE)
+    monkeypatch.setattr(
+        ptm_annotation, "get_type_corroboration",
+        lambda *a, **k: {12: {"metoken_type": "Phosphorylation", "metoken_probability": 0.5}},
+    )
+    deepmvp_df = pd.DataFrame(columns=DEEPMVP_COLUMNS)
+    deepptmpred_df = pd.DataFrame(
+        [["ACC1", 12, "K", 0.9, "crotonylation"]], columns=DEEPPTMPRED_COLUMNS
+    )
+    result = annotate_pdb_path(
+        "ACC1", "A" * 20, deepmvp_df, deepptmpred_df, pdb_path=tmp_path / "fake.pdb",
+    )
+
+    assert result.iloc[0]["metoken_type"] == "Phosphorylation"  # se reporta igual (informativo)
+    assert result.iloc[0]["metoken_type_coincide"] is None  # pero no se puede evaluar coincidencia
+
+
+def test_annotate_pdb_path_metoken_vacio_deja_columnas_en_none(monkeypatch, tmp_path):
+    monkeypatch.setattr(ptm_annotation, "get_type_corroboration", lambda *a, **k: {})  # degradado (no instalado, etc.)
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "K", 17, "xxx", 0.9, 0.01, "acetylation_k"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path(
+        "ACC1", "A" * 20, deepmvp_df, deepptmpred_df, pdb_path=tmp_path / "fake.pdb",
+    )
+
+    assert result.iloc[0]["metoken_type"] is None
+    assert result.iloc[0]["metoken_probability"] is None
+    assert result.iloc[0]["metoken_type_coincide"] is None
+    assert bool(result.iloc[0]["pasa_umbral"]) is True  # el resto de la anotacion no se ve afectado
+
+
+def test_annotate_pdb_path_metoken_deshabilitado_via_settings_ignora_pdb_path(monkeypatch, tmp_path):
+    monkeypatch.setattr(Settings, "METOKEN_ENABLED", False)
+    called = []
+    monkeypatch.setattr(ptm_annotation, "get_type_corroboration", lambda *a, **k: called.append(1))
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "K", 17, "xxx", 0.9, 0.01, "acetylation_k"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path(
+        "ACC1", "A" * 20, deepmvp_df, deepptmpred_df, pdb_path=tmp_path / "fake.pdb",
+    )
+
+    assert list(result.columns) == OUTPUT_COLUMNS  # ninguna columna metoken_* agregada
+    assert called == []
+
+
+def test_annotate_pdb_path_metoken_excepcion_inesperada_no_tumba_la_anotacion(monkeypatch, tmp_path):
+    def _boom(*a, **k):
+        raise RuntimeError("fallo inesperado")
+
+    monkeypatch.setattr(ptm_annotation, "get_type_corroboration", _boom)
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "K", 17, "xxx", 0.9, 0.01, "acetylation_k"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path(
+        "ACC1", "A" * 20, deepmvp_df, deepptmpred_df, pdb_path=tmp_path / "fake.pdb",
+    )
+
+    assert bool(result.iloc[0]["pasa_umbral"]) is True  # la anotacion sigue completa pese al fallo
