@@ -83,7 +83,8 @@ def test_annotate_pdb_path_consenso_false_si_uno_no_pasa_umbral():
         [["ACC1", "K", 17, "xxx", 0.9, 0.01, "acetylation_k"]], columns=DEEPMVP_COLUMNS
     )
     deepptmpred_df = pd.DataFrame(
-        [["ACC1", 17, "K", 0.2, "acetylation"]], columns=DEEPPTMPRED_COLUMNS  # bajo umbral 0.5
+        # 0.2 bajo el umbral calibrado de acetylation (0.6299973, ver Settings)
+        [["ACC1", 17, "K", 0.2, "acetylation"]], columns=DEEPPTMPRED_COLUMNS
     )
     result = annotate_pdb_path("ACC1", "A" * 20, deepmvp_df, deepptmpred_df)
 
@@ -120,7 +121,7 @@ def test_annotate_pdb_path_tipo_exclusivo_deepptmpred_incluido_marcado():
     assert row["tipo_ptm"] == "malonylation"
     assert pd.isna(row["score_deepmvp"])
     assert bool(row["consenso"]) is False
-    assert bool(row["pasa_umbral"]) is True  # 0.7 >= 0.5
+    assert bool(row["pasa_umbral"]) is True  # 0.7 >= umbral calibrado de malonylation (0.4223403)
 
 
 def test_apply_workflow_filter_mantiene_solo_pasa_umbral():

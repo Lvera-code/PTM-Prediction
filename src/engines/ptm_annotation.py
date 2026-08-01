@@ -149,7 +149,9 @@ def annotate_pdb_path(
 
         if ptmpred_row is not None:
             matched_keys.add(key)
-            deepptmpred_pasa = bool(ptmpred_row["probability"] >= Settings.DEEPPTMPRED_MIN_PROBABILITY)
+            deepptmpred_pasa = bool(
+                ptmpred_row["probability"] >= Settings.deepptmpred_threshold_for(tipo_canonico)
+            )
             rows.append({
                 "accession": accession,
                 "posicion": pos,
@@ -192,7 +194,7 @@ def annotate_pdb_path(
             "consenso": False,
             "ventana": _window_for(tipo_canonico, sequence, pos),
             "camino": "PDB",
-            "pasa_umbral": bool(r["probability"] >= Settings.DEEPPTMPRED_MIN_PROBABILITY),
+            "pasa_umbral": bool(r["probability"] >= Settings.deepptmpred_threshold_for(tipo_canonico)),
         })
 
     return pd.DataFrame(rows, columns=OUTPUT_COLUMNS)

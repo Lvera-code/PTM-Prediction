@@ -167,10 +167,57 @@ class Settings:
     # predict.py ni en su README) -- solo una probabilidad cruda 0-1. Su
     # propio script usa un cutoff de 0.5 hardcodeado sin documentar de donde
     # sale (no calibrado contra ningun validation set publicado, a
-    # diferencia del 'fpr' de DeepMVP). Este default de 0.5 es PROVISIONAL,
-    # heredado sin verificacion adicional -- revisar si aparece evidencia de
-    # un umbral mejor calibrado.
+    # diferencia del 'fpr' de DeepMVP).
+    #
+    # CALIBRADO 2026-07-31: umbrales reales por tipo, calculados por
+    # `scripts/generate_deepptmpred_calibration.py` + `_rebuild_calibration_summary.py`
+    # sobre `github.com/meilerlab/PTMPrediction/data/ptm_data.csv.gz`
+    # (376,557 filas reales, n=75 proteinas/clase), CON el fix de
+    # 2026-07-31 ya aplicado (phi/psi=0.0 forzado en inferencia para igualar
+    # la distribucion de entrenamiento -- ver STATUS.md, seccion "Calibracion
+    # real de DeepPTMPred + bug de distribucion phi/psi"). Regla real
+    # (bug-fixed respecto al paper, no literal): FPR<=0.18 TPR-max para
+    # phosphorylation, FPR<=0.20 TPR-max para el resto; fallback a 0.5 si
+    # ningun punto de operacion cumple el FPR maximo en la muestra
+    # (arg_methylation, lys_methylation cayeron en este caso).
+    # Fuente exacta: `DeepPTMPred/data/calibration/summary.tsv` (gitignored,
+    # regenerable con los dos scripts de arriba). AUROC de referencia y
+    # salvedades por tipo en STATUS.md -- 14/17 tipos en rango solido-a-
+    # excelente; `n_linked_glycosylation` (AUROC 0.49, peor que azar) y los
+    # 4 tipos mediocres (s_nitrosylation/glutarylation/citrullination/
+    # crotonylation, 0.61-0.68) usan igual su umbral calibrado aqui pese al
+    # AUROC bajo -- son limitaciones de PODER DISCRIMINATIVO del modelo, no
+    # de calibracion del umbral; investigacion de causa raiz pendiente.
+    DEEPPTMPRED_CALIBRATED_THRESHOLDS: dict = {
+        "acetylation": 0.6299973,
+        "arg_methylation": 0.34319976,
+        "citrullination": 0.39169243,
+        "crotonylation": 0.93576247,
+        "gamma_carboxyglutamic_acid": 0.21486656,
+        "glutarylation": 0.4618006,
+        "glutathionylation": 0.47251946,
+        "hydroxylation": 0.3752605,
+        "lys_methylation": 0.41040188,
+        "malonylation": 0.4223403,
+        "n_linked_glycosylation": 0.99741435,
+        "o_linked_glycosylation": 0.3105993,
+        "phosphorylation": 0.24348031,
+        "s_nitrosylation": 0.500678,
+        "succinylation": 0.48264492,
+        "sumoylation": 0.4091335,
+        "ubiquitination": 0.5434938,
+    }
+    # Fallback si DEEPPTMPRED_CALIBRATED_THRESHOLDS no tiene el tipo (no
+    # deberia ocurrir con los 17 tipos de DEEPPTMPRED_PTM_TYPES, pero
+    # mantiene el pipeline funcional si se agrega un tipo nuevo sin
+    # recalibrar). Tambien override manual via env var para experimentacion
+    # puntual sin editar codigo.
     DEEPPTMPRED_MIN_PROBABILITY: float = _env_float("DEEPPTMPRED_MIN_PROBABILITY", 0.5)
+
+    @classmethod
+    def deepptmpred_threshold_for(cls, ptm_type: str) -> float:
+        """Umbral calibrado para ``ptm_type``, o el fallback generico si no existe."""
+        return cls.DEEPPTMPRED_CALIBRATED_THRESHOLDS.get(ptm_type, cls.DEEPPTMPRED_MIN_PROBABILITY)
 
     DEEPPTMPRED_PTM_TYPES: tuple = (
         "phosphorylation", "acetylation", "ubiquitination", "hydroxylation",

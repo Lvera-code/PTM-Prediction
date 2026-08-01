@@ -602,8 +602,18 @@ bloqueante para el resto.
    deliberadamente sin integrar por ahora (decision 2026-07-26).
 6. ~~Calibracion real de DeepPTMPred~~ — IMPLEMENTADA 2026-07-30/31, ver
    seccion "Calibracion real de DeepPTMPred + bug de distribucion
-   phi/psi" abajo. **Pendiente decision de Enzo**: si conectar los umbrales
-   calibrados a `Settings.py`/produccion (nada wireado todavia).
+   phi/psi" abajo. ~~**Pendiente decision de Enzo**: si conectar los
+   umbrales calibrados a `Settings.py`/produccion~~ — WIREADO 2026-08-01:
+   `Settings.DEEPPTMPRED_CALIBRATED_THRESHOLDS` (dict, 17 tipos) +
+   `Settings.deepptmpred_threshold_for(tipo)` (fallback a
+   `DEEPPTMPRED_MIN_PROBABILITY`=0.5 si el tipo no esta calibrado).
+   `ptm_annotation.py` usa el umbral por tipo en los 3 puntos donde antes
+   usaba el umbral fijo 0.5 (ambos loops de `annotate_pdb_path`). Nota:
+   esto conecta los umbrales calibrados incluso para `n_linked_glycosylation`
+   y los 4 tipos mediocres (AUROC bajo, ver items 2/3 de la sesion 2026-08-01
+   abajo) -- el umbral esta bien calibrado para esos tipos, el problema es
+   poder discriminativo del modelo, no del corte elegido. 3 tests nuevos
+   (`tests/test_settings.py`).
 
 ## Auditoria de robustez pre-checkpoint (2026-07-28, noche) -- pulida 2026-07-29
 
