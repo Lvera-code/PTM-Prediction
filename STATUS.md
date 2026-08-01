@@ -555,6 +555,92 @@ azar) incluso tras el fix** -- no investigado todavia, causa distinta al
 bug de phi/psi (que ya se corrigio), pendiente de mirar aparte, no
 bloqueante para el resto.
 
+### 2026-08-01: investigacion de `n_linked_glycosylation` (AUROC 0.49) y los 4 tipos mediocres (via subagente Opus)
+
+**`n_linked_glycosylation`: CONFIRMADO limite real de los pesos publicados,
+no un bug nuestro.** Tres confirmaciones independientes:
+
+1. `DeepPTMPred/data/calibration/n_linked_glycosylation_calibration.tsv`
+   esta saturado, no invertido: los 125 sitios puntuan 0.913-0.999,
+   `prediction=1` en TODAS las filas -- el modelo no tiene salida
+   discriminativa alguna (descarta un bug de label flip).
+2. El propio repo trae sus metricas de entrenamiento para este tipo
+   (`DeepPTMPred/pred/train_PTM/result/results_n_linked_glycosylation_esm2_kfold/ptm_data_200_29_64_average_results.txt`):
+   **AUC 0.4950**, FP Rate 0.94, matriz de confusion de un fold sin NINGUN
+   verdadero negativo (`[[0,5],[0,51]]`). Nuestra medicion (0.4907)
+   reproduce esto casi exacto.
+3. Ni siquiera se recupera aplicando el fix de plDDT de abajo (0.4907 ->
+   0.5064, sigue siendo azar).
+
+Causa raiz probable, verificada contra `ptm_data.csv.gz`: este tipo tiene
+2115 positivos vs 355 negativos (85.6% positivo, el mas desbalanceado de
+los 17 junto a crotonylation, 84.1%) -- y **el SMOTE del propio
+`trainer.py:236` es un no-op para los 17 tipos** (`target_samples =
+min(2000, class_counts[1])`, el `min` siempre da el conteo actual, nunca
+sobremuestrea de verdad; contradice lo que dice el Methods del paper). El
+paper mismo reporta 0.616 para este tipo (Table 1) y lo atribuye a
+"limited negative sample diversity within conserved motifs" -- los
+negativos son asparraginas DENTRO de sequones N-X-[S/T] intactos, el mismo
+motivo de secuencia que verian los positivos. Los pesos shippeados ni
+siquiera alcanzan ese 0.616 -- reproducen el artefacto 0.495.
+
+**Recomendacion del subagente**: excluir `n_linked_glycosylation` del
+consenso de DeepPTMPred (no es un umbral mal calibrado, es un modelo sin
+poder discriminativo). El umbral de 0.997 en `summary.tsv` para este tipo
+no significa nada. Refuerza la opcion ya listada como item 5 abajo
+(cross-validacion con StackGlyEmbed del proyecto 1 para este tipo
+especifico).
+
+**4 tipos mediocres: NO es un techo del modelo, es un bug real de
+inferencia adicional, mismo patron que el de phi/psi.** `predict.py:260`
+calcula `local_plDDT` iterando POR ATOMO
+(`atom.get_bfactor() for atom in structure.get_atoms()`), pero
+`predict.py:299-303` indexa esa lista POR NUMERO DE RESIDUO
+(`self.plDDT_values[residue_number - 1]`) -- con ~7 atomos/residuo en un
+PDB de AlphaFold, el "plDDT" del residuo N termina siendo en realidad el
+B-factor del residuo ~N/7. Medido en 370 sitios reales: correlacion contra
+el B-factor CA real (correcto) = 0.031; con el fix = 0.927 (`avg_plDDT` y
+`sasa` estan bien, r=0.9995/0.98 -- el promedio-por-atomo casualmente da
+igual).
+
+Recalibrando solo esos 3 tipos con el fix aplicado (mismas muestras):
+citrullination 0.657->**0.778** (iguala el paper exacto), s_nitrosylation
+0.683->**0.770** (cierra ~53% del gap), glutathionylation (control, ya
+buena) 0.873->0.886 sin danarse. **No es techo del modelo** -- aunque los
+valores publicados de estos 4 tipos (0.769-0.846) ya son los mas bajos de
+los 17, con o sin el fix.
+
+Dos defectos adicionales encontrados que SI midieron pero NO importan en
+la practica (documentados, no priorizados): DSSP nunca se ejecuta en
+`train_PTM/` pese a que `predict.py:293-295` llama `pose.secstruct()`
+(produccion queda ciega a estructura secundaria, 100% "loop"); y
+`data_loader.py:148` vs `predict.py:308-316` tienen el orden de columnas
+E/H/L invertido (H y E intercambiados). Ablacion real: ninguno de los dos
+cambia el AUROC mas de 0.01 -- toda la senal recuperable esta en el fix de
+plDDT.
+
+**Coordinacion con el wireado del item 1 (2026-08-01, commit `ae327cd`)**:
+los umbrales ya wireados en `Settings.py` se midieron CON el bug de plDDT
+activo. Con el fix, citrullination pasa de 0.392 a 0.358 y s_nitrosylation
+de 0.501 a 0.486 -- cambios moderados, no catastroficos, pero
+`DEEPPTMPRED_CALIBRATED_THRESHOLDS` deberia considerarse **provisional**
+para estos 2 tipos (y probablemente para el resto en menor medida, no
+medido en los 17) hasta una recalibracion completa con el fix aplicado.
+
+**Salvedades explicitas del subagente**: el fix de plDDT se valido en 3
+tipos de 17, no en los 17 -- el resto son extrapolacion razonable, no
+medicion directa. `crotonylation` no puede mejorar con mas muestreo
+aunque se quisiera: la corrida ya uso TODOS los negativos que existen en
+el dataset (23), igual que citrullination con sus 59 positivos -- limite
+real de los datos fuente, no de `--n-per-class`.
+
+**Pendiente decision de Enzo** (dos decisiones independientes, ninguna
+aplicada todavia): (a) si excluir `n_linked_glycosylation` del consenso de
+produccion; (b) si aplicar el parche de plDDT en `_deepptmpred_runner.py`
+(mismo patron que el parche de phi/psi ya existente) y relanzar la
+recalibracion completa de 17 tipos (coste real: horas, mismo orden que la
+corrida del 31/07).
+
 ## Proximos pasos reales
 
 1. ~~Decidir el gap de calibracion `fpr` de DeepMVP~~ — RESUELTO 2026-07-28
