@@ -108,6 +108,23 @@ def test_annotate_pdb_path_phosphorylation_y_sin_equivalente_queda_deepmvp_solo(
     assert bool(row["consenso"]) is False
 
 
+def test_annotate_pdb_path_n_linked_glycosylation_nunca_hace_consenso():
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 25, "xxx", 0.95, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(
+        [["ACC1", 25, "N", 0.9, "n_linked_glycosylation"]], columns=DEEPPTMPRED_COLUMNS
+    )
+    result = annotate_pdb_path("ACC1", "N" * 30, deepmvp_df, deepptmpred_df)
+
+    # Ambos motores reportan la misma posicion, pero NUNCA fusionados en
+    # una fila de consenso (decision 2026-08-01, DeepPTMPred no tiene poder
+    # discriminativo real para este tipo -- ver STATUS.md).
+    assert len(result) == 2
+    assert set(result["motor"]) == {"DeepMVP", "DeepPTMPred"}
+    assert (result["consenso"] == False).all()
+
+
 def test_annotate_pdb_path_tipo_exclusivo_deepptmpred_incluido_marcado():
     deepmvp_df = pd.DataFrame(columns=DEEPMVP_COLUMNS)
     deepptmpred_df = pd.DataFrame(

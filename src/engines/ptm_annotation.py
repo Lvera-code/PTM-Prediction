@@ -54,6 +54,14 @@ DEEPMVP_TO_CANONICAL_TYPE = {
 # fosforilacion/acetilacion/metilacion/ubiquitinacion/etc.).
 _NGLYCO_TYPES = {"n_linked_glycosylation", "glycosylation_n"}
 
+# Tipos excluidos deliberadamente del consenso (decision 2026-08-01, ver
+# STATUS.md "investigacion de n_linked_glycosylation y los 4 tipos
+# mediocres"): DeepPTMPred no tiene poder discriminativo real para estos
+# tipos (verificado contra las metricas de entrenamiento del propio repo,
+# AUC 0.495 -- no es un problema de umbral). Ambos motores se siguen
+# reportando, nunca fusionados en una fila de consenso.
+CONSENSUS_EXCLUDED_TYPES = {"n_linked_glycosylation"}
+
 OUTPUT_COLUMNS = [
     "accession", "posicion", "residuo_wt", "tipo_ptm", "motor",
     "score_deepmvp", "score_deepptmpred", "consenso", "ventana", "camino",
@@ -143,7 +151,9 @@ def annotate_pdb_path(
         tipo_deepmvp = r["ptm"]
         tipo_canonico = DEEPMVP_TO_CANONICAL_TYPE.get(tipo_deepmvp, tipo_deepmvp)
         key = (pos, tipo_canonico)
-        ptmpred_row = ptmpred_lookup.get(key)
+        ptmpred_row = (
+            ptmpred_lookup.get(key) if tipo_canonico not in CONSENSUS_EXCLUDED_TYPES else None
+        )
 
         deepmvp_pasa = bool(r["fpr"] <= Settings.DEEPMVP_MAX_FPR)
 

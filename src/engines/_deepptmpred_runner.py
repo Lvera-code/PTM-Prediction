@@ -180,11 +180,33 @@ def _load_predict_module(train_ptm_dir: Path):
     # no una mejora de features: el modelo no sabe usar phi/psi reales.
     _original_calculate_features = predict.PyRosettaCalculator.calculate_features
 
+    # Parche real 3: bug real de indexado confirmado 2026-08-01 (via
+    # subagente Opus, ver STATUS.md "investigacion de n_linked_glycosylation
+    # y los 4 tipos mediocres"). ``PyRosettaCalculator.__init__`` construye
+    # ``self.plDDT_values`` iterando POR ATOMO
+    # (``[atom.get_bfactor() for atom in structure.get_atoms()]``, ~L260),
+    # pero ``calculate_features`` lo indexa POR NUMERO DE RESIDUO
+    # (``self.plDDT_values[residue_number - 1]``, ~L300) -- con ~7
+    # atomos/residuo en un PDB de AlphaFold, el "local_plDDT" del residuo N
+    # termina siendo en realidad el B-factor de un atomo de un residuo
+    # totalmente distinto (~N/7). Verificado empiricamente: correlacion
+    # contra el B-factor CA real = 0.031; con este fix = 0.927. AUROC real
+    # medido tras el fix: citrullination 0.657->0.778 (iguala el paper
+    # exacto), s_nitrosylation 0.683->0.770. No se toca ``predict.py``
+    # (vendored): se recalcula ``local_plDDT`` directamente desde
+    # ``self.pose`` (mismo PDB ya cargado por PyRosetta), tomando el
+    # B-factor real del atomo CA del residuo pedido -- no depende en
+    # absoluto del array ``self.plDDT_values`` mal indexado.
     def _patched_calculate_features(self, residue_number):
         feat = _original_calculate_features(self, residue_number)
         feat = feat.copy()
         feat[1] = 0.0  # phi
         feat[2] = 0.0  # psi
+        try:
+            ca_atom_index = self.pose.residue(residue_number).atom_index("CA")
+            feat[6] = self.pose.pdb_info().bfactor(residue_number, ca_atom_index)  # local_plDDT
+        except Exception:
+            pass  # deja el local_plDDT (mal indexado) que ya trae el array original
         return feat
 
     predict.PyRosettaCalculator.calculate_features = _patched_calculate_features
