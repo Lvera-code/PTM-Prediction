@@ -41,6 +41,27 @@ MeToken NUNCA cambia ``pasa_umbral``/``consenso`` -- mismo patron
 no-decisorio que GlyGen (``src/structural/glygen_client.py``): un fallo
 (repo no instalado, subproceso revienta, timeout) deja las 3 columnas en
 ``None`` para toda la tabla, sin afectar el resto del reporte.
+
+## Corroboracion opcional de N-GLICOSILACION (StackGlyEmbed, decision 2026-08-01)
+
+``annotate_fasta_path`` y ``annotate_pdb_path`` aceptan opcionalmente
+``enable_stackglyembed`` (``False`` por defecto -- comportamiento identico
+al de antes de esta mejora): si es ``True`` y
+``Settings.STACKGLYEMBED_ENABLED``, para cada fila con ``tipo_ptm`` en
+{``n_linked_glycosylation``, ``glycosylation_n``} (ver ``_NGLYCO_TYPES``) y
+``pasa_umbral=True`` se invoca StackGlyEmbed
+(``src/engines/stackglyembed_engine.py``, ver su docstring y el de
+``src/engines/_stackglyembed_runner.py`` para el detalle completo) y se
+anaden 3 columnas puramente informativas: ``stackglyembed_veredicto``
+(``'Glicosilado'``/``'No glicosilado'``), ``stackglyembed_score`` (su
+probabilidad cruda) y ``stackglyembed_coincide`` (``True`` si el veredicto
+es ``'Glicosilado'`` -- corrobora el candidato que DeepMVP/DeepPTMPred ya
+propusieron, ``False`` en caso contrario). A diferencia de MeToken (requiere
+un PDB, Camino PDB unicamente), StackGlyEmbed solo necesita ``sequence``
+(ya un parametro existente en ambas funciones) -- aplica igual a Camino
+FASTA y Camino PDB. NUNCA cambia ``pasa_umbral``/``consenso`` -- mismo
+patron no-decisorio que MeToken/GlyGen: un fallo deja las 3 columnas en
+``None`` para toda la tabla.
 """
 
 from pathlib import Path
@@ -50,6 +71,7 @@ import pandas as pd
 
 from src.config.settings import Settings
 from src.engines.metoken_engine import get_type_corroboration
+from src.engines.stackglyembed_engine import get_nglyco_corroboration
 from src.utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
@@ -137,7 +159,9 @@ def _window_for(tipo_ptm: str, sequence: str, position: int) -> Optional[str]:
     return None
 
 
-def annotate_fasta_path(accession: str, sequence: str, deepmvp_df: pd.DataFrame) -> pd.DataFrame:
+def annotate_fasta_path(
+    accession: str, sequence: str, deepmvp_df: pd.DataFrame, enable_stackglyembed: bool = False,
+) -> pd.DataFrame:
     """Fase 3 nucleo (B), Camino FASTA: solo DeepMVP, sin consenso posible.
 
     Args:
@@ -145,11 +169,20 @@ def annotate_fasta_path(accession: str, sequence: str, deepmvp_df: pd.DataFrame)
         sequence: Secuencia saneada de Fase 1 (para calcular ventanas).
         deepmvp_df: Salida cruda de ``DeepMVPEngine.run()`` para este accession
             (columnas ``protein|aa|pos|x|y_pred|fpr|ptm``).
+        enable_stackglyembed: ``False`` (default) desactiva la corroboracion
+            de N-glicosilacion via StackGlyEmbed sin cambiar ningun otro
+            comportamiento -- identico a antes de esta mejora. ``True``
+            (y ``Settings.STACKGLYEMBED_ENABLED``) la habilita, ver
+            docstring del modulo.
 
     Returns:
         DataFrame con ``OUTPUT_COLUMNS``, una fila por sitio candidato
         reportado por DeepMVP, sin ningun filtrado (ver
-        :func:`apply_workflow_filter` para la capa D).
+        :func:`apply_workflow_filter` para la capa D). Si
+        ``enable_stackglyembed`` y ``Settings.STACKGLYEMBED_ENABLED``,
+        incluye ademas ``stackglyembed_veredicto``/``stackglyembed_score``/
+        ``stackglyembed_coincide`` -- ausentes (mismas ``OUTPUT_COLUMNS`` de
+        siempre) en caso contrario.
     """
     rows = []
     for _, r in deepmvp_df.iterrows():
@@ -166,12 +199,23 @@ def annotate_fasta_path(accession: str, sequence: str, deepmvp_df: pd.DataFrame)
             "camino": "FASTA",
             "pasa_umbral": bool(r["fpr"] <= Settings.DEEPMVP_MAX_FPR),
         })
-    return pd.DataFrame(rows, columns=OUTPUT_COLUMNS)
+    result = pd.DataFrame(rows, columns=OUTPUT_COLUMNS)
+
+    if enable_stackglyembed and Settings.STACKGLYEMBED_ENABLED:
+        try:
+            result = _add_stackglyembed_corroboration(result, sequence)
+        except Exception as exc:  # noqa: BLE001 -- doble seguro, stackglyembed_engine ya degrada internamente
+            logger.warning(
+                "Fallo inesperado anadiendo corroboracion StackGlyEmbed para '%s' (no fatal, no "
+                "afecta consenso/pasa_umbral): %s", accession, exc,
+            )
+
+    return result
 
 
 def annotate_pdb_path(
     accession: str, sequence: str, deepmvp_df: pd.DataFrame, deepptmpred_df: pd.DataFrame,
-    pdb_path: Optional[Path] = None, chain_id: str = "A",
+    pdb_path: Optional[Path] = None, chain_id: str = "A", enable_stackglyembed: bool = False,
 ) -> pd.DataFrame:
     """Fase 3 nucleo (B), Camino PDB: consenso DeepMVP + DeepPTMPred donde exista.
 
@@ -189,6 +233,11 @@ def annotate_pdb_path(
             comportamiento -- identico a antes de esta mejora.
         chain_id: Cadena a leer del PDB si ``pdb_path`` no es ``None``
             (default ``"A"``).
+        enable_stackglyembed: ``False`` (default) desactiva la corroboracion
+            de N-glicosilacion via StackGlyEmbed sin cambiar ningun otro
+            comportamiento -- identico a antes de esta mejora. ``True``
+            (y ``Settings.STACKGLYEMBED_ENABLED``) la habilita, ver
+            docstring del modulo.
 
     Returns:
         DataFrame con ``OUTPUT_COLUMNS``. Sitios reportados por ambos
@@ -200,8 +249,12 @@ def annotate_pdb_path(
         marcados ``consenso=False``. Si ``pdb_path`` no es ``None`` y
         ``Settings.METOKEN_ENABLED``, incluye ademas ``metoken_type``/
         ``metoken_probability``/``metoken_type_coincide`` (ver docstring del
-        modulo) -- ausentes (mismas ``OUTPUT_COLUMNS`` de siempre) en caso
-        contrario.
+        modulo). Si ``enable_stackglyembed`` y
+        ``Settings.STACKGLYEMBED_ENABLED``, incluye ademas
+        ``stackglyembed_veredicto``/``stackglyembed_score``/
+        ``stackglyembed_coincide``. Ambas corroboraciones son independientes
+        (una no requiere la otra) -- ausentes (mismas ``OUTPUT_COLUMNS`` de
+        siempre) si su condicion respectiva no se cumple.
     """
     ptmpred_lookup = {
         (int(r["position"]), r["ptm_type"]): r
@@ -282,6 +335,15 @@ def annotate_pdb_path(
                 "consenso/pasa_umbral): %s", accession, exc,
             )
 
+    if enable_stackglyembed and Settings.STACKGLYEMBED_ENABLED:
+        try:
+            result = _add_stackglyembed_corroboration(result, sequence)
+        except Exception as exc:  # noqa: BLE001 -- doble seguro, stackglyembed_engine ya degrada internamente
+            logger.warning(
+                "Fallo inesperado anadiendo corroboracion StackGlyEmbed para '%s' (no fatal, no "
+                "afecta consenso/pasa_umbral): %s", accession, exc,
+            )
+
     return result
 
 
@@ -330,6 +392,52 @@ def _add_metoken_corroboration(result: pd.DataFrame, pdb_path: Path, chain_id: s
         expected = CANONICAL_TO_METOKEN_TYPE.get(tipo_canonico)
         if expected is not None:
             result.at[idx, "metoken_type_coincide"] = bool(expected == site["metoken_type"])
+
+    return result
+
+
+def _add_stackglyembed_corroboration(result: pd.DataFrame, sequence: str) -> pd.DataFrame:
+    """Anade ``stackglyembed_veredicto``/``stackglyembed_score``/``stackglyembed_coincide`` a las filas elegibles.
+
+    Puramente informativo (ver docstring del modulo): NUNCA modifica
+    ``pasa_umbral``/``consenso`` de ninguna fila, solo rellena estas 3
+    columnas nuevas para las filas de N-glicosilacion (``tipo_ptm`` en
+    ``_NGLYCO_TYPES`` -- cubre tanto el nombre crudo de DeepMVP
+    ``glycosylation_n`` como el canonico ``n_linked_glycosylation`` de
+    DeepPTMPred, ver ``annotate_pdb_path``) con ``pasa_umbral=True``. Si
+    StackGlyEmbed no devuelve nada (venv/pickles no instalados, subproceso
+    fallido, timeout -- ver ``stackglyembed_engine.get_nglyco_corroboration``,
+    degrada sin lanzar), las 3 columnas quedan en ``None`` para toda la
+    tabla.
+
+    ``stackglyembed_coincide`` es ``True`` si el veredicto es
+    ``'Glicosilado'`` (StackGlyEmbed corrobora el candidato que
+    DeepMVP/DeepPTMPred ya propusieron), ``False`` si es
+    ``'No glicosilado'`` (StackGlyEmbed discrepa) -- a diferencia de
+    ``metoken_type_coincide``, no hay ambiguedad de "tipo sin equivalente"
+    porque StackGlyEmbed solo predice N-glicosilacion, siempre comparable.
+    """
+    result = result.copy()
+    result["stackglyembed_veredicto"] = None
+    result["stackglyembed_score"] = None
+    result["stackglyembed_coincide"] = None
+
+    eligible_mask = result["tipo_ptm"].isin(_NGLYCO_TYPES) & result["pasa_umbral"]
+    eligible_positions = sorted(set(result.loc[eligible_mask, "posicion"]))
+    if not eligible_positions:
+        return result
+
+    corroboration = get_nglyco_corroboration(sequence, eligible_positions)
+    if not corroboration:
+        return result
+
+    for idx, row in result.loc[eligible_mask].iterrows():
+        site = corroboration.get(int(row["posicion"]))
+        if site is None:
+            continue
+        result.at[idx, "stackglyembed_veredicto"] = site["stackglyembed_veredicto"]
+        result.at[idx, "stackglyembed_score"] = site["stackglyembed_score"]
+        result.at[idx, "stackglyembed_coincide"] = bool(site["stackglyembed_veredicto"] == "Glicosilado")
 
     return result
 

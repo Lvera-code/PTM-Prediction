@@ -107,7 +107,12 @@ def run_fase3_fasta_annotation(
     per_accession = []
     for record in records:
         subset = deepmvp_results[deepmvp_results["protein"] == record.accession]
-        per_accession.append(annotate_fasta_path(record.accession, record.sequence, subset))
+        per_accession.append(
+            annotate_fasta_path(
+                record.accession, record.sequence, subset,
+                enable_stackglyembed=Settings.STACKGLYEMBED_ENABLED,
+            )
+        )
     annotated = pd.concat(per_accession, ignore_index=True) if per_accession else deepmvp_results
     filtered = apply_workflow_filter(annotated)
 
@@ -142,11 +147,14 @@ def run_fase3_pdb_annotation(
     deben coincidir exactamente con ``record.sequence``, mismo criterio que
     usa ``record.chain_id`` (ver Fase 1.5). Se activa/desactiva solo con
     ``Settings.METOKEN_ENABLED`` (ver ``src/engines/ptm_annotation.py``), sin
-    tocar este orquestador.
+    tocar este orquestador. La corroboracion de N-glicosilacion via
+    StackGlyEmbed (``Settings.STACKGLYEMBED_ENABLED``) solo necesita
+    ``record.sequence`` -- se activa igual, sin depender del PDB.
     """
     annotated = annotate_pdb_path(
         record.accession, record.sequence, deepmvp_results, deepptmpred_results,
         pdb_path=record.chain_pdb_path, chain_id=record.chain_id,
+        enable_stackglyembed=Settings.STACKGLYEMBED_ENABLED,
     )
     filtered = apply_workflow_filter(annotated)
 

@@ -272,6 +272,62 @@ class Settings:
     )
     METOKEN_TIMEOUT_SECONDS: int = _env_int("METOKEN_TIMEOUT_SECONDS", 600)
 
+    # --- Corroboracion opcional: StackGlyEmbed (N-glicosilacion, ambos caminos --
+    # FASTA y PDB, NUNCA un motor de consenso) ---
+    # Motivo (decision 2026-08-01, ver STATUS.md): 'n_linked_glycosylation' en
+    # DeepPTMPred esta CONFIRMADO como modelo muerto (AUROC ~0.51, ya excluido
+    # del consenso via CONSENSUS_EXCLUDED_TYPES en ptm_annotation.py) -- no
+    # arreglable reentrenando, un problema real del dataset/modelo publicado.
+    # StackGlyEmbed (github.com/GaryChan-lab/StackGlyEmbed) es un tercer motor
+    # INDEPENDIENTE de arquitectura (ProteinBERT + ESM-2 650M + ProtT5 apilados
+    # -> meta-clasificador SVM), especializado solo en N-glicosilacion -- ya
+    # instalado y verificado funcionando de verdad en el proyecto HERMANO
+    # 'B-Cell-Epitope-Prediction' (proyecto 1, independiente de este por
+    # decision explicita 2026-07-26 -- NO se importa codigo de un proyecto al
+    # otro, pero SI se reusa su venv/pickles ya instalados como recurso
+    # externo, mismo criterio que cualquier otro motor externo de este
+    # proyecto). A diferencia de MeToken (requiere PDB, Camino PDB unicamente),
+    # StackGlyEmbed solo necesita la secuencia completa -- aplica a ambos
+    # caminos, ver src/engines/ptm_annotation.py.
+    STACKGLYEMBED_ENABLED: bool = _env_bool("STACKGLYEMBED_ENABLED", True)
+    # Venv REAL del proyecto hermano (torch/tensorflow/transformers/sklearn +
+    # ProteinBERT ya instalados, ~pesado -- nunca reinstalado aqui). Verificado
+    # 2026-08-01: existe de verdad en esta maquina (python3.10).
+    STACKGLYEMBED_PYTHON_BIN: str = _env_str(
+        "STACKGLYEMBED_PYTHON_BIN",
+        "/home/enzo/DiffSBDD/B-Cell-Epitope-Prediction/StackGlyEmbed/.venv-stackglyembed/bin/python",
+    )
+    # Runner PROPIO de este proyecto (vendorizado, adaptacion de la logica real
+    # ya verificada en stackglyembed_predict_local.py del proyecto hermano --
+    # NUNCA se importa ese archivo directamente). Vive dentro de este repo,
+    # mismo patron que DEEPPTMPRED_RUNNER_SCRIPT/METOKEN_RUNNER_SCRIPT.
+    STACKGLYEMBED_RUNNER_SCRIPT: Path = Path(
+        _env_str(
+            "STACKGLYEMBED_RUNNER_SCRIPT",
+            str(Path(__file__).resolve().parent.parent / "engines" / "_stackglyembed_runner.py"),
+        )
+    )
+    # Carpeta 'prediction/' del clon externo de StackGlyEmbed (proyecto
+    # hermano): aqui viven los pickles del clasificador ya entrenado
+    # (power_transformer_*.sav, base_layer_pickle_files/). Verificado 2026-08-01
+    # con 'ls' real, no asumido.
+    STACKGLYEMBED_MODELS_DIR: str = _env_str(
+        "STACKGLYEMBED_MODELS_DIR",
+        "/home/enzo/DiffSBDD/B-Cell-Epitope-Prediction/StackGlyEmbed/prediction",
+    )
+    # Pesos de ProtT5 (~3GB) reusados de scipion-chem-tmbed (mismo encoder que
+    # usa el proyecto hermano para su propio StackGlyEmbed, ver su
+    # settings.py) -- nunca descargados de nuevo aqui.
+    STACKGLYEMBED_T5_MODEL_PATH: str = _env_str(
+        "STACKGLYEMBED_T5_MODEL_PATH",
+        "/home/enzo/DiffSBDD/scipion-chem-tmbed/tmbed_src/tmbed/models/t5",
+    )
+    STACKGLYEMBED_ESM_MODEL_NAME: str = _env_str("STACKGLYEMBED_ESM_MODEL_NAME", "facebook/esm2_t33_650M_UR50D")
+    # Generoso por defecto: carga en frio de 3 modelos (ProteinBERT + ESM-2
+    # 650M + ProtT5) sobre CPU antes de procesar el primer sitio -- mismo valor
+    # que el proyecto hermano usa para la misma carga en frio.
+    STACKGLYEMBED_TIMEOUT_SECONDS: int = _env_int("STACKGLYEMBED_TIMEOUT_SECONDS", 900)
+
     @classmethod
     def ensure_dirs(cls) -> None:
         """Crea todas las carpetas de entrada/salida configuradas si no existen."""

@@ -302,3 +302,146 @@ def test_annotate_pdb_path_metoken_excepcion_inesperada_no_tumba_la_anotacion(mo
     )
 
     assert bool(result.iloc[0]["pasa_umbral"]) is True  # la anotacion sigue completa pese al fallo
+
+
+# --- Corroboracion opcional de N-glicosilacion (StackGlyEmbed, decision 2026-08-01) ---
+
+
+def test_annotate_fasta_path_enable_stackglyembed_false_no_agrega_columnas(monkeypatch):
+    called = []
+    monkeypatch.setattr(ptm_annotation, "get_nglyco_corroboration", lambda *a, **k: called.append(1))
+
+    sequence = "AAAANKSAAAAA"  # N en pos 5, sequon NKS valido
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 5, "xxx", 0.9, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    result = annotate_fasta_path("ACC1", sequence, deepmvp_df)  # enable_stackglyembed=False (default)
+
+    assert list(result.columns) == OUTPUT_COLUMNS  # ninguna columna stackglyembed_* agregada
+    assert called == []
+
+
+def test_annotate_fasta_path_enable_stackglyembed_true_agrega_columnas_solo_en_nglyco_pasa_umbral(monkeypatch):
+    def _fake_corroboration(sequence, positions, **kwargs):
+        assert sorted(positions) == [5]  # solo la fila n-glyco con pasa_umbral=True
+        return {5: {"stackglyembed_veredicto": "Glicosilado", "stackglyembed_score": 0.93}}
+
+    monkeypatch.setattr(ptm_annotation, "get_nglyco_corroboration", _fake_corroboration)
+
+    sequence = "AAAANKSAAAAAAAAAAAAAAAAAA"
+    deepmvp_df = pd.DataFrame(
+        [
+            ["ACC1", "N", 5, "xxx", 0.9, 0.01, "glycosylation_n"],   # pasa_umbral=True, n-glyco
+            ["ACC1", "K", 17, "xxx", 0.9, 0.01, "acetylation_k"],    # pasa_umbral=True, NO n-glyco
+        ],
+        columns=DEEPMVP_COLUMNS,
+    )
+    result = annotate_fasta_path("ACC1", sequence, deepmvp_df, enable_stackglyembed=True)
+
+    by_pos = result.set_index("posicion")
+    assert by_pos.loc[5, "stackglyembed_veredicto"] == "Glicosilado"
+    assert by_pos.loc[5, "stackglyembed_score"] == 0.93
+    assert by_pos.loc[5, "stackglyembed_coincide"] is True
+    assert by_pos.loc[17, "stackglyembed_veredicto"] is None  # no es n-glyco, nunca se evalua
+    # pasa_umbral no se ve afectado:
+    assert bool(by_pos.loc[5, "pasa_umbral"]) is True
+    assert bool(by_pos.loc[17, "pasa_umbral"]) is True
+
+
+def test_annotate_pdb_path_stackglyembed_no_requiere_pdb_path(monkeypatch):
+    """A diferencia de MeToken, StackGlyEmbed solo necesita 'sequence' -- no requiere pdb_path."""
+    def _fake_corroboration(sequence, positions, **kwargs):
+        return {25: {"stackglyembed_veredicto": "No glicosilado", "stackglyembed_score": 0.08}}
+
+    monkeypatch.setattr(ptm_annotation, "get_nglyco_corroboration", _fake_corroboration)
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 25, "xxx", 0.95, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path(
+        "ACC1", "N" * 30, deepmvp_df, deepptmpred_df,
+        pdb_path=None, enable_stackglyembed=True,
+    )
+
+    assert result.iloc[0]["stackglyembed_veredicto"] == "No glicosilado"
+    assert result.iloc[0]["stackglyembed_score"] == 0.08
+    assert result.iloc[0]["stackglyembed_coincide"] is False
+
+
+def test_annotate_pdb_path_stackglyembed_cubre_ambos_nombres_de_tipo(monkeypatch):
+    """tipo_ptm puede ser 'glycosylation_n' (DeepMVP crudo) o 'n_linked_glycosylation' (DeepPTMPred)."""
+    def _fake_corroboration(sequence, positions, **kwargs):
+        assert sorted(positions) == [10, 25]
+        return {
+            10: {"stackglyembed_veredicto": "Glicosilado", "stackglyembed_score": 0.88},
+            25: {"stackglyembed_veredicto": "Glicosilado", "stackglyembed_score": 0.77},
+        }
+
+    monkeypatch.setattr(ptm_annotation, "get_nglyco_corroboration", _fake_corroboration)
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 25, "xxx", 0.95, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(
+        # 0.999 >= umbral calibrado de n_linked_glycosylation (0.99802846, ver Settings)
+        [["ACC1", 10, "N", 0.999, "n_linked_glycosylation"]], columns=DEEPPTMPRED_COLUMNS
+    )
+    result = annotate_pdb_path(
+        "ACC1", "N" * 30, deepmvp_df, deepptmpred_df, enable_stackglyembed=True,
+    )
+
+    by_pos = result.set_index("posicion")
+    assert by_pos.loc[10, "stackglyembed_coincide"] is True
+    assert by_pos.loc[25, "stackglyembed_coincide"] is True
+
+
+def test_annotate_pdb_path_stackglyembed_vacio_deja_columnas_en_none(monkeypatch):
+    monkeypatch.setattr(ptm_annotation, "get_nglyco_corroboration", lambda *a, **k: {})  # degradado
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 25, "xxx", 0.95, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path(
+        "ACC1", "N" * 30, deepmvp_df, deepptmpred_df, enable_stackglyembed=True,
+    )
+
+    assert result.iloc[0]["stackglyembed_veredicto"] is None
+    assert result.iloc[0]["stackglyembed_score"] is None
+    assert result.iloc[0]["stackglyembed_coincide"] is None
+    assert bool(result.iloc[0]["pasa_umbral"]) is True  # el resto de la anotacion no se ve afectado
+
+
+def test_annotate_pdb_path_stackglyembed_deshabilitado_via_settings(monkeypatch):
+    monkeypatch.setattr(Settings, "STACKGLYEMBED_ENABLED", False)
+    called = []
+    monkeypatch.setattr(ptm_annotation, "get_nglyco_corroboration", lambda *a, **k: called.append(1))
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 25, "xxx", 0.95, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path(
+        "ACC1", "N" * 30, deepmvp_df, deepptmpred_df, enable_stackglyembed=True,
+    )
+
+    assert list(result.columns) == OUTPUT_COLUMNS  # ninguna columna stackglyembed_* agregada
+    assert called == []
+
+
+def test_annotate_pdb_path_stackglyembed_excepcion_inesperada_no_tumba_la_anotacion(monkeypatch):
+    def _boom(*a, **k):
+        raise RuntimeError("fallo inesperado")
+
+    monkeypatch.setattr(ptm_annotation, "get_nglyco_corroboration", _boom)
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 25, "xxx", 0.95, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path(
+        "ACC1", "N" * 30, deepmvp_df, deepptmpred_df, enable_stackglyembed=True,
+    )
+
+    assert bool(result.iloc[0]["pasa_umbral"]) is True  # la anotacion sigue completa pese al fallo

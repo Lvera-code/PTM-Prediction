@@ -787,8 +787,13 @@ los 17 umbrales de esta tabla. 101 tests pasan.
    `UBQ_GTPaseMover` (via PyRosetta, cero compilacion nueva) cubre ambos
    tipos con el mismo mecanismo, verificado con corridas reales en
    `src/structural/ubiquitin_sumo.py`.
-5. Cross-validacion con StackGlyEmbed (proyecto 1) para N-glicosilacion —
-   deliberadamente sin integrar por ahora (decision 2026-07-26).
+5. ~~Cross-validacion con StackGlyEmbed (proyecto 1) para N-glicosilacion~~
+   — IMPLEMENTADA 2026-08-01, ver seccion "StackGlyEmbed: corroboracion
+   informativa de N-GLICOSILACION" abajo. Reusa el venv/pickles ya
+   instalados en `B-Cell-Epitope-Prediction` como recurso externo (sin
+   importar codigo entre proyectos). Corroboracion puramente informativa,
+   nunca decide `pasa_umbral`/`consenso` -- verificada con una corrida real
+   contra los 3 candidatos de N-glicosilacion de Tau.
 6. ~~Calibracion real de DeepPTMPred~~ — IMPLEMENTADA 2026-07-30/31, ver
    seccion "Calibracion real de DeepPTMPred + bug de distribucion
    phi/psi" abajo. ~~**Pendiente decision de Enzo**: si conectar los
@@ -1172,3 +1177,145 @@ checkpoint publicado (no del wiring de este proyecto).
 `tests/test_metoken_engine.py` + 7 de `tests/test_ptm_annotation.py`; el
 resto de `src/engines/`/`src/utils/` no cambiaron). `MeToken/` gitignorado
 (mismo patron que `DeepMVP/`/`DeepPTMPred/`/`MTPrompt-PTM/`).
+
+## StackGlyEmbed: corroboracion informativa de N-GLICOSILACION (IMPLEMENTADA 2026-08-01)
+
+Item 5 de "Proximos pasos" (deliberadamente sin integrar desde el
+2026-07-26) ejecutado: cross-validacion de `n_linked_glycosylation` con
+StackGlyEmbed del proyecto 1. Motivo (ver seccion "investigacion de
+n_linked_glycosylation" arriba): DeepPTMPred no tiene NINGUN poder
+discriminativo real para este tipo (AUC 0.495 en las metricas de
+entrenamiento del propio repo, no arreglable reentrenando -- ya excluido del
+consenso via `CONSENSUS_EXCLUDED_TYPES`). StackGlyEmbed
+(`github.com/GaryChan-lab/StackGlyEmbed`) es un tercer motor
+INDEPENDIENTE de arquitectura (ProteinBERT + ESM-2 650M + ProtT5 apilados ->
+meta-clasificador SVM), especializado UNICAMENTE en N-glicosilacion --
+mismo patron no-decisorio que MeToken/GlyGen (nunca cambia
+`pasa_umbral`/`consenso`, solo corrobora un candidato ya propuesto).
+
+### Recurso externo reusado -- verificado real, no asumido
+
+A diferencia de MeToken/DeepPTMPred (repos clonados DENTRO de este
+proyecto), StackGlyEmbed ya estaba instalado y funcionando de verdad en el
+proyecto HERMANO `B-Cell-Epitope-Prediction` (proyecto 1, independiente por
+decision 2026-07-26 -- nunca se importa codigo entre proyectos, pero SI se
+reusan recursos externos pesados ya instalados). Verificado con `ls` real
+antes de asumir nada:
+
+- Venv `B-Cell-Epitope-Prediction/StackGlyEmbed/.venv-stackglyembed`
+  (Python 3.10.20, symlink `python -> python3.10`) -- existe real.
+- `B-Cell-Epitope-Prediction/StackGlyEmbed/prediction/` -- 3
+  `power_transformer_*.sav` + `base_layer_pickle_files/` (30 modelos base:
+  10 SVM + 10 XGB + 10 KNN, mas `SVM_meta_layer.sav`, ~480MB total) --
+  existen reales, tamanos de archivo consistentes con pesos reales
+  (10-33MB cada uno).
+- ProtT5 (`Rostlab/prot_t5_xl_half_uniref50-enc`, reusado de
+  `scipion-chem-tmbed/tmbed_src/tmbed/models/t5/`) -- `model.safetensors`
+  de 3.2GB presente, real.
+
+### Vendorizado (NO se importa codigo del proyecto hermano, decision 2026-07-26)
+
+- `src/engines/_stackglyembed_runner.py`: adaptacion PROPIA (no una copia
+  importada) de la logica real ya verificada en
+  `B-Cell-Epitope-Prediction/src/engines/stackglyembed_predict_local.py`
+  (extraccion de features ProteinBERT+ESM-2+ProtT5 + prediccion via el
+  stack de clasificadores ya entrenado). Simplificado respecto al script
+  del hermano: como aqui siempre se evalua UNA proteina por invocacion
+  (mismo patron que `_deepptmpred_runner.py`/`_metoken_runner.py`), el CLI
+  recibe `--sequence`/`--positions` directamente (sin el formato
+  intermedio `dataset.txt` multi-proteina del repo original). Mismo
+  criterio de chunking para proteinas completas (ESM-2 por bloques de
+  1024aa, ProtT5 por 8797aa) y misma ventana de 15 residuos para el
+  promedio de ESM-2 -- verificado que la posicion 1-based del secuon
+  coincide exactamente con la convencion de `sequence`/`posicion` del resto
+  del pipeline (secuencia completa, sin offsets de ventana que convertir).
+- `src/engines/stackglyembed_engine.py`: `get_nglyco_corroboration(sequence,
+  positions, result_dir=None, filename_prefix="") -> dict[int, dict]`,
+  invoca el runner via subprocess sobre
+  `Settings.STACKGLYEMBED_PYTHON_BIN` (venv del proyecto hermano).
+  Degradacion NO fatal en todos los modos de fallo (venv ausente, runner
+  ausente, pickles ausentes, exit code != 0, timeout, CSV de salida
+  ausente/malformado) -- siempre devuelve `{}` y registra un aviso, nunca
+  lanza. 11 tests (`tests/test_stackglyembed_engine.py`, `subprocess.run`
+  mockeado, mismo patron que `tests/test_metoken_engine.py`).
+- `src/engines/ptm_annotation.py`: **a diferencia de MeToken (requiere un
+  PDB, Camino PDB unicamente), StackGlyEmbed solo necesita `sequence` --
+  ya un parametro EXISTENTE en ambas funciones (`annotate_fasta_path`/
+  `annotate_pdb_path`), asi que aplica a AMBOS caminos sin necesitar ningun
+  parametro nuevo relacionado con PDB.** Ambas funciones aceptan ahora
+  `enable_stackglyembed: bool = False` (backward-compatible: llamarlas sin
+  el parametro es identico al comportamiento de antes). Si es `True` y
+  `Settings.STACKGLYEMBED_ENABLED`, para cada fila con `tipo_ptm` en
+  {`n_linked_glycosylation`, `glycosylation_n`} (cubre tanto el nombre
+  canonico de DeepPTMPred como el crudo de DeepMVP -- nunca se fusionan en
+  consenso, ver `CONSENSUS_EXCLUDED_TYPES`) y `pasa_umbral=True`, anade 3
+  columnas informativas: `stackglyembed_veredicto`
+  (`'Glicosilado'`/`'No glicosilado'`), `stackglyembed_score` (probabilidad
+  cruda del meta-SVM) y `stackglyembed_coincide` (`True` si el veredicto es
+  `'Glicosilado'` -- corrobora el candidato, `False` si lo contradice; sin
+  la ambiguedad de "tipo sin equivalente" de MeToken, porque StackGlyEmbed
+  solo predice N-glicosilacion). NUNCA toca `pasa_umbral`/`consenso` --
+  mismo doble seguro que MeToken (el propio engine degrada a `{}` sin
+  lanzar, mas un `try/except` en el wiring). 8 tests nuevos en
+  `tests/test_ptm_annotation.py`.
+- `pipeline.py`: `run_fase3_fasta_annotation`/`run_fase3_pdb_annotation`
+  pasan `enable_stackglyembed=Settings.STACKGLYEMBED_ENABLED` a
+  `annotate_fasta_path`/`annotate_pdb_path` -- unico cambio en el
+  orquestador, sin nuevos parametros de PDB/cadena (no hacen falta).
+- `Settings.py`: `STACKGLYEMBED_ENABLED` (default `True`, degradacion
+  silenciosa si el recurso externo no esta disponible),
+  `STACKGLYEMBED_PYTHON_BIN` (default apunta al venv REAL del proyecto
+  hermano, verificado con `ls`), `STACKGLYEMBED_RUNNER_SCRIPT` (el propio
+  vendorizado de este proyecto), `STACKGLYEMBED_MODELS_DIR` (default apunta
+  a `B-Cell-Epitope-Prediction/StackGlyEmbed/prediction`, verificado),
+  `STACKGLYEMBED_T5_MODEL_PATH`, `STACKGLYEMBED_ESM_MODEL_NAME`,
+  `STACKGLYEMBED_TIMEOUT_SECONDS` (900, mismo valor que usa el proyecto
+  hermano para la misma carga en frio de 3 modelos).
+
+### Verificacion real end-to-end contra Tau (`AF-P10636-F1-model_v4.pdb`)
+
+`get_nglyco_corroboration` corrido de verdad (no mockeado) contra el venv
+REAL del proyecto hermano, sobre la secuencia completa de Tau (758
+residuos, la misma ya extraida por Fase 1.5 en una corrida previa de este
+proyecto) y los 3 candidatos REALES de `n_linked_glycosylation` que el
+pipeline ya habia aceptado (`pasa_umbral=true`) en la corrida completa mas
+reciente (`fasta_outputs/AF-P10636-F1-model_v4_ptm_sites.csv`): posiciones
+484 (secuon `NAT`), 676 (`NIT`), 727 (`NVS`). Carga en frio real de los 3
+embedders (ProteinBERT + ESM-2 650M + ProtT5) + inferencia: **52.5s** de
+tiempo real (`time`, no estimado).
+
+Resultado real (`stackglyembed.csv` persistido):
+
+```
+posicion  sequon  veredicto        score
+484       NAT     No glicosilado   0.2110
+676       NIT     No glicosilado   0.3943
+727       NVS     No glicosilado   0.1217
+```
+
+Tambien verificado el WIRING completo (no solo el engine aislado): llamando
+`annotate_pdb_path` real con estos 3 candidatos como `deepmvp_df` y
+`enable_stackglyembed=True` reproduce EXACTOS los mismos 3 scores
+(`stackglyembed_coincide=False` en las 3 filas) -- confirma que la
+integracion en `ptm_annotation.py` invoca el motor real correctamente, no
+solo en aislamiento.
+
+**Lectura real de estos numeros**: StackGlyEmbed NO corrobora ninguno de
+los 3 candidatos que DeepMVP propuso para Tau (los 3 scores caen del lado
+"No glicosilado", aunque 676 con 0.39 queda mas cerca del limite que los
+otros dos). Esto es informativo, no una prueba definitiva en ningun
+sentido: por un lado, refuerza la cautela ya documentada sobre
+`n_linked_glycosylation` en este proyecto (el propio DeepPTMPred no tiene
+poder discriminativo aqui); por otro, Tau es una proteina intrinsecamente
+desordenada (plDDT medio 49.34, ver Extension 3 arriba) y no hay evidencia
+experimental externa (GlyGen no devolvio N-glicosilacion confirmada para
+P10636 en las consultas ya hechas, ver seccion de Fase A clase 2) que
+confirme cual de los tres motores acierta en este caso concreto -- ningun
+motor tiene la ultima palabra, StackGlyEmbed es una corroboracion adicional
+puramente informativa, exactamente como se diseño.
+
+136 tests (`pytest tests/`, subio de 118 -- 11 de
+`tests/test_stackglyembed_engine.py` + 8 de `tests/test_ptm_annotation.py`;
+el resto de `src/engines/`/`src/utils/` no cambiaron). El recurso externo
+(`B-Cell-Epitope-Prediction/StackGlyEmbed/`) vive fuera de este repo, nada
+nuevo que gitignorar aqui.

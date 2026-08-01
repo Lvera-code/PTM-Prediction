@@ -75,8 +75,26 @@ curl -L -o /tmp/pretrained_model.zip https://github.com/A4Bio/MeToken/releases/d
 python -c "import zipfile; zipfile.ZipFile('/tmp/pretrained_model.zip').extractall('MeToken')"
 ```
 
+StackGlyEmbed (corroboracion OPCIONAL e informativa de N-glicosilacion,
+AMBOS caminos -- FASTA y PDB, ver STATUS.md 2026-08-01 -- NUNCA un motor de
+consenso, se puede omitir sin perder funcionalidad del pipeline principal,
+`Settings.STACKGLYEMBED_ENABLED` degrada solo con un aviso si no esta
+disponible). A diferencia de los demas motores, NO requiere instalacion
+propia aqui -- reusa el venv/pickles YA instalados en el proyecto hermano
+[BCell-Epitope-Prediction](https://github.com/Lvera-code/BCell-Epitope-Prediction)
+(decision 2026-07-26: nunca se importa codigo entre proyectos, pero SI se
+reusan recursos externos pesados ya instalados como venvs/pesos):
+
+```bash
+# Requiere que B-Cell-Epitope-Prediction/StackGlyEmbed/.venv-stackglyembed
+# ya exista (ver su propio README, Seccion 11). Si vive en otra ruta:
+export STACKGLYEMBED_PYTHON_BIN=/ruta/a/B-Cell-Epitope-Prediction/StackGlyEmbed/.venv-stackglyembed/bin/python
+export STACKGLYEMBED_MODELS_DIR=/ruta/a/B-Cell-Epitope-Prediction/StackGlyEmbed/prediction
+```
+
 Ver `STATUS.md` para el detalle completo de que ya se verifico (los 3 repos
-clonados y probados en esta maquina) y que falta.
+clonados y probados en esta maquina, mas el recurso externo de
+StackGlyEmbed) y que falta.
 
 ## Licencias
 
