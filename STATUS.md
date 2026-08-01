@@ -541,7 +541,7 @@ tiene el constructo original). Sirve tambien para SUMO sin cambios de
 codigo (mismo mecanismo Gly-Gly terminal). Sin tests nuevos en la suite
 principal (mismo motivo que el resto de `src/structural/`: requiere
 `pyrosetta`; 101 tests siguen pasando sin cambios, verificado). Vault:
-decision pendiente de escribir en `01-Proyectos/PTM-Prediction/Decisiones/`.
+decision escrita en `01-Proyectos/PTM-Prediction/Decisiones/2026-08-01-fase-a-clase3-ubiquitinacion-sumoilacion-implementada.md`.
 
 ## Calibracion real de DeepPTMPred + bug de distribucion phi/psi (2026-07-30/31)
 
@@ -877,6 +877,11 @@ resoluble desde el codigo. Ver detalle abajo.
    CONFIRMADO INTENCIONAL 2026-07-29 (Enzo). Comportamiento deseado
    (consola limpia); el progreso INFO real sigue disponible en
    `logs/ptm_pipeline.log`. No se cambia codigo. `src/utils/logger_config.py:36`.
+   **REVERTIDO 2026-08-01** (Enzo pidio explicitamente limpiar esto):
+   nivel del handler de consola subido a INFO -- el progreso (ejecucion
+   de motores, routing por accession) ya es visible en vivo, no solo en
+   el archivo rotativo. Test actualizado
+   (`test_console_handler_nivel_info`, antes `_warning`). Commit `fef3e3e`.
 8. ~~Sin tests dedicados para `scripts/generate_deepmvp_calibration.py`,
    `src/engines/base_engine.py`, `src/utils/logger_config.py`~~ — RESUELTO
    2026-07-29: `tests/test_generate_deepmvp_calibration.py` (10, cubre
@@ -1319,3 +1324,37 @@ puramente informativa, exactamente como se diseño.
 el resto de `src/engines/`/`src/utils/` no cambiaron). El recurso externo
 (`B-Cell-Epitope-Prediction/StackGlyEmbed/`) vive fuera de este repo, nada
 nuevo que gitignorar aqui.
+
+## Decision 2 (segundo motor real de consenso, Camino PDB) -- EN CURSO, formalizado 2026-08-01
+
+No confundir con [[MeToken]] (implementado arriba como corroboracion
+informativa de TIPO, no como motor de consenso -- limitacion real
+encontrada: el checkpoint publicado es un clasificador de tipo en sitios
+ya conocidos, no un detector de sitio).
+
+El candidato real para el rol de segundo motor SIMETRICO en consenso
+(como DeepMVP+DeepPTMPred, pero acotado a `n_linked_glycosylation`, el
+unico tipo con motor muerto) es **CoNglyPred**
+(`github.com/whm242446/CoNglyPred`, Proteomics 2025) -- graph transformer
+sobre PDBs de AlphaFold2 + DSSP + co-atencion con ESM-2, especializado
+exclusivamente en N-glicosilacion. Verificado exhaustivamente 2026-08-01
+que **no tiene pesos publicados en ningun sitio**: ni en el repo, ni en
+releases, ni en tags, ni en issues, ni en su fork identico
+(`trustcm/CoNglyPred`), ni enlazado desde el README (sin Google
+Drive/Zenodo/Dropbox/Baidu). Unico punto no verificable al 100%: el Data
+Availability Statement oficial del paper (Wiley, de pago, sin copia libre
+en PMC/bioRxiv).
+
+Enzo envio un correo el 2026-08-01 a Shaoping Shi (autora de
+correspondencia confirmada, Universidad de Nanchang) pidiendo los pesos
+para uso no comercial -- mismo patron que funciono con DeepPTMPred (ver
+seccion de licencia arriba). **A la espera de respuesta, estimado unos
+dias.** Decision de vault:
+`01-Proyectos/PTM-Prediction/Decisiones/2026-08-01-decision2-segundo-motor-conglypred-pendiente.md`.
+
+Proximo paso real: revisar si llego respuesta antes de la proxima sesion.
+Si responden con los pesos: implementar CoNglyPred como segundo motor de
+consenso especifico para `n_linked_glycosylation`. Si no responden (o
+declinan): decidir entre quedarse sin segundo motor para ese tipo (con
+StackGlyEmbed como corroboracion informativa parcial, ya implementado) o
+buscar una tercera alternativa no evaluada todavia.
