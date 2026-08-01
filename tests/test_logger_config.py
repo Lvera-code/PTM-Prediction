@@ -22,7 +22,7 @@ def test_setup_logger_es_idempotente_no_duplica_handlers(tmp_path, monkeypatch):
     assert len(logger_again.handlers) == n_handlers_primera_vez
 
 
-def test_console_handler_nivel_warning(tmp_path, monkeypatch):
+def test_console_handler_nivel_info(tmp_path, monkeypatch):
     monkeypatch.setattr(logger_config, "LOG_DIR", tmp_path / "logs")
     monkeypatch.setattr(logger_config, "LOG_FILE", tmp_path / "logs" / "ptm_pipeline.log")
 
@@ -31,7 +31,7 @@ def test_console_handler_nivel_warning(tmp_path, monkeypatch):
                         and not isinstance(h, logging.handlers.RotatingFileHandler)]
 
     assert len(console_handlers) == 1
-    assert console_handlers[0].level == logging.WARNING
+    assert console_handlers[0].level == logging.INFO
 
 
 def test_crea_directorio_de_log_y_handler_de_archivo(tmp_path, monkeypatch):

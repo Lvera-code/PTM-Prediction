@@ -33,7 +33,7 @@ def setup_logger(name: str = "PTM_Pipeline") -> logging.Logger:
         )
 
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.WARNING)
+        console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
 
