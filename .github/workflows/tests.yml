@@ -1,0 +1,30 @@
+name: tests
+
+# Corre unicamente la suite principal (154 tests, tests/): 100% subprocess
+# mockeado para DeepMVP/DeepPTMPred/MeToken/StackGlyEmbed/Fase A (ninguno
+# esta instalado aqui, ni PyRosetta/TensorFlow -- eso vive en conda envs
+# dedicados que no existen en un runner de CI). Ver STATUS.md/README.md
+# para como correr los tests que si necesitan esos entornos reales
+# (verificacion manual, no automatizada por diseno -- requieren pesos
+# descargados aparte, GBs de checkpoints, licencias academicas de PyRosetta).
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Correr tests
+        run: pytest tests/ -v

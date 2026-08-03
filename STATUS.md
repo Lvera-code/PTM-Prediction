@@ -1491,3 +1491,18 @@ limite es de Rosetta/`pyrosetta_ptm_patch.py`, no del wiring nuevo. Pendiente
 para una sesion futura con mas tiempo: los otros 4 tipos de clase 1
 (acetylation, lys_methylation, phosphorylation, gamma_carboxyglutamic_acid)
 funcionaron sin problema -- este limite es especifico de hidroxilacion.
+
+### Robustez: ddG std ya no se descarta (2026-08-03, mismo dia)
+
+Auditoria post-demo-prep encontro que `ddg_estimate.estimate_ddg` ya
+calculaba la desviacion estandar entre las `nstruct` trayectorias
+independientes de relax (WT y parcheado), pero `fase_a_dispatch._run_class1`
+solo propagaba el minimo (`wt_score`/`mut_score`), descartando `wt_scores`/
+`mut_scores` antes de que la incertidumbre llegara al reporte final -- un
+ddG se mostraba mas seguro de lo que realmente era. Arreglado: nuevo
+`Settings.FASE_A_RESULT_TEMPLATE` (unica fuente de verdad de las claves de
+un resultado de Fase A, compartida entre `fase_a_engine.py`/
+`fase_a_dispatch.py`/`_fase_a_runner.py`, evita que las 4 rutas de salida
+queden desalineadas) incluye ahora `ddg_std`/`wt_score_std`/`mut_score_std`;
+`pipeline.py` anade `fase_a_ddg_std` al CSV final. 154 tests siguen
+pasando (actualizado `_EMPTY_EXTRA` en `test_fase_a_engine.py`).

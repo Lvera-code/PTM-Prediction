@@ -1,5 +1,7 @@
 # PTM-Prediction
 
+[![tests](https://github.com/Lvera-code/PTM-Prediction/actions/workflows/tests.yml/badge.svg)](https://github.com/Lvera-code/PTM-Prediction/actions/workflows/tests.yml)
+
 Pipeline de prediccion de zonas de modificacion post-traduccional (PTM) a
 partir de FASTA o PDB/mmCIF, con modelado estructural real (PyRosetta) de un
 subconjunto de los sitios aceptados. Segundo proyecto del CNB (encargado por
@@ -137,7 +139,12 @@ StackGlyEmbed) y que falta.
 
 ## Licencias
 
-- **DeepMVP**: MIT (declarada en `DeepMVP/LICENSE` del repo original).
+Este repositorio (codigo propio, ver `LICENSE`): CC BY-NC 4.0, uso no
+comercial -- consistente con la dependencia real mas restrictiva (ver abajo).
+
+- **DeepMVP**: GPL-3.0 (declarada en `DeepMVP/LICENSE` del repo original -- corregido
+  2026-08-03, una version anterior de este README decia MIT por error, nunca
+  verificado contra el archivo real hasta ahora).
 - **DeepPTMPred**: el repo (`github.com/kuikui-wang/DeepPTMPred`, vendorizado
   en `DeepPTMPred/`) no declara licencia propia, pero el paper asociado es
   CC BY-NC 4.0 (Oxford University Press). Se contacto directamente a los

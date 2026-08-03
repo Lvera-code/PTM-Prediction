@@ -40,6 +40,7 @@ que corresponde al ``ptm_type`` de ESTE sitio, nunca mezclando clases dentro
 del mismo proceso.
 """
 
+import statistics
 from pathlib import Path
 from typing import Optional
 
@@ -77,6 +78,15 @@ def _run_class1(
     ddg, wt_score, mut_score, wt_scores, mut_scores = ddg_estimate_module.estimate_ddg(
         pdb_path, position, ptm_type, radius=radius, nstruct=nstruct,
     )
+    # Desviacion estandar entre las 'nstruct' trayectorias independientes de
+    # relax por estado (WT y parcheado) -- ya se calculaba en la CLI standalone
+    # de ddg_estimate.py (statistics.pstdev), pero antes de 2026-08-03 se
+    # descartaba aqui sin llegar nunca al reporte final. ddg_std propaga el
+    # error (suma en cuadratura, trayectorias WT/mutante independientes) para
+    # que el reporte no muestre un ddG mas seguro de lo que realmente es.
+    wt_score_std = statistics.pstdev(wt_scores) if len(wt_scores) > 1 else 0.0
+    mut_score_std = statistics.pstdev(mut_scores) if len(mut_scores) > 1 else 0.0
+    ddg_std = (wt_score_std ** 2 + mut_score_std ** 2) ** 0.5
 
     # Vuelca ademas una pose parcheada+relajada real (un unico relax, no
     # nstruct completo) como artefacto estructural visible del sitio -- el
@@ -88,16 +98,16 @@ def _run_class1(
     pose.dump_pdb(str(out_pdb))
 
     return {
+        **Settings.FASE_A_RESULT_TEMPLATE,
         "estado": "modelado",
         "clase": "class1_patch_ddg",
         "ddg": ddg,
+        "ddg_std": ddg_std,
         "wt_score": wt_score,
+        "wt_score_std": wt_score_std,
         "mut_score": mut_score,
-        "glycan_tree": None,
-        "glygen_evidencia": None,
-        "conjugation_metrics": None,
+        "mut_score_std": mut_score_std,
         "output_pdb": str(out_pdb),
-        "error": None,
     }
 
 
@@ -121,16 +131,12 @@ def _run_class2(
     pose.dump_pdb(str(out_pdb))
 
     return {
+        **Settings.FASE_A_RESULT_TEMPLATE,
         "estado": "modelado",
         "clase": "class2_glycan",
-        "ddg": None,
-        "wt_score": None,
-        "mut_score": None,
         "glycan_tree": pyrosetta_glycan_patch.GLYCAN_TREE_BY_TYPE[ptm_type],
         "glygen_evidencia": glygen_evidencia,
-        "conjugation_metrics": None,
         "output_pdb": str(out_pdb),
-        "error": None,
     }
 
 
@@ -149,16 +155,11 @@ def _run_class3(
     pose.dump_pdb(str(out_pdb))
 
     return {
+        **Settings.FASE_A_RESULT_TEMPLATE,
         "estado": "modelado",
         "clase": "class3_conjugation",
-        "ddg": None,
-        "wt_score": None,
-        "mut_score": None,
-        "glycan_tree": None,
-        "glygen_evidencia": None,
         "conjugation_metrics": metrics,
         "output_pdb": str(out_pdb),
-        "error": None,
     }
 
 
@@ -191,18 +192,7 @@ def run_fase_a_for_site(
     out_pdb.parent.mkdir(parents=True, exist_ok=True)
 
     if ptm_type not in SUPPORTED_PTM_TYPES:
-        return {
-            "estado": "sin_soporte_fase_a",
-            "clase": None,
-            "ddg": None,
-            "wt_score": None,
-            "mut_score": None,
-            "glycan_tree": None,
-            "glygen_evidencia": None,
-            "conjugation_metrics": None,
-            "output_pdb": None,
-            "error": None,
-        }
+        return {**Settings.FASE_A_RESULT_TEMPLATE, "estado": "sin_soporte_fase_a"}
 
     try:
         if ptm_type in CLASS1_TYPES:
@@ -211,15 +201,4 @@ def run_fase_a_for_site(
             return _run_class2(pdb_path, position, ptm_type, out_pdb, refine_rounds, uniprot_accession)
         return _run_class3(pdb_path, position, ptm_type, out_pdb, refine_cycles, refine_repack_cycles)
     except Exception as exc:  # noqa: BLE001 -- un sitio individual no debe tumbar el barrido completo
-        return {
-            "estado": "error",
-            "clase": None,
-            "ddg": None,
-            "wt_score": None,
-            "mut_score": None,
-            "glycan_tree": None,
-            "glygen_evidencia": None,
-            "conjugation_metrics": None,
-            "output_pdb": None,
-            "error": f"{type(exc).__name__}: {exc}",
-        }
+        return {**Settings.FASE_A_RESULT_TEMPLATE, "estado": "error", "error": f"{type(exc).__name__}: {exc}"}

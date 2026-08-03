@@ -356,6 +356,20 @@ class Settings:
         "lys_methylation", "n_linked_glycosylation", "o_linked_glycosylation",
         "ubiquitination", "sumoylation",
     )
+    # Plantilla (sin pyrosetta) de todas las claves que puede tener un
+    # resultado de Fase A -- unica fuente de verdad compartida entre
+    # fase_a_engine.py (proceso principal), fase_a_dispatch.py y
+    # _fase_a_runner.py (subprocess con PyRosetta). Evita que las distintas
+    # rutas de salida (modelado/sin_soporte/error/no_disponible) queden
+    # desalineadas entre si -- el bug real 2026-08-03 de "ddg_std" calculado
+    # pero nunca incluido en el dict de resultado (se perdia antes de llegar
+    # al reporte final) fue exactamente este tipo de desalineacion.
+    FASE_A_RESULT_TEMPLATE: dict = {
+        "estado": None, "clase": None, "ddg": None, "ddg_std": None,
+        "wt_score": None, "wt_score_std": None, "mut_score": None, "mut_score_std": None,
+        "glycan_tree": None, "glygen_evidencia": None, "conjugation_metrics": None,
+        "output_pdb": None, "error": None,
+    }
     FASE_A_RUNNER_SCRIPT: Path = Path(
         _env_str(
             "FASE_A_RUNNER_SCRIPT",

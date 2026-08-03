@@ -1,0 +1,48 @@
+PTM-Prediction — License
+
+Copyright (c) 2026 Enzo Sierra
+
+This repository's own original code (everything under `src/`, `pipeline.py`,
+`tests/`, and this file's directory, EXCLUDING the vendored/cloned external
+tools listed below) is licensed under Creative Commons
+Attribution-NonCommercial 4.0 International (CC BY-NC 4.0):
+https://creativecommons.org/licenses/by-nc/4.0/
+
+This choice matches the most restrictive real dependency this project
+relies on at runtime (see below) rather than granting broader rights than
+the overall system can actually support. Non-commercial academic/research
+use (including TFG work and future integration as a CNB-CSIC Scipion
+plugin, a public research institution) is fully covered.
+
+## Why the whole system is non-commercial-only
+
+This project orchestrates several external tools, each with its own
+license, invoked as separate processes (never statically/dynamically
+linked into this project's own code):
+
+- **DeepMVP** (`bzhanglab/DeepMVP`, cloned separately by the user, never
+  committed to this repo, gitignored): GPL-3.0. Invoked via subprocess
+  (separate process, own CLI) -- not linked into this project's code, the
+  standard basis on which independently-distributed GPL programs are
+  invoked by non-GPL callers without extending GPL to the caller. This
+  repo does not redistribute DeepMVP itself.
+- **DeepPTMPred** (`kuikui-wang/DeepPTMPred`, cloned separately, gitignored):
+  no LICENSE file in the repo, but the associated paper is CC BY-NC 4.0
+  (Oxford University Press) and the corresponding author (Junwen Wang)
+  confirmed directly by email (2026-07-29) that the code follows the same
+  terms. Non-commercial only.
+- **PyRosetta** (installed separately by the user, not part of this repo):
+  RosettaCommons academic/non-commercial license. Non-commercial only.
+- **MeToken** (`A4Bio/MeToken`, cloned separately, gitignored): MIT.
+- **StackGlyEmbed**: lives in and is licensed by the sibling project
+  `B-Cell-Epitope-Prediction`, reused here as an external resource, never
+  vendored into this repo.
+
+None of the above are distributed as part of this repository -- each is
+cloned/installed independently by whoever sets up this pipeline, per
+`README.md`. This LICENSE file covers only the code actually committed
+here.
+
+**This is not formal legal advice.** If you intend to use this pipeline
+or its outputs beyond non-commercial research/academic purposes, verify
+the current license terms of each dependency above directly.

@@ -186,6 +186,7 @@ _FASE_A_RESULT_COLUMNS = {
     "estado": "fase_a_estado",
     "clase": "fase_a_clase",
     "ddg": "fase_a_ddg",
+    "ddg_std": "fase_a_ddg_std",
     "glycan_tree": "fase_a_glycan_tree",
     "glygen_evidencia": "fase_a_glygen_evidencia",
     "conjugation_metrics": "fase_a_conjugation_metrics",
@@ -208,8 +209,8 @@ def run_fase_a_pdb_modeling(
     aceptados -- costo computacional real, ver docstring de la funcion),
     modela cada uno via ``FaseAEngine`` (subprocess con PyRosetta, un sitio
     por proceso) y reescribe ``report_path`` con las columnas
-    ``fase_a_estado``/``fase_a_clase``/``fase_a_ddg``/``fase_a_glycan_tree``/
-    ``fase_a_glygen_evidencia``/``fase_a_conjugation_metrics``/``fase_a_output_pdb``
+    ``fase_a_estado``/``fase_a_clase``/``fase_a_ddg``/``fase_a_ddg_std``/
+    ``fase_a_glycan_tree``/``fase_a_glygen_evidencia``/``fase_a_conjugation_metrics``/``fase_a_output_pdb``
     anadidas para TODAS las filas de ``filtered`` (no solo las seleccionadas):
     las no seleccionadas quedan con ``fase_a_estado="no_seleccionado"``, para
     que el reporte final documente explicitamente por que un sitio aceptado

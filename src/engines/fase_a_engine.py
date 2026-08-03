@@ -58,11 +58,7 @@ class FaseASiteRequest:
 
 
 def _empty_result(estado: str, error: Optional[str] = None) -> dict:
-    return {
-        "estado": estado, "clase": None, "ddg": None, "wt_score": None,
-        "mut_score": None, "glycan_tree": None, "glygen_evidencia": None,
-        "conjugation_metrics": None, "output_pdb": None, "error": error,
-    }
+    return {**Settings.FASE_A_RESULT_TEMPLATE, "estado": estado, "error": error}
 
 
 class FaseAEngine(BaseEngine[FaseASiteRequest, dict]):

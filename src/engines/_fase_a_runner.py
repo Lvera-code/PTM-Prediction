@@ -32,6 +32,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from src.config.settings import Settings  # noqa: E402
 from src.structural.fase_a_dispatch import SUPPORTED_PTM_TYPES  # noqa: E402
 
 
@@ -58,12 +59,7 @@ def main() -> int:
     from src.structural.fase_a_dispatch import run_fase_a_for_site
 
     if args.ptm_type not in SUPPORTED_PTM_TYPES:
-        result = {
-            "estado": "sin_soporte_fase_a", "clase": None, "ddg": None,
-            "wt_score": None, "mut_score": None, "glycan_tree": None,
-            "glygen_evidencia": None, "conjugation_metrics": None,
-            "output_pdb": None, "error": None,
-        }
+        result = {**Settings.FASE_A_RESULT_TEMPLATE, "estado": "sin_soporte_fase_a"}
     else:
         result = run_fase_a_for_site(
             Path(args.pdb_path), args.position, args.ptm_type, Path(args.out_pdb),
