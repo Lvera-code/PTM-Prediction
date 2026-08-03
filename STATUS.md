@@ -1358,3 +1358,136 @@ consenso especifico para `n_linked_glycosylation`. Si no responden (o
 declinan): decidir entre quedarse sin segundo motor para ese tipo (con
 StackGlyEmbed como corroboracion informativa parcial, ya implementado) o
 buscar una tercera alternativa no evaluada todavia.
+
+## Fase A conectada al pipeline principal (2026-08-03)
+
+Revierte la decision 2026-07-27 de que D (`apply_workflow_filter`) no ruta a
+Extension 3/Fase A porque esas fases no existian todavia -- motivo: demo
+completa de punta a punta a Carlos Oscar Sorzano el 2026-08-10, se pidio
+explicitamente conectar Fase A (no solo el nucleo de anotacion) para esa
+fecha. Decision completa en el vault,
+`01-Proyectos/PTM-Prediction/Decisiones/` (buscar la nota del 2026-08-03).
+
+**Problema real identificado antes de escribir codigo**: modelar TODOS los
+sitios que pasan el umbral es computacionalmente inviable -- un caso real
+como Tau acepta ~572 sitios, y cada modelado estructural (ddG con nstruct=3,
+conjugacion, refinado de glicano) tarda minutos, no segundos. Decision
+explicita de Enzo: **top-N por tipo** (default 1, `Settings.FASE_A_TOP_N_PER_TYPE`)
+en vez de todos los sitios o solo bajo demanda manual -- representativo y
+demostrable en una corrida real automatica.
+
+### Piezas nuevas
+
+- `src/structural/fase_a_dispatch.py`: enruta un sitio (`pdb_path`,
+  `position`, `ptm_type`) al modulo real correspondiente segun 3 clases
+  mutuamente excluyentes (ver docstring del modulo para el detalle completo):
+  clase 1 (5 tipos, `pyrosetta_ptm_patch.py` + `ddg_estimate.py`), clase 2 (2
+  tipos, `pyrosetta_glycan_patch.py`), clase 3 (2 tipos, `ubiquitin_sumo.py`).
+  Los otros 8/17 tipos devuelven `estado="sin_soporte_fase_a"` sin tocar
+  PyRosetta. Cada llamada asume un proceso PyRosetta fresco -- las 3 clases
+  inicializan PyRosetta con flags incompatibles entre si (confirmado leyendo
+  los 3 modulos: `pyrosetta.init()` solo aplica las flags de su PRIMERA
+  llamada por proceso), por eso nunca se mezclan clases en el mismo proceso
+  (ver `_fase_a_runner.py`, un sitio por subprocess).
+- Arreglo previo necesario: `ddg_estimate.py` importaba `pyrosetta_ptm_patch`
+  con un import BARE (`from pyrosetta_ptm_patch import ...`), que solo
+  funcionaba invocando el script como standalone desde su propio directorio
+  -- cambiado a `from src.structural.pyrosetta_ptm_patch import ...` (mismo
+  patron que `pyrosetta_glycan_patch.py` ya usaba para `glygen_client`), para
+  que `fase_a_dispatch.py` pueda importar los 3 modulos de forma fiable.
+- `src/engines/_fase_a_runner.py`: runner standalone (subprocess, un sitio
+  por proceso, mismo patron que `_deepptmpred_runner.py`) -- inserta la raiz
+  del repo en `sys.path` el mismo (a diferencia de los runners de motores
+  externos, este importa codigo PROPIO del proyecto, no un repo vendorizado,
+  asi que necesita el insert explicito). Serializa el resultado a JSON.
+- `src/engines/fase_a_engine.py`: `FaseAEngine(BaseEngine)` + dataclass
+  `FaseASiteRequest`. Subprocess por sitio via `Settings.FASE_A_PYTHON_BIN`
+  (reusa el MISMO conda env `deepptmpred` ya instalado para DeepPTMPred --
+  mismo PyRosetta real, no un env nuevo). Degradacion NO fatal en todos los
+  modos de fallo (interprete/runner ausentes, exit code != 0, timeout, JSON
+  ausente/malformado) -- mismo patron que `stackglyembed_engine.py`/
+  `metoken_engine.py`: un sitio que falla nunca tumba el resto del barrido.
+- `src/engines/ptm_annotation.py::select_fase_a_candidates`: selecciona el
+  top-N por tipo (prioriza `score_deepptmpred`, fallback `score_deepmvp`)
+  restringido a `Settings.FASE_A_SUPPORTED_PTM_TYPES` (constante de datos
+  pura, sin pyrosetta -- `fase_a_dispatch.py` valida en tiempo de import que
+  coincide exactamente con la union real de los 3 `SUPPORTED_PTM_TYPES`,
+  falla alto si alguna vez divergen).
+- `pipeline.py`: `run_fase3_pdb_annotation` ahora devuelve tambien el
+  DataFrame en memoria (no solo `report_path`); nuevo paso
+  `run_fase_a_pdb_modeling` despues de Fase 3 en el Camino PDB -- reescribe
+  el CSV final con las columnas `fase_a_estado`/`fase_a_clase`/`fase_a_ddg`/
+  `fase_a_glycan_tree`/`fase_a_glygen_evidencia`/`fase_a_conjugation_metrics`/
+  `fase_a_output_pdb` para TODAS las filas aceptadas (no solo las
+  seleccionadas): las no seleccionadas quedan `fase_a_estado="no_seleccionado"`,
+  documentado explicitamente en vez de una columna vacia ambigua. Camino
+  FASTA no cambia (Fase A requiere PDB).
+
+18 tests nuevos (154 total): `tests/test_fase_a_engine.py` (11, subprocess
+mockeado, mismo patron que StackGlyEmbed/MeToken), 7 en
+`tests/test_ptm_annotation.py` para `select_fase_a_candidates` (logica pura
+de pandas, sin pyrosetta, tests reales no mockeados), mas un test de
+integracion en `tests/test_pipeline_fase1.py` mockeando `FaseAEngine.run`
+para verificar el wiring completo del reporte final.
+
+### Corrida real end-to-end (2026-08-03): 7/8 candidatos modelados, 1 hallazgo real nuevo
+
+Verificado con una corrida real completa (Camino PDB: Fase 1.5->2->3->A) sobre
+`DeepPTMPred/data/AF-P10636-F1-model_v4.pdb` (Tau), con `FASE_A_PYTHON_BIN`/
+`DEEPPTMPRED_PYTHON_BIN` apuntando al mismo conda env `deepptmpred` real (no
+mockeado en ningun punto). 749 sitios totales en el reporte final, 8
+candidatos seleccionados por `select_fase_a_candidates` (no 9: ningun sitio
+de `n_linked_glycosylation` supero su umbral calibrado de 0.998 -- el tipo se
+salta limpiamente, confirmado, sin candidato que modelar para el).
+
+```
+tipo_ptm                     posicion  fase_a_estado  detalle
+acetylation                  465       modelado       ddG = +50.72 (ref2015_cart)
+lys_methylation               460       modelado       ddG = -16.90
+phosphorylation                529       modelado       ddG = +42.52
+gamma_carboxyglutamic_acid     319       modelado       ddG = +124.50
+hydroxylation                  499       error          ver hallazgo abajo
+o_linked_glycosylation         498       modelado       glicano = core_1_O-glycan
+sumoylation                    215       modelado       conjugacion real (5 metricas de torsion)
+ubiquitination                  755       modelado       conjugacion real (5 metricas de torsion)
+```
+
+Tiempos reales: ~7-8min por sitio de clase 1 (ddG, nstruct=3 + relax final
+para el PDB de salida), ~20-40s para clase 3 (conjugacion), ~1-2min para
+clase 2 (glicano). Corrida completa (incluyendo Fase 1/2/3 previas: DeepMVP,
+17 invocaciones de DeepPTMPred, MeToken, StackGlyEmbed) en ~43 minutos.
+
+**Hallazgo real nuevo: `hydroxylation` falla siempre via
+`add_variant_type_to_pose_residue`, no es un bug de este proyecto.**
+Investigado en profundidad, no solo registrado: el patch real de Rosetta
+para esto (`pro_hydroxylated_case1.txt`/`case2.txt`,
+`TYPES HYDROXYLATION1`/`HYDROXYLATION2`) SI esta cargado (confirmado via
+introspeccion de `ResidueTypeSet.patches()`, 122 patches totales, ambos
+presentes) y su `BEGIN_SELECTOR` (`PROPERTY PROTEIN`, `NAME3 PRO`,
+`HAS_ATOMS 2HG`) SI se cumple en la pose real (el residuo PRO499 tiene el
+atomo `2HG` explicito, confirmado listando sus atomos). Pese a esto,
+`add_variant_type_to_pose_residue` con `VariantType.HYDROXYLATION`,
+`.HYDROXYLATION1` y `.HYDROXYLATION2` (las 3 variantes existen como enum
+real) fallan las 3 con el mismo error:
+
+```
+ERROR: Unable to find desired residue 'PRO' with variant 'HYDROXYLATION1'.
+Attempted to add target variant(s) to ResidueType using both ResidueType
+base name 'PRO' and base ResidueType.
+```
+
+Verificado que esto NO es especifico de este PDB/pose (mismo resultado
+probando limpio, sin ningun otro patch aplicado antes). La causa raiz exacta
+(por que `add_variant_type_to_pose_residue` no resuelve una combinacion
+base+variante que si esta declarada y cuyo selector se cumple) no se
+investigo mas a fondo por presupuesto de tiempo -- **no se aplico ningun
+workaround sin poder validar su correccion quimica**, mismo criterio ya
+establecido para el patch roto de ubiquitina (2026-07-28/08-01): mejor
+documentar un limite real y confirmado que forzar una solucion no verificada.
+`FaseAEngine`/`fase_a_dispatch.py` degradan esto correctamente
+(`estado="error"`, mensaje real capturado, el resto del barrido continua sin
+verse afectado) -- el wiring en si funciono exactamente como se diseño; el
+limite es de Rosetta/`pyrosetta_ptm_patch.py`, no del wiring nuevo. Pendiente
+para una sesion futura con mas tiempo: los otros 4 tipos de clase 1
+(acetylation, lys_methylation, phosphorylation, gamma_carboxyglutamic_acid)
+funcionaron sin problema -- este limite es especifico de hidroxilacion.

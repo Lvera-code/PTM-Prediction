@@ -42,6 +42,22 @@ acetilacion sobre un residuo LYS real de ``AF-P10636-F1-model_v4.pdb``
 ``LYS`` a ``LYS:acetylated``, confirmado leyendo ``pose.residue(i).name()``
 antes/despues.
 
+**Hallazgo real 2026-08-03 (corrida real de Fase A conectada al pipeline,
+ver STATUS.md): ``hydroxylation`` falla SIEMPRE via
+``add_variant_type_to_pose_residue``**, pese a que el patch real de Rosetta
+(``pro_hydroxylated_case1.txt``/``case2.txt``, ``TYPES HYDROXYLATION1``/
+``HYDROXYLATION2``) esta cargado y su selector (``HAS_ATOMS 2HG``) se
+cumple en poses reales (verificado listando los atomos de un PRO real).
+Las 3 variantes del enum (``HYDROXYLATION``, ``HYDROXYLATION1``,
+``HYDROXYLATION2``) fallan con el mismo error de
+``ResidueTypeSet.cc``: "Unable to find desired residue 'PRO' with variant
+'...'". Causa raiz exacta no investigada mas a fondo (presupuesto de
+tiempo) -- NO se aplico ningun workaround sin poder validar su correccion
+quimica, mismo criterio que el patch roto de ubiquitina (ver
+``ubiquitin_sumo.py``). Los otros 4 tipos de esta clase (acetylation,
+lys_methylation, phosphorylation, gamma_carboxyglutamic_acid) funcionan
+sin problema -- este limite es especifico de hidroxilacion.
+
 ``relax_neighborhood`` implementa el mismo workaround documentado en
 RosettaCommons para ddG/impacto estructural sobre proteinas grandes:
 restringe FastRelax (backbone+chi moviles, packing) a los residuos dentro de

@@ -20,6 +20,7 @@ del vault.
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import List
@@ -29,7 +30,13 @@ import pandas as pd
 from src.config.settings import Settings
 from src.engines.deepmvp_engine import DeepMVPEngine
 from src.engines.deepptmpred_engine import DeepPTMPredEngine
-from src.engines.ptm_annotation import annotate_fasta_path, annotate_pdb_path, apply_workflow_filter
+from src.engines.fase_a_engine import FaseAEngine, FaseASiteRequest
+from src.engines.ptm_annotation import (
+    annotate_fasta_path,
+    annotate_pdb_path,
+    apply_workflow_filter,
+    select_fase_a_candidates,
+)
 from src.utils.exceptions import PipelineError
 from src.utils.fasta_parser import load_and_sanitize, write_fasta
 from src.utils.input_router import route_input
@@ -138,7 +145,7 @@ def run_fase2_pdb_motors(record, output_dir: Path):
 
 def run_fase3_pdb_annotation(
     record, deepmvp_results: pd.DataFrame, deepptmpred_results: pd.DataFrame, output_dir: Path
-) -> Path:
+) -> "tuple[pd.DataFrame, Path]":
     """Camino PDB: Fase 3, nucleo con consenso (B: anotacion + D: filtro).
 
     ``record.chain_pdb_path`` (no ``record.pdb_path``, que puede tener mas
@@ -150,6 +157,12 @@ def run_fase3_pdb_annotation(
     tocar este orquestador. La corroboracion de N-glicosilacion via
     StackGlyEmbed (``Settings.STACKGLYEMBED_ENABLED``) solo necesita
     ``record.sequence`` -- se activa igual, sin depender del PDB.
+
+    Devuelve ``(filtered, report_path)`` -- a diferencia de antes de
+    2026-08-03, expone tambien el DataFrame en memoria (no solo la ruta del
+    CSV ya escrito) porque ``run_fase_a_pdb_modeling`` (paso siguiente en
+    ``main()``) necesita seleccionar candidatos de ``filtered`` sin tener que
+    releerlo de disco.
     """
     annotated = annotate_pdb_path(
         record.accession, record.sequence, deepmvp_results, deepptmpred_results,
@@ -166,7 +179,85 @@ def run_fase3_pdb_annotation(
         "DeepMVP+DeepPTMPred) -> '%s'.",
         len(filtered), len(annotated), n_consenso, report_path,
     )
-    return report_path
+    return filtered, report_path
+
+
+_FASE_A_RESULT_COLUMNS = {
+    "estado": "fase_a_estado",
+    "clase": "fase_a_clase",
+    "ddg": "fase_a_ddg",
+    "glycan_tree": "fase_a_glycan_tree",
+    "glygen_evidencia": "fase_a_glygen_evidencia",
+    "conjugation_metrics": "fase_a_conjugation_metrics",
+    "output_pdb": "fase_a_output_pdb",
+}
+
+
+def run_fase_a_pdb_modeling(
+    record, filtered: pd.DataFrame, output_dir: Path, report_path: Path
+) -> pd.DataFrame:
+    """Camino PDB: Fase A, modelado estructural real de un top-N de sitios por tipo.
+
+    Conectado al pipeline principal 2026-08-03 (ver
+    ``src/engines/fase_a_engine.py`` y ``src/structural/fase_a_dispatch.py``
+    para el detalle completo): revierte la decision 2026-07-27 de que D no
+    rutea a Extension 3/Fase A porque esas fases no existian todavia.
+
+    Selecciona candidatos con ``select_fase_a_candidates`` (top-N por tipo
+    entre los 9/17 tipos con modulo de Fase A real, nunca todos los sitios
+    aceptados -- costo computacional real, ver docstring de la funcion),
+    modela cada uno via ``FaseAEngine`` (subprocess con PyRosetta, un sitio
+    por proceso) y reescribe ``report_path`` con las columnas
+    ``fase_a_estado``/``fase_a_clase``/``fase_a_ddg``/``fase_a_glycan_tree``/
+    ``fase_a_glygen_evidencia``/``fase_a_conjugation_metrics``/``fase_a_output_pdb``
+    anadidas para TODAS las filas de ``filtered`` (no solo las seleccionadas):
+    las no seleccionadas quedan con ``fase_a_estado="no_seleccionado"``, para
+    que el reporte final documente explicitamente por que un sitio aceptado
+    no tiene modelado estructural, en vez de dejar una columna vacia
+    ambigua.
+
+    Si ``Settings.FASE_A_ENABLED`` es ``False`` o no hay candidatos, escribe
+    igualmente las columnas (todas ``no_seleccionado``/``no_disponible``) para
+    que el esquema del reporte final sea estable independientemente de la
+    configuracion.
+    """
+    enriched = filtered.copy()
+    for column in _FASE_A_RESULT_COLUMNS.values():
+        enriched[column] = None
+    enriched["fase_a_estado"] = "no_seleccionado"
+
+    candidates = select_fase_a_candidates(filtered, Settings.FASE_A_TOP_N_PER_TYPE)
+    if candidates.empty:
+        logger.info("Fase A: ningun candidato seleccionable (0 sitios de los 9 tipos soportados).")
+        enriched.to_csv(report_path, index=False)
+        return enriched
+
+    requests = [
+        FaseASiteRequest(
+            accession=record.accession,
+            pdb_path=record.chain_pdb_path,
+            position=int(row["posicion"]),
+            ptm_type=row["tipo_ptm"],
+        )
+        for _, row in candidates.iterrows()
+    ]
+    results = FaseAEngine().run(requests, output_dir=output_dir)
+
+    for request, result in zip(requests, results):
+        mask = (enriched["posicion"] == request.position) & (enriched["tipo_ptm"] == request.ptm_type)
+        for result_key, column in _FASE_A_RESULT_COLUMNS.items():
+            value = result.get(result_key)
+            if value is not None and not isinstance(value, (str, int, float, bool)):
+                value = json.dumps(value)
+            enriched.loc[mask, column] = value
+
+    enriched.to_csv(report_path, index=False)
+    n_modelado = int((enriched["fase_a_estado"] == "modelado").sum())
+    logger.info(
+        "Fase A completa (Camino PDB): %d/%d sitio(s) candidato(s) modelados con exito -> '%s'.",
+        n_modelado, len(candidates), report_path,
+    )
+    return enriched
 
 
 def main(argv: List[str] = None) -> int:
@@ -190,8 +281,11 @@ def main(argv: List[str] = None) -> int:
         else:
             record = run_fase1_5_structure(input_path, output_dir)
             deepmvp_results, deepptmpred_results = run_fase2_pdb_motors(record, output_dir)
-            report_path = run_fase3_pdb_annotation(record, deepmvp_results, deepptmpred_results, output_dir)
-            print(f"Camino PDB completo. Consenso DeepMVP+DeepPTMPred. Reporte: {report_path}")
+            filtered, report_path = run_fase3_pdb_annotation(
+                record, deepmvp_results, deepptmpred_results, output_dir
+            )
+            run_fase_a_pdb_modeling(record, filtered, output_dir, report_path)
+            print(f"Camino PDB completo. Consenso DeepMVP+DeepPTMPred + Fase A. Reporte: {report_path}")
 
     except PipelineError as exc:
         logger.error("Pipeline detenido: %s", exc)

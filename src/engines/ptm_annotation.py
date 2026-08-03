@@ -5,8 +5,13 @@ Diseno cerrado en la decision de arquitectura 2026-07-27 (ver
 en el vault): posicion de residuo como unidad primaria, ventana solo para
 tipos con motivo biologico definido, umbral propio por herramienta con
 score crudo siempre conservado, tipos sin corroboracion incluidos en el
-nucleo marcados como tal, D como filtro de responsabilidad unica sin rutas
-a fases todavia inexistentes (Extension 3 / Fase A).
+nucleo marcados como tal. La decision original de que D (``apply_workflow_filter``)
+no rutea a Extension 3/Fase A (porque esas fases no existian todavia) se
+revirtio 2026-08-03: ``select_fase_a_candidates`` (mas abajo) selecciona
+candidatos DESPUES de D, nunca dentro de D -- D sigue siendo un filtro de
+responsabilidad unica sobre ``pasa_umbral``, la seleccion de Fase A es un
+paso posterior explicito en ``pipeline.py``, no una responsabilidad nueva de
+D.
 
 Correspondencia de tipos DeepMVP <-> DeepPTMPred (verificada leyendo ambos
 repos el 2026-07-27, no asumida): de los 6 tipos biologicos que cubre
@@ -448,8 +453,6 @@ def apply_workflow_filter(annotated_df: pd.DataFrame) -> pd.DataFrame:
     Regla generica (decision 2026-07-27): mantiene solo las filas donde
     ``pasa_umbral`` es ``True`` (ya calculado en B usando el umbral propio de
     cada motor -- fpr calibrado para DeepMVP, probabilidad para DeepPTMPred).
-    Deliberadamente NO rutea a Extension 3 (DeltaDeltaG) ni a Fase A
-    (modelado estructural): esas fases no existen todavia (ver decision).
 
     Args:
         annotated_df: Salida de :func:`annotate_fasta_path` o
@@ -460,3 +463,51 @@ def apply_workflow_filter(annotated_df: pd.DataFrame) -> pd.DataFrame:
         orden preservado.
     """
     return annotated_df[annotated_df["pasa_umbral"]].reset_index(drop=True)
+
+
+def select_fase_a_candidates(
+    filtered_df: pd.DataFrame, top_n_per_type: int = Settings.FASE_A_TOP_N_PER_TYPE
+) -> pd.DataFrame:
+    """Selecciona candidatos a modelado estructural real (Fase A, Camino PDB unicamente).
+
+    Conectado al pipeline principal 2026-08-03 -- revierte la decision
+    2026-07-27 de que D no rutea a Fase A porque esa fase no existia todavia
+    (ver docstring de ``apply_workflow_filter`` en versiones anteriores y
+    ``src/structural/fase_a_dispatch.py`` para el detalle de que 9/17 tipos
+    tienen un modulo de Fase A real implementado).
+
+    Modelar TODOS los sitios que pasan el umbral es computacionalmente
+    inviable (un caso real como Tau acepta ~572 sitios; cada modelado
+    estructural tarda minutos, no segundos) -- esta funcion NUNCA selecciona
+    mas de ``top_n_per_type`` filas por ``tipo_ptm``, priorizando por score
+    (``score_deepptmpred`` si existe -- es el motor que realmente aporta
+    estructura real via PyRosetta a Fase 2 -- si no, ``score_deepmvp``).
+
+    Args:
+        filtered_df: Salida de :func:`apply_workflow_filter` (ya solo filas
+            con ``pasa_umbral=True``).
+        top_n_per_type: Cuantas filas por tipo seleccionar como maximo
+            (default ``Settings.FASE_A_TOP_N_PER_TYPE``).
+
+    Returns:
+        Subconjunto de ``filtered_df`` restringido a
+        ``Settings.FASE_A_SUPPORTED_PTM_TYPES`` (los otros 8 tipos no tienen
+        ningun modulo de Fase A, se excluyen aqui en vez de intentarlo y
+        fallar), con como maximo ``top_n_per_type`` filas por tipo, mismas
+        columnas que ``filtered_df``, ordenado por ``tipo_ptm``.
+    """
+    supported = filtered_df[filtered_df["tipo_ptm"].isin(Settings.FASE_A_SUPPORTED_PTM_TYPES)].copy()
+    if supported.empty:
+        return supported
+
+    supported["_score_fase_a"] = pd.to_numeric(supported["score_deepptmpred"], errors="coerce").combine_first(
+        pd.to_numeric(supported["score_deepmvp"], errors="coerce")
+    )
+    return (
+        supported.sort_values("_score_fase_a", ascending=False)
+        .groupby("tipo_ptm", group_keys=False)
+        .head(top_n_per_type)
+        .drop(columns="_score_fase_a")
+        .sort_values("tipo_ptm")
+        .reset_index(drop=True)
+    )

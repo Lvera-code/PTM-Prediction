@@ -20,8 +20,10 @@ negativo = estabiliza (convencion estandar Rosetta ref2015).
 Verificado con una ejecucion real 2026-07-28: acetilacion de una lisina real
 en ``AF-P10636-F1-model_v4.pdb`` (Tau), ver STATUS.md para el valor
 obtenido y el tiempo de computo real (relevante para decidir timeouts en
-produccion -- el pipeline principal NO invoca este script todavia, decision
-2026-07-27: D es un filtro de responsabilidad unica sin rutas a Extension 3).
+produccion). Conectado al pipeline principal 2026-08-03 via
+``src/structural/fase_a_dispatch.py`` (ver su docstring) -- ya no es
+solo un script suelto, aunque sigue siendo invocable de forma independiente
+con su propio CLI.
 
 ## Robustez de produccion (2026-07-28, actualizado): ``nstruct`` en vez de un solo relax
 
@@ -45,7 +47,7 @@ import statistics
 import sys
 from pathlib import Path
 
-from pyrosetta_ptm_patch import (
+from src.structural.pyrosetta_ptm_patch import (
     SUPPORTED_PTM_TYPES,
     apply_ptm_patch,
     init_pyrosetta,
