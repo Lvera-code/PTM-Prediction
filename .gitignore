@@ -31,3 +31,4 @@ MTPrompt-PTM/
 # regenerable via git clone + descarga del release).
 MeToken/
 .venv-metoken/
+*.whl

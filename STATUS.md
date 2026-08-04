@@ -1745,12 +1745,64 @@ candidatos sin `FASE_A_PYTHON_BIN` apuntando al env con PyRosetta (0/6
 modelados) -- tampoco afecta el recall medido, que es sobre Fase 3, no
 Fase A.
 
-**Corrida de las 6 proteinas restantes (p53, H3, protrombina, HIF-1a, EPO,
-SCF) lanzada en background al cierre de esta sesion** -- proteinas mas
-grandes (HIF-1a 826 aa, protrombina 622 aa), tiempo total estimado varias
-horas dado el ritmo real observado en H4. Reportar los numeros reales
-cuando termine; no dar el panel por "validado" con un recall global hasta
-tener las 7 proteinas, solo la infraestructura (descarga+parseo+tests) y 1
-corrida real completa estan confirmadas ahora mismo.
+**Corrida de las 6 proteinas restantes completada (2026-08-04)** -- la
+corrida en background se interrumpio a mitad de `kit_ligand_scf` (el
+control negativo, ultima proteina de la cola) por una caida de la
+conexion; 5/6 (p53, histone_h3, prothrombin, hif1a, epo) habian terminado
+para entonces con su `_ptm_sites.csv` real ya en disco. Se reanudo solo la
+proteina faltante (`scripts/validate_biological_panel.py --only
+kit_ligand_scf`, no hizo falta repetir las otras 5) y se calculo el recall
+final leyendo los 6 `_ptm_sites.csv` ya generados directamente (misma
+logica de `_recall_by_tier`/`_negative_control_report`, sin re-correr el
+pipeline sobre las 5 ya completas).
+
+**Resultado real, panel completo (7/7 proteinas)**:
+
+| Proteina | Tier A | Tier B |
+|---|---|---|
+| p53 | 7/7 (100%) | 14/15 (93%) |
+| histone_h3 | 11/11 (100%) | 9/10 (90%) |
+| histone_h4 | 6/6 (100%) | 7/9 (78%) |
+| prothrombin | 10/13 (77%) | -- |
+| hif1a | 5/8 (62%) | 2/4 (50%) |
+| epo | 3/4 (75%) | -- |
+| kit_ligand_scf | 3/5 (60%) | -- |
+| **Global** | **45/54 (83%)** | **32/38 (84%)** |
+
+**Control negativo (Asn-97 de kit_ligand_scf/SCF, sequon N-X-S valido pero
+UniProt confirma que NO esta glicosilado): correctamente NO aceptado, 0
+falsos positivos.** Distingue un motor con especificidad real de uno que
+solo empareja el motivo N-X-[S/T] -- ver diseño del control en
+`biological_panel.py`.
+
+Lectura real de los dos casos mas debiles (prothrombin 77%, hif1a
+62%/50%): ambas son proteinas grandes con dominios estructuralmente
+dificiles (protrombina tiene multiples dominios plegados independientes;
+HIF-1a es mayormente intrinsecamente desordenada, pLDDT medio 60.8 fuera
+del dominio bHLH-PAS, como ya documentado arriba) -- consistente con la
+expectativa de que el pipeline funciona mejor en regiones bien
+estructuradas, no una señal de un bug nuevo. No investigado mas a fondo
+en esta sesion (analisis por-sitio de los misses queda como trabajo futuro
+si se quiere mejorar el recall en proteinas grandes/desordenadas).
 
 229 tests en total, todos pasando.
+
+### Punto 9 (2026-08-04, REVERTIDO el mismo dia): imagen Docker -- descartada
+
+Se construyo un Dockerfile de 4 stages (base/deepmvp/deepptmpred/full) como
+continuacion del plan de robustez/produccion post-demo-prep. Causo 2
+incidentes reales de salud del host el mismo dia (el build de `full` colgo
+la VM de WSL2 por agotamiento de RAM a las 13:07-13:14; por separado, las
+imagenes ya construidas -- 27GB -- casi agotaron el disco con solo 11GB
+libres en el host). Al revisar la dinamica real del proyecto (Enzo presenta
+en su propio ordenador con Carlos al lado, itera en vivo hasta que el lo
+declara listo para Scipion -- ver vault), se confirmo que Docker no aporta
+nada a ese flujo: los conda envs ya instalados directamente en el host
+cubren "vivir en mi ordenador" por completo, y la integracion final a
+Scipion se hace via conda envs (igual que el resto de plugins scipion-chem-*
+de Enzo), no via contenedores. Decision de Enzo: eliminar `Dockerfile`,
+`.dockerignore`, `docker/` y las imagenes ya construidas -- no volver a
+proponer containerizar salvo que Carlos o la integracion a Scipion lo
+requieran explicitamente. El wheel de PyRosetta (licencia academica) se
+conservo, movido a la raiz del repo (gitignorado) para no repetir el
+problema de mirrors si se necesita reinstalar en el futuro.
