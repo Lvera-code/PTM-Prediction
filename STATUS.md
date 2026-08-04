@@ -1787,6 +1787,44 @@ si se quiere mejorar el recall en proteinas grandes/desordenadas).
 
 229 tests en total, todos pasando.
 
+### Auditoria final pre-demo (2026-08-04): bug real de terminal-nueva encontrado y arreglado
+
+Enzo pidio verificar a fondo que absolutamente todo estuviera listo antes de
+la primera sesion con Carlos. Se encontro un bloqueante real y reproducible,
+no hipotetico: `DEEPMVP_PYTHON_BIN`/`DEEPPTMPRED_PYTHON_BIN`/
+`FASE_A_PYTHON_BIN`/`METOKEN_PYTHON_BIN` caen por defecto a `sys.executable`
+(el python que corre `pipeline.py`) si no se exportan -- a diferencia de
+`STACKGLYEMBED_PYTHON_BIN` (que ya tiene un default hardcodeado real en
+`settings.py`), estos 4 dependian de que Enzo corriera el `export` manual de
+README.md en la sesion de terminal activa. Ese export nunca quedo persistido
+en `~/.bashrc` (a diferencia de `BEPIPRED_PYTHON_BIN` del proyecto 1, que si
+esta ahi). **Confirmado real**: correr el comando exacto del "Quick Start"
+del README contra un PDB en una terminal nueva simulada (`bash -ic`, sin
+ningun export previo) rompe de inmediato en el primer motor
+(`ModuleNotFoundError: No module named 'pyteomics'`, DeepMVP corriendo bajo
+el python de `cnb_pipeline`).
+
+**Arreglado**: las 4 lineas `export` se agregaron a `~/.bashrc` (mismo
+patron que `BEPIPRED_PYTHON_BIN`), fuera del repo (no es un archivo
+versionado del proyecto). **Verificado con una corrida real completa**,
+terminal nueva simulada, Camino PDB contra Tau: Fase 1.5 -> Fase 2 (434
+DeepMVP + 1003 DeepPTMPred) -> MeToken -> StackGlyEmbed -> Fase 3 (749/1022
+pasan umbral, 116 con consenso) -> Fase A (**8/8 candidatos modelados con
+exito**, incluyendo `hydroxylation` -- reconfirma en produccion el fix del
+Punto 7) -> reporte final generado sin ningun error. Cero excepciones en
+todo el log.
+
+Tambien revisado y descartado como bloqueante real: docstring desactualizado
+en `deepptmpred_engine.py` (dice "NO PROBADO TODAVIA contra el entorno real",
+escrito 2026-07-27, contradicho por docenas de corridas reales desde
+entonces) -- cosmetico, no funcional, no arreglado en esta sesion.
+
+**Conclusion de la auditoria**: no queda ningun bloqueante tecnico para las
+sesiones con Carlos. El unico item real abierto en todo el proyecto es
+Decision 2 (CoNglyPred, segundo motor para `n_linked_glycosylation`) --
+esperando respuesta de Shaoping Shi (email 2026-08-01 + seguimiento
+2026-08-04, sin respuesta aun en ninguno de los dos hilos).
+
 ### Punto 9 (2026-08-04, REVERTIDO el mismo dia): imagen Docker -- descartada
 
 Se construyo un Dockerfile de 4 stages (base/deepmvp/deepptmpred/full) como
