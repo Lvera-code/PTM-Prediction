@@ -1630,3 +1630,110 @@ pasando.
 tipos soportados (phosphorylation, acetylation, hydroxylation,
 gamma_carboxyglutamic_acid, lys_methylation) funcionan sin ningun
 limite conocido pendiente.
+
+### Punto 8 (2026-08-04): panel de validacion biologica (7 proteinas reales adicionales a Tau)
+
+Hasta ahora el pipeline solo se habia corrido de punta a punta contra UNA
+proteina real (Tau/MAPT). Investigado por un subagente Opus (criterio ya
+autorizado: verificar una afirmacion cientifica contra fuente primaria
+antes de fijarla en produccion) que sourcing real de sitios PTM
+documentados en literatura para un panel mas amplio, con la regla dura de
+este proyecto de nunca fabricar datos cientificos.
+
+**Metodo real de verificacion** (no memoria/aproximacion): cada sitio del
+panel viene de una anotacion de UniProt con evidencia `ECO:0000269`
+(experimental) y un PMID confirmado via NCBI eutils -- se descarto
+explicitamente toda anotacion `ECO:0000250` ("por similitud", no
+experimental en humano). El propio subagente encontro y descarto 2 PMIDs
+que recordaba de memoria pero que resultaron ser papers no relacionados al
+verificarlos -- no estan citados en el panel final.
+
+**Hallazgo real importante que cambia el diseño**: las URLs `_v4` de
+AlphaFold estan muertas (404) -- AlphaFold DB esta en v6, hay que usar
+`AF-<accession>-F1-model_v6.pdb`. Verificado tambien que **la numeracion de
+AlphaFold coincide exactamente con la numeracion canonica de UniProt**
+(confirmado corriendo `src.utils.structure_parser.parse_structure` sobre
+los 7 PDBs reales descargados: longitud de cadena = longitud UniProt en
+los 7 casos) -- por eso el panel usa exclusivamente AlphaFold, no PDBs
+experimentales. **3 trampas de numeracion reales encontradas y evitadas**
+(verificadas via registros DBREF de PDBs experimentales reales, NO
+usadas en el panel final mas que como advertencia): histonas H3/H4 (PDB
+experimental = UniProt - 1, el Met inicial se recorta), protrombina (PDB
+experimental = UniProt - 43, numeracion de cadena madura), EPO (PDB
+experimental = UniProt - 27) -- documentadas en el docstring de
+`biological_panel.py` para que nadie las reintroduzca sin querer al añadir
+un PDB experimental en el futuro.
+
+**Panel final, 7 proteinas + 1 control negativo real** (`src/validation/
+biological_panel.py`, PDBs reales en `fasta_inputs/validation_panel/`,
+descargados y verificados -- cada residuo del ground truth se comprueba
+contra la secuencia real del PDB en `tests/test_biological_panel.py`, 30
+tests, todos pasando):
+- **p53/TP53** (P04637, 393 aa): fosforilacion/acetilacion/metilacion de
+  Lys y Arg/ubiquitinacion/sumoilacion -- 7 sitios tier A (S15/S20/S46/
+  S392 fosfo, K382 acetil, K370/K372 metil, todos multi-PMID) + 14 tier B.
+- **Histona H3.1** (P68431, 136 aa) e **Histona H4** (P62805, 103 aa):
+  las marcas clasicas de metilacion/acetilacion/fosforilacion (H3K4/K9/
+  K27/K36 me, H3K9/K14/K18/K23 ac, H3S10/S28 ph, H4K5/K8/K12/K16 ac,
+  H4K20 me, H4S47 ph -- todas tier A, decadas de evidencia independiente)
+  mas crotonilacion/succinilacion/glutarilacion/citrulinacion tier B (MS a
+  gran escala). Nombres de campo (`H3K4` etc) = UniProt - 1, documentado
+  explicitamente para no confundir con la posicion real usada.
+- **Protrombina/F2** (P00734, 622 aa): **el sitio mas fuerte del panel** --
+  10/10 residuos gamma-carboxiglutamato confirmados independientemente por
+  registros MODRES de un cristal real (6C2W) ademas de la secuenciacion
+  original, mas 3 sitios de N-glicosilacion. Unica fuente real de
+  `gamma_carboxyglutamic_acid` en el panel.
+- **HIF-1a** (Q16665, 826 aa): unica fuente real de `hydroxylation` (P402/
+  P564/N803, tier A pese a 1-4 PMIDs cada uno por ser papers landmark
+  universalmente aceptados) mas sumoilacion/ubiquitinacion. pLDDT bajo
+  (60.8, proteina intrinsecamente desordenada fuera del dominio bHLH-PAS)
+  -- esperado, no es un fallo de datos. K532 acetilacion DELIBERADAMENTE
+  EXCLUIDA (contestada en la literatura, el subagente no pudo verificar
+  las citas de refutacion que recordaba).
+- **EPO** (P01588, 193 aa): 4 sitios de N/O-glicosilacion, tier A pese a 1
+  PMID cada uno por venir de una caracterizacion quimica DIRECTA (mapeo de
+  peptidos de la glicoproteina purificada, Lai et al. 1986), no de un
+  screening.
+- **KIT ligand/SCF** (P21583, 273 aa): **control negativo real** -- Asn-97
+  es un sequon N-X-S perfectamente valido que UniProt confirma
+  explicitamente como NO glicosilado en ninguna de las 2 isoformas
+  conocidas (mismo PMID que documenta los sitios SI glicosilados de la
+  misma proteina) -- distingue un motor con especificidad real de uno que
+  solo empareja el motivo N-X-[S/T].
+
+Cobertura: **9/9 tipos de Fase A** y 15/17 tipos del nucleo (todos menos
+malonylation/glutathionylation, que se dejaron fuera del panel final para
+controlar alcance -- ver el reporte completo del subagente para 2 proteinas
+opcionales, GAPDH/CLIC1, que las cubririan si se quiere ampliar despues).
+
+**Construido y verificado (no solo diseñado)**:
+1. Los 7 PDBs reales descargados de `alphafold.ebi.ac.uk` y verificados
+   parseables por `src.utils.structure_parser.parse_structure` (Fase 1.5
+   real, no simulada) -- longitud exacta esperada en los 7 casos.
+2. `tests/test_biological_panel.py` (30 tests): cada `GroundTruthSite`
+   coincide con el residuo real de esa posicion en el PDB descargado (el
+   chequeo que habria detectado cualquiera de las 3 trampas de numeracion
+   si el panel las hubiera heredado por error), todos los tipos PTM son de
+   los 17 soportados, cobertura de los 9 tipos de Fase A confirmada,
+   sin duplicados, al menos 1 control negativo real.
+3. `scripts/validate_biological_panel.py`: corre Fase 1.5->2->3 REAL
+   (sin Fase A -- mide calidad de anotacion/consenso, no modelado
+   estructural, que ya se valido por separado) sobre cada proteina del
+   panel, compara contra el ground truth, reporta recall tier A/B por
+   separado (nunca mezclados) y marca explicitamente cualquier falso
+   positivo sobre el control negativo. `tests/test_validate_biological_panel.py`
+   (4 tests, motores mockeados, mismo criterio que test_pipeline_fase1.py).
+
+**Pendiente, en curso al cierre de esta sesion**: la corrida REAL end-to-end
+(motores DeepMVP/DeepPTMPred de verdad, sin mock) del script sobre las 7
+proteinas -- lanzada sobre Histona H4 (la mas pequeña, 103 aa) para medir
+tiempo real: **DeepPTMPred domina el tiempo independientemente del tamaño
+de la proteina** (ESM-2 + calculo de features PyRosetta por residuo), la
+corrida sobre H4 seguia en curso pasados 10 minutos. Los numeros de recall
+reales (no solo la infraestructura de validacion) quedan para cuando esa
+corrida -- y las 6 restantes -- terminen; no reportar un recall aqui hasta
+tener el resultado real, para no repetir el error de dar algo por
+verificado sin haberlo corrido de verdad.
+
+229 tests en total, todos pasando.
