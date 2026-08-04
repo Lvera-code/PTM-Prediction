@@ -1506,3 +1506,76 @@ un resultado de Fase A, compartida entre `fase_a_engine.py`/
 queden desalineadas) incluye ahora `ddg_std`/`wt_score_std`/`mut_score_std`;
 `pipeline.py` anade `fase_a_ddg_std` al CSV final. 154 tests siguen
 pasando (actualizado `_EMPTY_EXTRA` en `test_fase_a_engine.py`).
+
+### Robustez, puntos 5/6 (2026-08-04): modo batch + tests dedicados de `src/structural/`
+
+Continuacion del plan de robustez/produccion post-demo-prep (puntos 1-4:
+LICENSE, ddG std, `requirements.txt` fijado, CI basico, ver arriba).
+
+**Punto 5 (modo batch)**: `pipeline.py --input` acepta ahora un directorio
+ademas de un archivo unico. `src/utils/input_router.py` ya tenia
+`route_inputs` (plural) preparado desde su diseño original pero nunca se
+habia conectado a la CLI -- `main()` solo llamaba a `route_input` (singular)
+sobre un unico archivo. Extraido `run_single_input()` (misma logica de
+`main()` de antes, factorizada para que el modo de un solo archivo y el modo
+batch reusen exactamente el mismo camino, sin duplicarlo) y añadido
+`_run_batch()`: descubre archivos con extension reconocida en el directorio
+(no recursivo, mismo alcance plano que `fasta_inputs/`), corre cada uno,
+**un archivo que falla no detiene el resto del batch** (mismo criterio de
+degradacion no fatal que `FaseAEngine`/StackGlyEmbed/MeToken aplican
+por-sitio), y escribe `batch_summary.csv` en `output_dir` (columnas
+`archivo`/`estado`/`detalle`). Codigo de salida 0 solo si TODOS los archivos
+completaron sin error; un directorio sin ningun archivo reconocido tambien
+falla explicitamente (1), no en silencio. 3 tests nuevos
+(`tests/test_pipeline_batch.py`): batch multi-archivo OK, degradacion
+parcial (1 OK + 1 invalido, ambos se procesan, exit code 1), directorio
+vacio de inputs reconocibles.
+
+**Punto 6 (tests dedicados de `src/structural/`)**: ninguno de los 5 modulos
+de Fase A (`fase_a_dispatch.py`, `ddg_estimate.py`, `pyrosetta_ptm_patch.py`,
+`pyrosetta_glycan_patch.py`, `ubiquitin_sumo.py`) tenia tests propios --
+solo se ejercitaban indirectamente via `test_fase_a_engine.py`/
+`test_pipeline_fase1.py`, que mockean `FaseAEngine`/`FaseASiteRequest`
+entero sin llegar nunca a la logica interna de estos modulos. Los 5 modulos
+solo importan `pyrosetta` dentro de funciones (nunca a nivel de modulo, por
+diseño -- ver docstring de `src/structural/__init__.py`), lo que los hace
+importables sin PyRosetta instalado; donde una funcion hace un import
+incondicional de `pyrosetta.*` ANTES de su propia logica de validacion
+(`apply_ptm_patch`/`attach_glycan`/`_run_class2`/`_run_class3`/
+`estimate_ddg`), se stubea un arbol minimo de modulos en `sys.modules` (via
+`monkeypatch.setitem`) en vez de mockear a nivel de subprocess -- mismo
+criterio de "mockear en el limite mas bajo posible" que el resto del
+proyecto. 36 tests nuevos, ninguno requiere PyRosetta/conda envs:
+
+- `test_fase_a_dispatch.py` (7): routing a clase 1/2/3 segun `ptm_type`,
+  tipo sin soporte (`estado="sin_soporte_fase_a"`, ningun modulo de PyRosetta
+  se inicializa), excepcion real de un submodulo traducida a `estado="error"`
+  sin propagar, calculo de `ddg_std` (suma en cuadratura de las desviaciones
+  WT/mutante) verificado contra `statistics.pstdev`, corroboracion GlyGen
+  opcional (clase 2) solo se consulta si se pasa `uniprot_accession`,
+  consistencia `SUPPORTED_PTM_TYPES` vs `Settings.FASE_A_SUPPORTED_PTM_TYPES`.
+- `test_ubiquitin_sumo.py` (11): las 4 excepciones reales de `_validate_target`
+  (tipo no soportado, pose multicadena, numeracion PDB no secuencial --
+  el "segundo hallazgo real" documentado en el modulo --, residuo objetivo
+  no es Lisina -- Rosetta mismo no lo valida, `runtime_assert` comentada en
+  su .cc real), caso valido por cada tipo soportado, `_lyx_params_path`
+  (encuentra/no encuentra el params file relativo a `pyrosetta.__file__`),
+  y una regresion real: los 2 PDB de referencia empaquetados
+  (`ubiquitin_reference.pdb`/`sumo1_reference.pdb`) existen en disco.
+- `test_pyrosetta_glycan_patch.py` (5): las 4 ramas de `check_glygen_evidence`
+  (red no disponible, sin sitio reportado, sitio con glicano especifico,
+  sitio sin glicano especifico) -- esta funcion no necesita ningun stub de
+  pyrosetta, solo mockea `glygen_client.lookup_site` en el mismo limite que
+  ya usa `test_glygen_client.py`.
+- `test_pyrosetta_ptm_patch.py` (9): las 2 excepciones de `apply_ptm_patch`
+  (tipo sin `VariantType` nativo, residuo real no coincide con el esperado
+  -- en ambos casos `add_variant_type_to_pose_residue` NO se llega a invocar,
+  verificado explicitamente), caso valido para los 5 tipos soportados,
+  consistencia `PTM_VARIANT_MAP`/`PTM_TARGET_RESIDUE`/`SUPPORTED_PTM_TYPES`.
+- `test_ddg_estimate.py` (4): `_best_of_n_relax` devuelve el minimo de
+  `nstruct` trayectorias independientes (una pose fresca por trayectoria, no
+  reusada) y solo aplica el parche cuando `ptm_type is not None` (rama WT);
+  `estimate_ddg` end-to-end con `nstruct=3` y `nstruct=1`, verificado que usa
+  el minimo por estado (no el promedio) para el ddG final.
+
+193 tests en total (154 + 3 batch + 36 de `src/structural/`), todos pasando.

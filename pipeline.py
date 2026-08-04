@@ -39,7 +39,7 @@ from src.engines.ptm_annotation import (
 )
 from src.utils.exceptions import PipelineError
 from src.utils.fasta_parser import load_and_sanitize, write_fasta
-from src.utils.input_router import route_input
+from src.utils.input_router import FASTA_EXTENSIONS, STRUCTURE_EXTENSIONS, route_input
 from src.utils.logger_config import setup_logger
 from src.utils.structure_parser import parse_structure
 
@@ -55,9 +55,11 @@ def parse_args(argv: List[str] = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--input", required=True,
-        help="Ruta al archivo de entrada (dentro de fasta_inputs/): FASTA (Camino FASTA, "
-        "DeepMVP solo) o PDB/mmCIF (Camino PDB, consenso DeepMVP+DeepPTMPred). El tipo se "
-        "detecta automaticamente (ver src.utils.input_router).",
+        help="Ruta a un archivo de entrada (dentro de fasta_inputs/): FASTA (Camino FASTA, "
+        "DeepMVP solo) o PDB/mmCIF (Camino PDB, consenso DeepMVP+DeepPTMPred); o a un "
+        "directorio con varios de estos archivos, para correr el pipeline sobre todos en "
+        "una sola invocacion (modo batch). El tipo de cada archivo se detecta "
+        "automaticamente (ver src.utils.input_router).",
     )
     parser.add_argument(
         "--output-dir", default=str(Settings.FASTA_OUTPUT_DIR),
@@ -261,6 +263,87 @@ def run_fase_a_pdb_modeling(
     return enriched
 
 
+def _discover_batch_inputs(directory: Path) -> List[Path]:
+    """Lista, en orden alfabetico, los archivos de ``directory`` con una extension reconocida
+    por ``src.utils.input_router`` (FASTA o estructura). No recursivo -- mismo alcance plano
+    que ``fasta_inputs/`` en el uso de un solo archivo. El contenido de cada archivo se
+    revalida igual que en modo de un solo archivo (``route_input`` dentro de ``run_single_input``),
+    esto es solo un filtro rapido por extension para no intentar rutear cada archivo random
+    que pueda haber en la carpeta (p.ej. ``.csv``/``.log`` de una corrida anterior).
+    """
+    recognized = FASTA_EXTENSIONS | STRUCTURE_EXTENSIONS
+    return sorted(
+        p for p in directory.iterdir() if p.is_file() and p.suffix.lower() in recognized
+    )
+
+
+def run_single_input(input_path: Path, output_dir: Path) -> Path:
+    """Corre el pipeline completo (Camino FASTA o PDB, segun ``route_input``) sobre un unico
+    archivo de entrada. Extraido de ``main()`` para que el modo batch (``main()`` con
+    ``--input`` apuntando a un directorio) pueda reusar exactamente la misma logica por
+    archivo, sin duplicarla.
+
+    Devuelve la ruta del reporte final. Cualquier ``PipelineError`` de las fases internas se
+    propaga sin capturar -- el llamador decide si eso detiene todo el proceso (modo de un
+    solo archivo) o solo ese archivo del batch (modo batch, ver ``main()``).
+    """
+    routed = route_input(input_path)
+
+    if routed.input_type == "fasta":
+        records = load_and_sanitize(input_path)
+        out_stem = records[0].accession if len(records) == 1 else input_path.stem
+        clean_path = run_fase1_fasta(input_path, output_dir)
+        deepmvp_results = run_fase2_fasta_motor(clean_path, output_dir)
+        report_path = run_fase3_fasta_annotation(records, deepmvp_results, output_dir, out_stem)
+        print(f"Camino FASTA completo. Motor: DeepMVP. Reporte: {report_path}")
+    else:
+        record = run_fase1_5_structure(input_path, output_dir)
+        deepmvp_results, deepptmpred_results = run_fase2_pdb_motors(record, output_dir)
+        filtered, report_path = run_fase3_pdb_annotation(
+            record, deepmvp_results, deepptmpred_results, output_dir
+        )
+        run_fase_a_pdb_modeling(record, filtered, output_dir, report_path)
+        print(f"Camino PDB completo. Consenso DeepMVP+DeepPTMPred + Fase A. Reporte: {report_path}")
+
+    return report_path
+
+
+def _run_batch(input_dir: Path, output_dir: Path) -> int:
+    """Modo batch: corre ``run_single_input`` sobre cada archivo reconocido de ``input_dir``.
+
+    Un archivo que falla (``PipelineError``) se registra como error y NO detiene el resto del
+    batch -- mismo criterio de degradacion no fatal que ``FaseAEngine``/StackGlyEmbed/MeToken
+    aplican por-sitio (un fallo individual real no debe tumbar todo el barrido). Escribe
+    ``batch_summary.csv`` (columnas: archivo, estado, reporte/error) en ``output_dir``.
+    Codigo de salida: 0 solo si TODOS los archivos completaron sin error, 1 si al menos uno
+    fallo (incluye el caso de un directorio sin ningun archivo reconocido -- ver docstring de
+    ``_discover_batch_inputs``, "vacio" tambien es un resultado que no debe pasar en silencio).
+    """
+    inputs = _discover_batch_inputs(input_dir)
+    if not inputs:
+        logger.error("Modo batch: '%s' no contiene ningun archivo FASTA/PDB/mmCIF reconocido.", input_dir)
+        print(f"ERROR: '{input_dir}' no contiene ningun archivo de entrada reconocido.", file=sys.stderr)
+        return 1
+
+    logger.info("Modo batch: %d archivo(s) encontrado(s) en '%s'.", len(inputs), input_dir)
+
+    rows = []
+    for input_path in inputs:
+        try:
+            report_path = run_single_input(input_path, output_dir)
+            rows.append({"archivo": input_path.name, "estado": "ok", "detalle": str(report_path)})
+        except PipelineError as exc:
+            logger.error("Modo batch: '%s' fallo, continua con el resto -- %s", input_path.name, exc)
+            rows.append({"archivo": input_path.name, "estado": "error", "detalle": str(exc)})
+
+    summary_path = output_dir / "batch_summary.csv"
+    pd.DataFrame(rows).to_csv(summary_path, index=False)
+
+    n_ok = sum(1 for row in rows if row["estado"] == "ok")
+    print(f"Modo batch completo: {n_ok}/{len(rows)} archivo(s) OK. Resumen: {summary_path}")
+    return 0 if n_ok == len(rows) else 1
+
+
 def main(argv: List[str] = None) -> int:
     args = parse_args(argv)
     Settings.ensure_dirs()
@@ -269,25 +352,11 @@ def main(argv: List[str] = None) -> int:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    if input_path.is_dir():
+        return _run_batch(input_path, output_dir)
+
     try:
-        routed = route_input(input_path)
-
-        if routed.input_type == "fasta":
-            records = load_and_sanitize(input_path)
-            out_stem = records[0].accession if len(records) == 1 else input_path.stem
-            clean_path = run_fase1_fasta(input_path, output_dir)
-            deepmvp_results = run_fase2_fasta_motor(clean_path, output_dir)
-            report_path = run_fase3_fasta_annotation(records, deepmvp_results, output_dir, out_stem)
-            print(f"Camino FASTA completo. Motor: DeepMVP. Reporte: {report_path}")
-        else:
-            record = run_fase1_5_structure(input_path, output_dir)
-            deepmvp_results, deepptmpred_results = run_fase2_pdb_motors(record, output_dir)
-            filtered, report_path = run_fase3_pdb_annotation(
-                record, deepmvp_results, deepptmpred_results, output_dir
-            )
-            run_fase_a_pdb_modeling(record, filtered, output_dir, report_path)
-            print(f"Camino PDB completo. Consenso DeepMVP+DeepPTMPred + Fase A. Reporte: {report_path}")
-
+        run_single_input(input_path, output_dir)
     except PipelineError as exc:
         logger.error("Pipeline detenido: %s", exc)
         print(f"ERROR: {exc}", file=sys.stderr)
