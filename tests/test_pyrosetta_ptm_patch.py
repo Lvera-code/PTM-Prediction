@@ -40,11 +40,32 @@ class _FakeVariantType:
     METHYLATION = "METHYLATION"
 
 
+class _FakeResidueTypeSet:
+    def __init__(self):
+        self.name_map = MagicMock(side_effect=lambda name: f"residue_type:{name}")
+
+
+class _FakeChemicalManager:
+    _instance = None
+
+    def __init__(self):
+        self.residue_type_set = MagicMock(return_value=_FakeResidueTypeSet())
+
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = _FakeChemicalManager()
+        return cls._instance
+
+
 @pytest.fixture
 def fake_pyrosetta_chemical(monkeypatch):
     """Stubea 'pyrosetta.rosetta.core.chemical'/'pyrosetta.rosetta.core.pose' en sys.modules
     para que los 'from pyrosetta.rosetta.core.X import Y' incondicionales de apply_ptm_patch
-    resuelvan, sin necesitar pyrosetta real instalado."""
+    resuelvan, sin necesitar pyrosetta real instalado. Incluye tanto la ruta de
+    add_variant_type_to_pose_residue (4 tipos) como la de ChemicalManager/
+    replace_pose_residue_copying_existing_coordinates (hydroxylation, ver
+    PTM_BASE_NAME_MAP -- causa raiz real documentada 2026-08-04 en el modulo)."""
     root = types.ModuleType("pyrosetta")
     rosetta = types.ModuleType("pyrosetta.rosetta")
     core = types.ModuleType("pyrosetta.rosetta.core")
@@ -52,8 +73,12 @@ def fake_pyrosetta_chemical(monkeypatch):
     pose_mod = types.ModuleType("pyrosetta.rosetta.core.pose")
 
     chemical.VariantType = _FakeVariantType
+    _FakeChemicalManager._instance = None  # aislar entre tests
+    chemical.ChemicalManager = _FakeChemicalManager
     add_variant_mock = MagicMock()
     pose_mod.add_variant_type_to_pose_residue = add_variant_mock
+    replace_residue_mock = MagicMock()
+    pose_mod.replace_pose_residue_copying_existing_coordinates = replace_residue_mock
 
     root.rosetta = rosetta
     rosetta.core = core
@@ -106,6 +131,26 @@ def test_todos_los_tipos_soportados_pasan_con_su_residuo_esperado(
     pyrosetta_ptm_patch.apply_ptm_patch(pose, 10, ptm_type)  # no debe lanzar
 
 
+def test_hydroxylation_reemplaza_el_residue_type_en_vez_de_anadir_variant(fake_pyrosetta_chemical):
+    """Causa raiz real (2026-08-04, ver docstring del modulo): los patches de hidroxiprolina
+    son los unicos de fa_standard con SET_BASE_NAME -> construyen un ResidueType BASE nuevo
+    (HYP/0AZ), no una variante de PRO -- add_variant_type_to_pose_residue nunca puede
+    resolverlo. apply_ptm_patch usa replace_pose_residue_copying_existing_coordinates en su
+    lugar, vía PTM_BASE_NAME_MAP."""
+    pose = _FakePose(residues={499: "P"})
+    replace_residue_mock = sys.modules["pyrosetta.rosetta.core.pose"].replace_pose_residue_copying_existing_coordinates
+
+    result = pyrosetta_ptm_patch.apply_ptm_patch(pose, 499, "hydroxylation")
+
+    assert result is pose
+    fake_pyrosetta_chemical.assert_not_called()  # NO usa add_variant_type_to_pose_residue
+    replace_residue_mock.assert_called_once_with(pose, 499, "residue_type:HYP")
+
+
 def test_variant_map_y_target_residue_cubren_los_mismos_tipos():
     assert set(pyrosetta_ptm_patch.PTM_VARIANT_MAP) == set(pyrosetta_ptm_patch.PTM_TARGET_RESIDUE)
     assert pyrosetta_ptm_patch.SUPPORTED_PTM_TYPES == frozenset(pyrosetta_ptm_patch.PTM_VARIANT_MAP)
+
+
+def test_base_name_map_solo_cubre_hydroxylation():
+    assert dict(pyrosetta_ptm_patch.PTM_BASE_NAME_MAP) == {"hydroxylation": "HYP"}

@@ -1579,3 +1579,54 @@ proyecto. 36 tests nuevos, ninguno requiere PyRosetta/conda envs:
   el minimo por estado (no el promedio) para el ddG final.
 
 193 tests en total (154 + 3 batch + 36 de `src/structural/`), todos pasando.
+
+### Punto 7 (2026-08-04): causa raiz real de `hydroxylation` encontrada y arreglada
+
+Cierra el ultimo pendiente de Fase A clase 1 (ver "Fase A conectada al
+pipeline principal", 2026-08-03, arriba: "hallazgo real nuevo... no
+investigado mas a fondo por presupuesto de tiempo"). Investigado a fondo
+via un subagente Opus con PyRosetta real (conda env `deepptmpred`), no
+solo lectura de codigo.
+
+**Causa raiz**: `pro_hydroxylated_case1.txt`/`case2.txt` son los UNICOS 2
+patches de todo `fa_standard` que declaran `SET_BASE_NAME` (`HYP`/`0AZ`,
+confirmado via `grep -rl SET_BASE_NAME` sobre el directorio completo de
+patches). Un patch con `SET_BASE_NAME` construye un `ResidueType` BASE
+nuevo, no una variante del residuo original -- verificado por introspeccion
+en caliente: `HYP`/`0AZ` son `is_base_type()==True` con
+`base_name()=="HYP"`/`"0AZ"`, nunca `"PRO"`. `add_variant_type_to_pose_residue`
+busca dentro de la familia del `base_name()` ACTUAL del residuo (`"PRO"`) --
+como `HYP`/`0AZ` nunca aparecen ahi, la busqueda falla con el error ya
+documentado, pese a que el patch esta cargado y su selector se cumple. Es
+estructural (propiedad fija del patch), ningun flag de init lo cambia. Los
+otros 4 tipos de esta clase no tienen este problema porque sus patches NO
+declaran `SET_BASE_NAME`.
+
+**Arreglo, en `src/structural/pyrosetta_ptm_patch.py`**: nuevo
+`PTM_BASE_NAME_MAP = {"hydroxylation": "HYP"}`; `apply_ptm_patch` reemplaza
+el `ResidueType` completo por `HYP` (case1, 4-hidroxi-L-prolina trans, el
+producto real de la prolil-4-hidroxilasa, ~95% de los casos reales -- ni
+DeepMVP ni DeepPTMPred distinguen case1/case2) via
+`replace_pose_residue_copying_existing_coordinates` en vez de
+`add_variant_type_to_pose_residue` -- mismo patron ya establecido en
+`ubiquitin_sumo.py` de usar la API de Rosetta correcta para una clase de
+residuo que la API generica no puede resolver.
+
+**Verificado empiricamente** (no solo argumentado), contra PRO499 de
+`AF-P10636-F1-model_v4.pdb` (Tau): la geometria ideal reconstruida desde el
+icoor del patch coincide con case1 (CG-OD1 1.424A, OD1-HOD 0.970A, chi4
+-127.11 grados -- NO con case2's +90.01 grados, confirma la estereoquimica
+trans/4R correcta), backbone sin mover (CA/CG desplazamiento 0.0000A), sin
+clashes (contacto intra-residuo mas cercano a OD1: 2.16A),
+`relax_neighborhood` corre sin error sobre el resultado parcheado, y sin
+regresion en los otros 4 tipos de clase 1 (acetylation/lys_methylation/
+phosphorylation/gamma_carboxyglutamic_acid, re-verificados en la misma
+sesion). 2 tests nuevos en `tests/test_pyrosetta_ptm_patch.py` (11 en
+total en ese archivo): la nueva ruta de reemplazo de ResidueType, y que
+`PTM_BASE_NAME_MAP` solo cubre `hydroxylation`. 195 tests en total, todos
+pasando.
+
+**Cierra el plan de robustez/produccion de Fase A clase 1 al 100%**: los 5
+tipos soportados (phosphorylation, acetylation, hydroxylation,
+gamma_carboxyglutamic_acid, lys_methylation) funcionan sin ningun
+limite conocido pendiente.
