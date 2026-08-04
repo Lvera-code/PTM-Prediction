@@ -1725,15 +1725,32 @@ opcionales, GAPDH/CLIC1, que las cubririan si se quiere ampliar despues).
    positivo sobre el control negativo. `tests/test_validate_biological_panel.py`
    (4 tests, motores mockeados, mismo criterio que test_pipeline_fase1.py).
 
-**Pendiente, en curso al cierre de esta sesion**: la corrida REAL end-to-end
-(motores DeepMVP/DeepPTMPred de verdad, sin mock) del script sobre las 7
-proteinas -- lanzada sobre Histona H4 (la mas pequeña, 103 aa) para medir
-tiempo real: **DeepPTMPred domina el tiempo independientemente del tamaño
-de la proteina** (ESM-2 + calculo de features PyRosetta por residuo), la
-corrida sobre H4 seguia en curso pasados 10 minutos. Los numeros de recall
-reales (no solo la infraestructura de validacion) quedan para cuando esa
-corrida -- y las 6 restantes -- terminen; no reportar un recall aqui hasta
-tener el resultado real, para no repetir el error de dar algo por
-verificado sin haberlo corrido de verdad.
+**Primera corrida REAL end-to-end completada (Histona H4, 2026-08-04)**:
+motores DeepMVP/DeepPTMPred de verdad, sin mock -- 13 minutos totales
+(mayormente DeepPTMPred: 17 tipos, uno por subprocess, ESM-2 domina el
+tiempo independientemente del tamaño de la proteina, no es proporcional a
+sus 103 residuos). Resultado real: **Tier A 6/6 (100%)**, **Tier B 7/9
+(78%)**, sin falsos positivos en el control negativo (H4 no tiene ninguno
+propio, ver `kit_ligand_scf`). Los 2 misses de tier B (`S52 phosphorylation`,
+`K13 succinylation`) son exactamente el tipo de sitio que el propio panel
+documenta como mas debil (screening MS unico, estequiometria real
+desconocida) -- consistente con la expectativa, no una señal de alarma.
+Efecto secundario real observado, no bloqueante: MeToken fallo con
+`ModuleNotFoundError: No module named 'omegaconf'` en el env `cnb_pipeline`
+que orquesta el pipeline (MeToken deberia correr en su propio conda env
+`metoken` via `METOKEN_PYTHON_BIN`, no configurado en esta corrida) --
+degrado exactamente como esta diseñado (corroboracion opcional, log de
+aviso, consenso/pasa_umbral sin afectar). Fase A intento modelar 6
+candidatos sin `FASE_A_PYTHON_BIN` apuntando al env con PyRosetta (0/6
+modelados) -- tampoco afecta el recall medido, que es sobre Fase 3, no
+Fase A.
+
+**Corrida de las 6 proteinas restantes (p53, H3, protrombina, HIF-1a, EPO,
+SCF) lanzada en background al cierre de esta sesion** -- proteinas mas
+grandes (HIF-1a 826 aa, protrombina 622 aa), tiempo total estimado varias
+horas dado el ritmo real observado en H4. Reportar los numeros reales
+cuando termine; no dar el panel por "validado" con un recall global hasta
+tener las 7 proteinas, solo la infraestructura (descarga+parseo+tests) y 1
+corrida real completa estan confirmadas ahora mismo.
 
 229 tests en total, todos pasando.
