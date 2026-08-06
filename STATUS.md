@@ -1325,39 +1325,105 @@ el resto de `src/engines/`/`src/utils/` no cambiaron). El recurso externo
 (`B-Cell-Epitope-Prediction/StackGlyEmbed/`) vive fuera de este repo, nada
 nuevo que gitignorar aqui.
 
-## Decision 2 (segundo motor real de consenso, Camino PDB) -- EN CURSO, formalizado 2026-08-01
+## Decision 2 (segundo motor real de consenso, Camino PDB) -- CERRADA 2026-08-06 (EMNGly)
 
 No confundir con [[MeToken]] (implementado arriba como corroboracion
 informativa de TIPO, no como motor de consenso -- limitacion real
 encontrada: el checkpoint publicado es un clasificador de tipo en sitios
 ya conocidos, no un detector de sitio).
 
-El candidato real para el rol de segundo motor SIMETRICO en consenso
+### CoNglyPred (candidato original, 2026-08-01) -- confirmado DEFINITIVAMENTE muerto
+
+El candidato original para el rol de segundo motor SIMETRICO en consenso
 (como DeepMVP+DeepPTMPred, pero acotado a `n_linked_glycosylation`, el
-unico tipo con motor muerto) es **CoNglyPred**
+unico tipo con motor muerto) era **CoNglyPred**
 (`github.com/whm242446/CoNglyPred`, Proteomics 2025) -- graph transformer
-sobre PDBs de AlphaFold2 + DSSP + co-atencion con ESM-2, especializado
-exclusivamente en N-glicosilacion. Verificado exhaustivamente 2026-08-01
-que **no tiene pesos publicados en ningun sitio**: ni en el repo, ni en
-releases, ni en tags, ni en issues, ni en su fork identico
-(`trustcm/CoNglyPred`), ni enlazado desde el README (sin Google
-Drive/Zenodo/Dropbox/Baidu). Unico punto no verificable al 100%: el Data
-Availability Statement oficial del paper (Wiley, de pago, sin copia libre
-en PMC/bioRxiv).
-
+sobre PDBs de AlphaFold2 + DSSP + co-atencion con ESM-2. Verificado
+exhaustivamente 2026-08-01 que no tenia pesos publicados en ningun sitio.
 Enzo envio un correo el 2026-08-01 a Shaoping Shi (autora de
-correspondencia confirmada, Universidad de Nanchang) pidiendo los pesos
-para uso no comercial -- mismo patron que funciono con DeepPTMPred (ver
-seccion de licencia arriba). **A la espera de respuesta, estimado unos
-dias.** Decision de vault:
-`01-Proyectos/PTM-Prediction/Decisiones/2026-08-01-decision2-segundo-motor-conglypred-pendiente.md`.
+correspondencia, Universidad de Nanchang) pidiendo los pesos -- **sin
+respuesta a los 5 dias**. Re-verificado 2026-08-06 via API de GitHub
+directamente (no por busqueda): 0 releases/tags/issues, ultimo push
+2024-08-15, CERO archivos `.pth`/`.pt`/`.pkl` en todo el arbol pese a que su
+propio README instruye cargar `best.pth`. Confirmado genuinamente muerto,
+no solo lento en responder -- descartado.
 
-Proximo paso real: revisar si llego respuesta antes de la proxima sesion.
-Si responden con los pesos: implementar CoNglyPred como segundo motor de
-consenso especifico para `n_linked_glycosylation`. Si no responden (o
-declinan): decidir entre quedarse sin segundo motor para ese tipo (con
-StackGlyEmbed como corroboracion informativa parcial, ya implementado) o
-buscar una tercera alternativa no evaluada todavia.
+### EMNGly (reemplazo adoptado, 2026-08-06)
+
+Investigacion de reemplazo delegada a un subagente Opus (permiso permanente,
+ver vault) mas re-verificacion propia clonando el repo real. **EMNGly**
+(`github.com/StellaHxy/EMNgly`, Hou et al., Bioinformatics 39(11):btad650,
+2023) es el unico candidato con pesos REALES y descargables que preserva la
+propiedad de diseno ya decidida al descartar MTPrompt-PTM como reemplazo de
+DeepPTMPred (el segundo motor debe usar estructura 3D real, no solo
+secuencia):
+
+- Arquitectura: ESM-1b (`site_emb`+`local_emb`, 1280+1280, ver
+  `model/get_esm_embedding.py`) + **MIF** (Masked Inverse Folding de
+  Microsoft, `model/MIF/`, embedding estructural REAL de 256-dim sobre
+  coordenadas de backbone N/CA/C del PDB, licencia BSD-2 permisiva --
+  verificada en el repo oficial de Microsoft, la copia vendorizada en
+  EMNgly perdio el LICENSE) -> SVM (`sklearn.svm.SVC`, 2816 features).
+- Pesos verificados A NIVEL DE BYTES 2026-08-06 (no de README): MIF
+  (`mif.pt`, 13.8MB) bundled en el repo; SVM (`N-GlyDE.pickle`, 36MB) en una
+  carpeta publica de Google Drive, descargado con una peticion HTTP Range
+  real sin autenticacion -- confirmado pickle protocolo 4,
+  `sklearn.svm._classes.SVC`, `n_features_in_=2816` (coincide exacto con
+  1280+1280+256), `_sklearn_version=1.1.1`.
+- Se eligio `N-GlyDE.pickle` (no `N-GlyAltas_classifier.pkl`, tambien
+  disponible en la misma carpeta) porque esta entrenado sobre el benchmark
+  con NEGATIVOS RESTRINGIDOS AL SEQUON N-X-[S/T] -- el regimen correcto para
+  este rol: un modelo entrenado contra negativos sin restringir (como usan
+  MIND-S/PDeepPP, candidatos evaluados y descartados por este motivo) puede
+  acertar solo aprendiendo el motivo que este pipeline YA aplica via
+  `_nglyco_window`, sin aportar una segunda opinion real.
+- Benchmark publicado (N-GlyDE test set): EMNGly MCC 0.736 vs LMNglyPred
+  0.717, DeepNGlyPred 0.605, N-GlyDE 0.499, NetNGlyc 0.265.
+- Sin LICENSE declarado en ningun repo (el paper es CC-BY, no cubre el
+  codigo) -- a diferencia de CoNglyPred, esto NO es bloqueante: los pesos ya
+  estan descargables. Correo pendiente a Xiaoyang Hou/Shiwei Sun/Yaojun Wang
+  (ICT-CAS) solo para limpiar el expediente de licencias, mismo patron que
+  funciono con DeepPTMPred -- no bloquea produccion.
+
+**Implementado** (ver `src/config/settings.py` bloque `EMNGLY_*`,
+`src/engines/_emngly_runner.py`, `src/engines/emngly_engine.py`,
+`src/engines/ptm_annotation.py::_apply_nglyco_consensus`): consenso REAL
+de 3 motores (DeepMVP+EMNGly+StackGlyEmbed) para
+`n_linked_glycosylation`/`glycosylation_n` en Camino PDB --
+`pasa_umbral` = al menos 1 de los motores disponibles pasa (generaliza la
+regla OR del resto de tipos), `consenso` = al menos
+`Settings.NGLYCO_CONSENSUS_MIN_ENGINES` (default 2) pasan. StackGlyEmbed
+se PROMUEVE de corroboracion informativa (rol que mantiene tal cual en
+Camino FASTA) a motor de consenso real en Camino PDB. Fix proactivo de
+alineamiento incluido en el runner: `structure_emb` de MIF esta indexado
+por NUMERO DE RESIDUO DEL PDB (no por orden ATMSEQ) -- el runner traduce
+via la tabla `position_mapping` de Fase 1.5 (`fasta_position`/`pdb_seqid`)
+en vez de asumir que ambas numeraciones coinciden (cierto solo para PDBs de
+AlphaFold2 sin huecos, como los que usa el propio dataset de entrenamiento
+de EMNGly -- ver docstring de `_emngly_runner.py` para el analisis completo,
+incluye tambien la aclaracion de que la convencion de indices BOS-inclusive
+de `site_emb`/`local_emb` NO es un bug pese a la apariencia inicial).
+
+**Pendiente, no bloqueante -- 2 go/no-go checks antes de confiar en produccion**
+(``Settings.EMNGLY_MIN_PROBABILITY=0.5`` es PROVISIONAL, igual que el 0.5
+inicial de DeepPTMPred antes de calibrarse):
+1. Verificar el alineamiento `structure_emb[pdb_seqid-1]` contra sitios de
+   N-glicosilacion reales confirmados en GlyGen (mismo cliente ya
+   implementado, `src/structural/glygen_client.py`), sobre un PDB con
+   huecos/numeracion no continua -- el caso que mas le importa a este fix.
+2. Reproducir MCC~=0.736 corriendo el pipeline completo sobre el split de
+   test de N-GlyDE (con el bug del escalar de `predict.py::get_scores`
+   puenteado, no arreglado en el vendorizado).
+
+Instalacion (venv dedicado `emngly`, pin `scikit-learn==1.1.1` -- ver
+hallazgo de version arriba, README.md tiene el detalle completo):
+```bash
+git clone https://github.com/StellaHxy/EMNgly
+python3 -m venv .venv-emngly
+.venv-emngly/bin/pip install fair-esm torch "scikit-learn==1.1.1" scipy pandas numpy tqdm
+# ESM-1b (~7.4GB) + companero de regresion de contactos, descarga manual (ver README.md)
+# SVM: https://drive.usercontent.google.com/download?id=1hbnEtHHXTGnQAFm-cCHMj3pWQiAYAUsw&export=download&confirm=t
+```
 
 ## Fase A conectada al pipeline principal (2026-08-03)
 

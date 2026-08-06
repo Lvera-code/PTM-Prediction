@@ -32,3 +32,11 @@ MTPrompt-PTM/
 MeToken/
 .venv-metoken/
 *.whl
+
+# EMNGly (motor real de consenso para 'n_linked_glycosylation', reemplazo de
+# CoNglyPred -- decision 2026-08-06, ver STATUS.md): repo clonado, MIF
+# bundled (mif.pt) pero el SVM (checkpoints/N-GlyDE.pickle, Google Drive) y
+# el checkpoint ESM-1b (esm/checkpoints/esm1b_t33_650M_UR50S.pt, ~7.4GB) son
+# descargas manuales aparte. Nunca debe subirse (pesado + regenerable).
+EMNgly/
+.venv-emngly/

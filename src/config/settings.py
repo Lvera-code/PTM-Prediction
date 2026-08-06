@@ -272,23 +272,30 @@ class Settings:
     )
     METOKEN_TIMEOUT_SECONDS: int = _env_int("METOKEN_TIMEOUT_SECONDS", 600)
 
-    # --- Corroboracion opcional: StackGlyEmbed (N-glicosilacion, ambos caminos --
-    # FASTA y PDB, NUNCA un motor de consenso) ---
-    # Motivo (decision 2026-08-01, ver STATUS.md): 'n_linked_glycosylation' en
-    # DeepPTMPred esta CONFIRMADO como modelo muerto (AUROC ~0.51, ya excluido
-    # del consenso via CONSENSUS_EXCLUDED_TYPES en ptm_annotation.py) -- no
-    # arreglable reentrenando, un problema real del dataset/modelo publicado.
-    # StackGlyEmbed (github.com/GaryChan-lab/StackGlyEmbed) es un tercer motor
-    # INDEPENDIENTE de arquitectura (ProteinBERT + ESM-2 650M + ProtT5 apilados
-    # -> meta-clasificador SVM), especializado solo en N-glicosilacion -- ya
-    # instalado y verificado funcionando de verdad en el proyecto HERMANO
-    # 'B-Cell-Epitope-Prediction' (proyecto 1, independiente de este por
-    # decision explicita 2026-07-26 -- NO se importa codigo de un proyecto al
-    # otro, pero SI se reusa su venv/pickles ya instalados como recurso
-    # externo, mismo criterio que cualquier otro motor externo de este
-    # proyecto). A diferencia de MeToken (requiere PDB, Camino PDB unicamente),
-    # StackGlyEmbed solo necesita la secuencia completa -- aplica a ambos
-    # caminos, ver src/engines/ptm_annotation.py.
+    # --- StackGlyEmbed (N-glicosilacion, ambos caminos -- FASTA y PDB) ---
+    # Motivo original (decision 2026-08-01, ver STATUS.md): 'n_linked_glycosylation'
+    # en DeepPTMPred esta CONFIRMADO como modelo muerto (AUROC ~0.51, ya
+    # excluido del consenso via CONSENSUS_EXCLUDED_TYPES en
+    # ptm_annotation.py) -- no arreglable reentrenando, un problema real del
+    # dataset/modelo publicado. StackGlyEmbed (github.com/GaryChan-lab/StackGlyEmbed)
+    # es un motor INDEPENDIENTE de arquitectura (ProteinBERT + ESM-2 650M +
+    # ProtT5 apilados -> meta-clasificador SVM), especializado solo en
+    # N-glicosilacion -- ya instalado y verificado funcionando de verdad en
+    # el proyecto HERMANO 'B-Cell-Epitope-Prediction' (proyecto 1,
+    # independiente de este por decision explicita 2026-07-26 -- NO se
+    # importa codigo de un proyecto al otro, pero SI se reusa su
+    # venv/pickles ya instalados como recurso externo, mismo criterio que
+    # cualquier otro motor externo de este proyecto). A diferencia de
+    # MeToken (requiere PDB, Camino PDB unicamente), StackGlyEmbed solo
+    # necesita la secuencia completa -- aplica a ambos caminos.
+    #
+    # ROL PROMOVIDO 2026-08-06 en Camino PDB (ver bloque EMNGly/
+    # NGLYCO_CONSENSUS_MIN_ENGINES abajo): deja de ser puramente informativo
+    # para 'n_linked_glycosylation'/'glycosylation_n' -- pasa a decidir
+    # 'pasa_umbral'/'consenso' junto con DeepMVP y EMNGly (motor de consenso
+    # real, 3 vias). En Camino FASTA (EMNGly no puede correr sin PDB) sigue
+    # exactamente como antes: puramente informativo, nunca decide
+    # pasa_umbral/consenso.
     STACKGLYEMBED_ENABLED: bool = _env_bool("STACKGLYEMBED_ENABLED", True)
     # Venv REAL del proyecto hermano (torch/tensorflow/transformers/sklearn +
     # ProteinBERT ya instalados, ~pesado -- nunca reinstalado aqui). Verificado
@@ -327,6 +334,132 @@ class Settings:
     # 650M + ProtT5) sobre CPU antes de procesar el primer sitio -- mismo valor
     # que el proyecto hermano usa para la misma carga en frio.
     STACKGLYEMBED_TIMEOUT_SECONDS: int = _env_int("STACKGLYEMBED_TIMEOUT_SECONDS", 900)
+
+    # --- EMNGly (motor real de consenso para 'n_linked_glycosylation', Camino PDB
+    # unicamente -- reemplaza a CoNglyPred, decision 2026-08-06) ---
+    # CoNglyPred (github.com/whm242446/CoNglyPred, candidato original de
+    # Decision 2, ver seccion STackGlyEmbed arriba) quedo confirmado
+    # DEFINITIVAMENTE muerto 2026-08-06 (re-verificado via API de GitHub: 0
+    # releases/tags/issues, ultimo push 2024-08-15, CERO archivos .pth/.pt/.pkl
+    # en todo el arbol pese a que su propio README instruye cargar
+    # 'best.pth') -- el correo del 2026-08-01 a Shaoping Shi nunca goteo una
+    # respuesta con los pesos.
+    #
+    # EMNGly (github.com/StellaHxy/EMNgly, Hou et al., Bioinformatics
+    # 39(11):btad650, 2023) es el reemplazo: verificado exhaustivamente
+    # 2026-08-06 (subagente Opus + reverificacion propia clonando el repo
+    # real) que SI tiene pesos reales y descargables, a diferencia de
+    # CoNglyPred. Arquitectura: ESM-1b (site_emb 1280 + local_emb 1280,
+    # ``model/get_esm_embedding.py``) + MIF -- Masked Inverse Folding de
+    # Microsoft, ``model/MIF/``, embedding ESTRUCTURAL real (256-dim) sobre
+    # coordenadas de backbone N/CA/C del PDB -- concatenados (2816-dim) y
+    # clasificados con un SVM (``sklearn.svm.SVC``, kernel rbf,
+    # probability=True). Preserva la propiedad de diseno ya decidida al
+    # descartar MTPrompt-PTM como reemplazo de DeepPTMPred: el segundo motor
+    # de este tipo debe consumir estructura 3D real, no solo secuencia.
+    #
+    # Pesos verificados a nivel de BYTES, no de README (2026-08-06):
+    # - MIF (``mif.pt``, 13.8MB): bundled directamente en el repo, sin
+    #   descarga aparte (fuente alternativa oficial: Zenodo
+    #   10.5281/zenodo.6573779 de Microsoft).
+    # - SVM (``N-GlyDE.pickle``, 36MB): carpeta publica de Google Drive
+    #   (id ``1hbnEtHHXTGnQAFm-cCHMj3pWQiAYAUsw``), descargada con una
+    #   peticion HTTP Range real sin autenticacion -- primeros bytes
+    #   confirman pickle protocolo 4, primer objeto
+    #   ``sklearn.svm._classes.SVC``, ``n_features_in_=2816`` (coincide
+    #   EXACTO con 1280+1280+256), ``_sklearn_version=1.1.1``. Se eligio
+    #   ``N-GlyDE.pickle`` (no ``N-GlyAltas_classifier.pkl``, tambien
+    #   disponible en la misma carpeta) porque esta entrenado sobre el
+    #   benchmark con NEGATIVOS RESTRINGIDOS AL SEQUON N-X-[S/T] -- el
+    #   regimen de benchmark correcto para este rol (ver STATUS.md, "punto
+    #   metodologico" de la investigacion 2026-08-06): un modelo entrenado
+    #   contra negativos sin restringir (dbPTM/MusiteDeep) puede acertar
+    #   solo aprendiendo el motivo N-X-[S/T], que este pipeline YA aplica
+    #   via ``_nglyco_window`` -- no aportaria una segunda opinion real.
+    #
+    # NO tiene LICENSE declarado en ningun repo (el paper es CC-BY pero eso
+    # NO cubre el codigo) -- a diferencia de CoNglyPred, esto NO es
+    # bloqueante: los pesos ya estan descargables, el correo pendiente a
+    # Xiaoyang Hou/Shiwei Sun/Yaojun Wang (ICT-CAS) es solo para dejar
+    # limpio el expediente de licencias (mismo patron que funciono con
+    # DeepPTMPred), no una dependencia critica.
+    EMNGLY_ENABLED: bool = _env_bool("EMNGLY_ENABLED", True)
+    EMNGLY_HOME: Path = Path(_env_str("EMNGLY_HOME", "EMNgly"))
+    EMNGLY_RUNNER_SCRIPT: Path = Path(
+        _env_str(
+            "EMNGLY_RUNNER_SCRIPT",
+            str(Path(__file__).resolve().parent.parent / "engines" / "_emngly_runner.py"),
+        )
+    )
+    # Python 3.x + fair-esm + torch + scikit-learn (venv dedicado
+    # recomendado, 'emngly', nunca compartido con otros motores). HALLAZGO
+    # REAL 2026-08-06: los pickles del SVM se generaron con
+    # scikit-learn==1.1.1, pero el 'environment.yml' del repo pinnea 1.5.1
+    # -- cargar con una version distinta a la de entrenamiento dispara
+    # 'InconsistentVersionWarning' (probablemente funciona, SVC es estable,
+    # pero no esta garantizado) -- pinnear scikit-learn==1.1.1 en el venv,
+    # no lo que pide el environment.yml del repo.
+    EMNGLY_PYTHON_BIN: str = _env_str("EMNGLY_PYTHON_BIN", sys.executable)
+    # ESM-1b (esm1b_t33_650M_UR50S, ~7.4GB + companero de regresion de
+    # contactos, mismo patron que Settings.DEEPPTMPRED_ESM_CHECKPOINT
+    # arriba) -- descarga separada, NO incluida en el repo. A diferencia
+    # del script original (``model/get_esm_embedding.py``, usa
+    # ``torch.hub.load`` contra ``dl.fbaipublicfiles.com`` en cada corrida,
+    # viola la politica local-only de este proyecto), el runner de este
+    # proyecto exige SIEMPRE una ruta ``.pt`` local -- mismo mecanismo ya
+    # verificado en ``_deepptmpred_runner.py`` (fair-esm entra por la rama
+    # local de ``pretrained.load_model_and_alphabet`` en cuanto el nombre
+    # termina en '.pt', nunca llama a la rama de red).
+    EMNGLY_ESM_CHECKPOINT: Path = Path(
+        _env_str("EMNGLY_ESM_CHECKPOINT", "EMNgly/esm/checkpoints/esm1b_t33_650M_UR50S.pt")
+    )
+    # Pesos MIF, bundled en el repo (ver arriba) -- sin descarga aparte.
+    EMNGLY_MIF_WEIGHTS: Path = Path(_env_str("EMNGLY_MIF_WEIGHTS", "EMNgly/model/MIF/weights/mif.pt"))
+    # SVM entrenado sobre N-GlyDE (negativos restringidos al sequon, ver
+    # arriba) -- descarga manual desde Google Drive, ver README.md Seccion
+    # de instalacion.
+    EMNGLY_SVM_CHECKPOINT: Path = Path(
+        _env_str("EMNGLY_SVM_CHECKPOINT", "EMNgly/checkpoints/N-GlyDE.pickle")
+    )
+    # Cache de embeddings ESM-1b/MIF por accession, mismo patron que
+    # DEEPPTMPRED_CUSTOM_ESM_DIR (evita recalcular el embedding de
+    # secuencia/estructura completa en cada corrida).
+    EMNGLY_CACHE_DIR: Path = Path(_env_str("EMNGLY_CACHE_DIR", "EMNgly/cache"))
+    EMNGLY_TIMEOUT_SECONDS: int = _env_int("EMNGLY_TIMEOUT_SECONDS", 1800)
+    # Umbral PROVISIONAL (decision 2026-08-06, igual de provisional que el
+    # 0.5 inicial de DeepPTMPred antes de su calibracion real 2026-08-01):
+    # el paper de EMNGly no publica un cutoff de probabilidad fijo, solo
+    # AUC/MCC a nivel de dataset completo. 0.5 es el limite de decision
+    # nativo de un SVC(probability=True) sin calibrar contra un umbral
+    # operativo especifico. Pendiente (go/no-go check #2, ver STATUS.md):
+    # reproducir MCC~=0.736 sobre el split de test de N-GlyDE antes de
+    # confiar en este numero en produccion.
+    EMNGLY_MIN_PROBABILITY: float = _env_float("EMNGLY_MIN_PROBABILITY", 0.5)
+
+    # --- Consenso de N-glicosilacion (Camino PDB): regla de fusion de 3 motores ---
+    # Decision 2026-08-06: promueve a StackGlyEmbed de corroboracion
+    # puramente informativa (ver seccion STackGlyEmbed arriba, sigue asi
+    # tal cual en Camino FASTA y quedaba asi tambien en Camino PDB hasta
+    # ahora) a motor de consenso real, JUNTO con EMNGly, especificamente
+    # para 'n_linked_glycosylation'/'glycosylation_n' en Camino PDB (unico
+    # lugar donde EMNGly puede correr -- exige un PDB real). Motivo:
+    # DeepPTMPred esta confirmado muerto para este tipo exacto (AUROC~=0.51,
+    # CONSENSUS_EXCLUDED_TYPES en ptm_annotation.py) -- sin un segundo motor
+    # real, este tipo se quedaba con DeepMVP en solitario, sin ningun
+    # consenso posible.
+    #
+    # Regla (provisional, decision de Enzo si se ajusta tras el uso real):
+    # de los motores que SI lograron evaluar la posicion (DeepMVP siempre;
+    # EMNGly/StackGlyEmbed degradan a ausentes sin lanzar si no estan
+    # instalados o el subproceso falla, ver sus respectivos engines) --
+    # 'pasa_umbral' = al menos 1 motor pasa su propio umbral (generaliza la
+    # regla OR de 2 motores ya usada en el resto de tipos); 'consenso' = al
+    # menos NGLYCO_CONSENSUS_MIN_ENGINES (default 2) pasan. Si solo DeepMVP
+    # logro evaluar la posicion (EMNGly y StackGlyEmbed ambos degradados),
+    # 'consenso' queda SIEMPRE False -- no hay forma de alcanzar 2 con un
+    # solo motor disponible, mismo comportamiento (motor unico, sin
+    # consenso) que existia antes de esta mejora.
+    NGLYCO_CONSENSUS_MIN_ENGINES: int = _env_int("NGLYCO_CONSENSUS_MIN_ENGINES", 2)
 
     # --- Fase A / Extension 3: modelado estructural real (PyRosetta), Camino PDB
     # unicamente -- conectado al pipeline principal 2026-08-03 ---

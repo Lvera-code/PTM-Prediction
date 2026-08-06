@@ -25,14 +25,19 @@ Fase 1 -> Fase 1.5 (PDB unicamente) -> Fase 2 (motores) -> Fase 3 (nucleo) -> Fa
 - **Fase 3 (nucleo)**: anotacion/filtrado + logica de decision de flujo sobre
   las predicciones crudas de Fase 2 (`src/engines/ptm_annotation.py`).
   Fusiona consenso donde DeepMVP y DeepPTMPred coinciden en tipo+posicion.
-  `n_linked_glycosylation` esta deliberadamente EXCLUIDO del consenso (modelo
-  de DeepPTMPred sin poder discriminativo real para este tipo, AUROC 0.51 --
-  ver STATUS.md), aunque ambos motores lo siguen reportando por separado.
+  `n_linked_glycosylation` esta deliberadamente EXCLUIDO de ESA fusion
+  especifica (modelo de DeepPTMPred sin poder discriminativo real para este
+  tipo, AUROC 0.51 -- ver STATUS.md), aunque ambos motores lo siguen
+  reportando por separado -- en su lugar, Camino PDB tiene un consenso REAL
+  distinto para este tipo especifico: **DeepMVP + EMNGly + StackGlyEmbed**
+  (decision 2026-08-06, reemplaza al CoNglyPred original, sin pesos
+  publicados -- ver STATUS.md "Decision 2"), `pasa_umbral` = al menos 1 de
+  los motores disponibles pasa, `consenso` = al menos 2 de 3.
 - **Corroboracion opcional** (nunca deciden `pasa_umbral`/`consenso`, solo
   informan sobre sitios que el consenso YA acepto): **MeToken** (tipo, Camino
-  PDB), **StackGlyEmbed** (N-glicosilacion especificamente, ambos caminos,
-  reusa el venv del proyecto hermano), **GlyGen** (evidencia experimental
-  externa de glicosilacion).
+  PDB), **StackGlyEmbed** (N-glicosilacion, Camino FASTA -- en Camino PDB es
+  motor de consenso, ver arriba), **GlyGen** (evidencia experimental externa
+  de glicosilacion).
 - **Fase A (modelado estructural real via PyRosetta, Camino PDB unicamente)**:
   para un top-N de sitios por tipo (default 1, `Settings.FASE_A_TOP_N_PER_TYPE`
   -- modelar TODOS los sitios aceptados es computacionalmente inviable, un
@@ -46,21 +51,26 @@ Fase 1 -> Fase 1.5 (PDB unicamente) -> Fase 2 (motores) -> Fase 3 (nucleo) -> Fa
   `fase_a_estado="sin_soporte_fase_a"` en el reporte, nunca se omiten en
   silencio.
 
-## Estado actual (2026-08-03)
+## Estado actual (2026-08-06)
 
 Pipeline completo end-to-end (Fase 1/1.5/2/3/A) implementado, instalado y
 verificado con corridas REALES (no solo planeado) en esta maquina: DeepMVP
 (pesos + calibracion real), DeepPTMPred (PyRosetta + ESM-2 + calibracion real
 de los 17 tipos, 2 bugs de train/inferencia encontrados y corregidos --
 phi/psi y plDDT, ver STATUS.md), MeToken, StackGlyEmbed y Fase A (ddG /
-glicano / conjugacion, todos con corridas reales documentadas). 154 tests
-(`pytest tests/`).
+glicano / conjugacion, todos con corridas reales documentadas).
 
-Pendiente, no bloqueante: **CoNglyPred** como segundo motor de consenso
-especifico para N-glicosilacion (candidato preferido, sin pesos publicados en
-ningun sitio verificado -- correo enviado al autor de correspondencia,
-StackGlyEmbed ya cubre parcialmente ese hueco mientras tanto). Ver STATUS.md,
-seccion "Decision 2".
+**Decision 2 (segundo motor de consenso para N-glicosilacion) CERRADA**:
+CoNglyPred (candidato original) confirmado sin pesos publicados en ningun
+sitio -- reemplazado por **EMNGly** (pesos reales, verificados a nivel de
+bytes), implementado y wireado al consenso de `n_linked_glycosylation` junto
+con StackGlyEmbed (promovido de corroboracion informativa a motor de
+consenso en Camino PDB). Ver STATUS.md "Decision 2" para el detalle
+completo. Pendiente, no bloqueante: 2 go/no-go checks (alineamiento de
+`structure_emb` contra sitios reales de GlyGen, reproducir el MCC publicado)
+antes de confiar en el umbral provisional `EMNGLY_MIN_PROBABILITY=0.5` en
+produccion -- ni EMNGly ni sus pesos (ESM-1b/SVM, descarga manual) se han
+corrido todavia contra el entorno real de esta maquina.
 
 ## Uso
 
@@ -116,12 +126,15 @@ curl -L -o /tmp/pretrained_model.zip https://github.com/A4Bio/MeToken/releases/d
 python -c "import zipfile; zipfile.ZipFile('/tmp/pretrained_model.zip').extractall('MeToken')"
 ```
 
-StackGlyEmbed (corroboracion OPCIONAL e informativa de N-glicosilacion,
-AMBOS caminos -- FASTA y PDB, ver STATUS.md 2026-08-01 -- NUNCA un motor de
-consenso, se puede omitir sin perder funcionalidad del pipeline principal,
-`Settings.STACKGLYEMBED_ENABLED` degrada solo con un aviso si no esta
-disponible). A diferencia de los demas motores, NO requiere instalacion
-propia aqui -- reusa el venv/pickles YA instalados en el proyecto hermano
+StackGlyEmbed (N-glicosilacion, AMBOS caminos -- FASTA y PDB). En Camino
+FASTA sigue siendo puramente informativa (`Settings.STACKGLYEMBED_ENABLED`
+degrada solo con un aviso si no esta disponible). En Camino PDB fue
+PROMOVIDA 2026-08-06 a motor real de consenso junto con EMNGly (ver abajo),
+reemplazando el rol que hubiera tenido DeepPTMPred si no estuviera
+confirmado muerto para `n_linked_glycosylation` -- sigue siendo opcional
+(el pipeline no se cae sin ella), pero deja de ser meramente informativa
+ahi. A diferencia de los demas motores, NO requiere instalacion propia
+aqui -- reusa el venv/pickles YA instalados en el proyecto hermano
 [BCell-Epitope-Prediction](https://github.com/Lvera-code/BCell-Epitope-Prediction)
 (decision 2026-07-26: nunca se importa codigo entre proyectos, pero SI se
 reusan recursos externos pesados ya instalados como venvs/pesos):
@@ -133,9 +146,48 @@ export STACKGLYEMBED_PYTHON_BIN=/ruta/a/B-Cell-Epitope-Prediction/StackGlyEmbed/
 export STACKGLYEMBED_MODELS_DIR=/ruta/a/B-Cell-Epitope-Prediction/StackGlyEmbed/prediction
 ```
 
+EMNGly (motor real de consenso para `n_linked_glycosylation`, Camino PDB
+unicamente -- reemplaza a CoNglyPred, decision 2026-08-06, ver STATUS.md
+"Decision 2": CoNglyPred confirmado sin pesos publicados en ningun sitio).
+Opcional (`Settings.EMNGLY_ENABLED` degrada solo con un aviso, el consenso
+de N-glicosilacion cae a DeepMVP+StackGlyEmbed si no esta disponible):
+
+```bash
+git clone https://github.com/StellaHxy/EMNgly
+python3 -m venv .venv-emngly
+.venv-emngly/bin/pip install fair-esm torch "scikit-learn==1.1.1" scipy pandas numpy tqdm
+export EMNGLY_PYTHON_BIN=$(pwd)/.venv-emngly/bin/python
+
+# MIF (embedding estructural, mif.pt) ya viene bundled en el clon -- sin
+# descarga aparte.
+
+# ESM-1b (~7.4GB) + companero de regresion de contactos (fair-esm SIEMPRE lo
+# busca, mismo mecanismo que el checkpoint ESM-2 de DeepPTMPred arriba):
+mkdir -p EMNgly/esm/checkpoints
+curl -L -o EMNgly/esm/checkpoints/esm1b_t33_650M_UR50S.pt \
+  https://dl.fbaipublicfiles.com/fair-esm/models/esm1b_t33_650M_UR50S.pt
+curl -L -o EMNgly/esm/checkpoints/esm1b_t33_650M_UR50S-contact-regression.pt \
+  https://dl.fbaipublicfiles.com/fair-esm/regression/esm1b_t33_650M_UR50S-contact-regression.pt
+
+# SVM (verificado 2026-08-06 con HTTP Range real, ver STATUS.md): elegido
+# N-GlyDE.pickle (negativos restringidos al sequon, el regimen correcto),
+# no N-GlyAltas_classifier.pkl (misma carpeta, entrenado sobre el otro
+# benchmark).
+mkdir -p EMNgly/checkpoints
+curl -L -o EMNgly/checkpoints/N-GlyDE.pickle \
+  "https://drive.usercontent.google.com/download?id=1hbnEtHHXTGnQAFm-cCHMj3pWQiAYAUsw&export=download&confirm=t"
+```
+
+> Los pesos del SVM se generaron con `scikit-learn==1.1.1` -- el
+> `environment.yml` del repo pinnea 1.5.1, pero cargar los pickles con una
+> version distinta a la de entrenamiento dispara `InconsistentVersionWarning`
+> (no garantizado). Pinnea `scikit-learn==1.1.1` en el venv, no lo que pide
+> el `environment.yml` del repo.
+
 Ver `STATUS.md` para el detalle completo de que ya se verifico (todos los
 repos/envs clonados y probados en esta maquina, mas el recurso externo de
-StackGlyEmbed) y que falta.
+StackGlyEmbed, mas los 2 go/no-go checks pendientes de EMNGly antes de
+confiar en produccion) y que falta.
 
 ## Licencias
 
@@ -155,6 +207,15 @@ comercial -- consistente con la dependencia real mas restrictiva (ver abajo).
   plugin de Scipion por el CNB, institucion publica) encaja sin problema
   dentro de CC BY-NC. Detalle completo en `STATUS.md`.
 - **MeToken**: MIT (declarada en `MeToken/LICENSE` del repo original).
+- **EMNGly**: sin LICENSE declarado en ningun repo (`StellaHxy/EMNgly` ni su
+  duplicado `Xiaoyang878/EMNgly`) -- el paper es CC-BY (Bioinformatics) pero
+  eso NO cubre el codigo. Correo pendiente a Xiaoyang Hou/Shiwei Sun/Yaojun
+  Wang (ICT-CAS), mismo patron que funciono con DeepPTMPred -- NO bloqueante
+  (a diferencia de CoNglyPred, los pesos ya son publicos y descargables sin
+  depender de esa respuesta). MIF (vendorizado dentro de EMNgly,
+  `model/MIF/`) es de Microsoft (`microsoft/protein-sequence-models`),
+  licencia BSD-2 permisiva verificada en el repo oficial -- la copia de
+  EMNgly perdio su LICENSE al vendorizarlo.
 - **PyRosetta** (Fase A): licencia academica/no-comercial de RosettaCommons,
   ya cubierta por el uso de investigacion/TFG de este proyecto.
 

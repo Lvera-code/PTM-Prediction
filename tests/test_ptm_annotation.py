@@ -519,3 +519,208 @@ def test_annotate_pdb_path_stackglyembed_excepcion_inesperada_no_tumba_la_anotac
     )
 
     assert bool(result.iloc[0]["pasa_umbral"]) is True  # la anotacion sigue completa pese al fallo
+
+
+# --- Consenso real de N-glicosilacion en Camino PDB (EMNGly + StackGlyEmbed, decision 2026-08-06) ---
+
+
+def _position_mapping_df(accession="ACC1", positions=(25,)):
+    return pd.DataFrame({
+        "accession": [accession] * len(positions),
+        "chain_id": ["A"] * len(positions),
+        "pdb_seqid": list(positions),
+        "insertion_code": [""] * len(positions),
+        "fasta_position": list(positions),
+        "residue_letter": ["N"] * len(positions),
+    })
+
+
+def test_annotate_pdb_path_nglyco_consenso_3_motores_todos_pasan(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        ptm_annotation, "get_emngly_predictions",
+        lambda *a, **k: {25: {"emngly_probability": 0.9}},
+    )
+    monkeypatch.setattr(
+        ptm_annotation, "get_nglyco_corroboration",
+        lambda *a, **k: {25: {"stackglyembed_veredicto": "Glicosilado", "stackglyembed_score": 0.85}},
+    )
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 25, "xxx", 0.95, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path(
+        "ACC1", "N" * 30, deepmvp_df, deepptmpred_df,
+        pdb_path=tmp_path / "fake.pdb", position_mapping=_position_mapping_df(),
+    )
+
+    row = result.iloc[0]
+    assert row["motor"] == "DeepMVP+EMNGly+StackGlyEmbed"
+    assert row["score_emngly"] == 0.9
+    assert row["stackglyembed_veredicto"] == "Glicosilado"
+    assert bool(row["pasa_umbral"]) is True
+    assert bool(row["consenso"]) is True  # 3/3 pasan >= NGLYCO_CONSENSUS_MIN_ENGINES (2)
+
+
+def test_annotate_pdb_path_nglyco_consenso_false_si_solo_1_de_3_pasa(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        ptm_annotation, "get_emngly_predictions",
+        lambda *a, **k: {25: {"emngly_probability": 0.1}},  # bajo el umbral (0.5)
+    )
+    monkeypatch.setattr(
+        ptm_annotation, "get_nglyco_corroboration",
+        lambda *a, **k: {25: {"stackglyembed_veredicto": "No glicosilado", "stackglyembed_score": 0.2}},
+    )
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 25, "xxx", 0.95, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path(
+        "ACC1", "N" * 30, deepmvp_df, deepptmpred_df,
+        pdb_path=tmp_path / "fake.pdb", position_mapping=_position_mapping_df(),
+    )
+
+    row = result.iloc[0]
+    assert row["motor"] == "DeepMVP+EMNGly+StackGlyEmbed"  # los 3 lograron evaluar
+    assert bool(row["pasa_umbral"]) is True  # DeepMVP solo ya basta (regla OR)
+    assert bool(row["consenso"]) is False  # solo 1/3 pasa su propio umbral
+
+
+def test_annotate_pdb_path_nglyco_degrada_a_2_motores_si_emngly_no_disponible(monkeypatch, tmp_path):
+    monkeypatch.setattr(ptm_annotation, "get_emngly_predictions", lambda *a, **k: {})  # degradado
+    monkeypatch.setattr(
+        ptm_annotation, "get_nglyco_corroboration",
+        lambda *a, **k: {25: {"stackglyembed_veredicto": "Glicosilado", "stackglyembed_score": 0.85}},
+    )
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 25, "xxx", 0.95, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path(
+        "ACC1", "N" * 30, deepmvp_df, deepptmpred_df,
+        pdb_path=tmp_path / "fake.pdb", position_mapping=_position_mapping_df(),
+    )
+
+    row = result.iloc[0]
+    assert row["motor"] == "DeepMVP+StackGlyEmbed"
+    assert pd.isna(row["score_emngly"])
+    assert bool(row["consenso"]) is True  # DeepMVP + StackGlyEmbed = 2/2 >= minimo
+
+
+def test_annotate_pdb_path_nglyco_sin_position_mapping_omite_emngly(monkeypatch, tmp_path):
+    called = []
+    monkeypatch.setattr(
+        ptm_annotation, "get_emngly_predictions", lambda *a, **k: called.append(1)
+    )
+    monkeypatch.setattr(
+        ptm_annotation, "get_nglyco_corroboration",
+        lambda *a, **k: {25: {"stackglyembed_veredicto": "Glicosilado", "stackglyembed_score": 0.85}},
+    )
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 25, "xxx", 0.95, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path(
+        "ACC1", "N" * 30, deepmvp_df, deepptmpred_df,
+        pdb_path=tmp_path / "fake.pdb", position_mapping=None,
+    )
+
+    assert called == []  # EMNGly nunca se invoca sin position_mapping
+    assert result.iloc[0]["motor"] == "DeepMVP+StackGlyEmbed"
+
+
+def test_annotate_pdb_path_nglyco_consenso_no_afecta_otros_tipos(monkeypatch, tmp_path):
+    monkeypatch.setattr(ptm_annotation, "get_emngly_predictions", lambda *a, **k: {})
+    monkeypatch.setattr(ptm_annotation, "get_nglyco_corroboration", lambda *a, **k: {})
+
+    deepmvp_df = pd.DataFrame(
+        [
+            ["ACC1", "K", 17, "xxx", 0.9, 0.01, "acetylation_k"],
+            ["ACC1", "N", 25, "xxx", 0.95, 0.01, "glycosylation_n"],
+        ],
+        columns=DEEPMVP_COLUMNS,
+    )
+    deepptmpred_df = pd.DataFrame(
+        [["ACC1", 17, "K", 0.8, "acetylation"]], columns=DEEPPTMPRED_COLUMNS
+    )
+    result = annotate_pdb_path(
+        "ACC1", "A" * 10 + "N" * 20, deepmvp_df, deepptmpred_df,
+        pdb_path=tmp_path / "fake.pdb", position_mapping=_position_mapping_df(),
+    )
+
+    acetyl_row = result[result["tipo_ptm"] == "acetylation"].iloc[0]
+    assert acetyl_row["motor"] == "DeepMVP+DeepPTMPred"  # fusion normal, sin tocar
+    assert bool(acetyl_row["consenso"]) is True
+
+
+def test_annotate_pdb_path_nglyco_consenso_omite_pathway_generico_stackglyembed(monkeypatch, tmp_path):
+    """Con el consenso real activo, NUNCA se invoca el pathway informativo generico (doble subproceso)."""
+    calls = []
+    monkeypatch.setattr(ptm_annotation, "get_emngly_predictions", lambda *a, **k: {})
+
+    def _spy(*a, **k):
+        calls.append(1)
+        return {25: {"stackglyembed_veredicto": "Glicosilado", "stackglyembed_score": 0.85}}
+
+    monkeypatch.setattr(ptm_annotation, "get_nglyco_corroboration", _spy)
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 25, "xxx", 0.95, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    annotate_pdb_path(
+        "ACC1", "N" * 30, deepmvp_df, deepptmpred_df, enable_stackglyembed=True,
+        pdb_path=tmp_path / "fake.pdb", position_mapping=_position_mapping_df(),
+    )
+
+    assert len(calls) == 1  # no 2 -- el pathway generico se omite cuando el consenso real esta activo
+
+
+def test_annotate_pdb_path_nglyco_emngly_deshabilitado_via_settings_usa_pathway_generico(monkeypatch, tmp_path):
+    monkeypatch.setattr(Settings, "EMNGLY_ENABLED", False)
+    emngly_called = []
+    monkeypatch.setattr(
+        ptm_annotation, "get_emngly_predictions", lambda *a, **k: emngly_called.append(1)
+    )
+    monkeypatch.setattr(
+        ptm_annotation, "get_nglyco_corroboration",
+        lambda *a, **k: {25: {"stackglyembed_veredicto": "Glicosilado", "stackglyembed_score": 0.85}},
+    )
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 25, "xxx", 0.95, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path(
+        "ACC1", "N" * 30, deepmvp_df, deepptmpred_df, enable_stackglyembed=True,
+        pdb_path=tmp_path / "fake.pdb", position_mapping=_position_mapping_df(),
+    )
+
+    assert emngly_called == []
+    # Pathway generico (informativo, no decide motor/pasa_umbral/consenso):
+    assert result.iloc[0]["motor"] == "DeepMVP"
+    assert result.iloc[0]["stackglyembed_veredicto"] == "Glicosilado"
+    assert bool(result.iloc[0]["consenso"]) is False
+
+
+def test_annotate_pdb_path_nglyco_consenso_excepcion_inesperada_no_tumba_la_anotacion(monkeypatch, tmp_path):
+    def _boom(*a, **k):
+        raise RuntimeError("fallo inesperado")
+
+    monkeypatch.setattr(ptm_annotation, "get_emngly_predictions", _boom)
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 25, "xxx", 0.95, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path(
+        "ACC1", "N" * 30, deepmvp_df, deepptmpred_df,
+        pdb_path=tmp_path / "fake.pdb", position_mapping=_position_mapping_df(),
+    )
+
+    row = result.iloc[0]
+    assert row["motor"] == "DeepMVP"  # sin cambios, el fallo no tumba la anotacion
+    assert bool(row["pasa_umbral"]) is True

@@ -156,9 +156,12 @@ def run_fase3_pdb_annotation(
     deben coincidir exactamente con ``record.sequence``, mismo criterio que
     usa ``record.chain_id`` (ver Fase 1.5). Se activa/desactiva solo con
     ``Settings.METOKEN_ENABLED`` (ver ``src/engines/ptm_annotation.py``), sin
-    tocar este orquestador. La corroboracion de N-glicosilacion via
-    StackGlyEmbed (``Settings.STACKGLYEMBED_ENABLED``) solo necesita
-    ``record.sequence`` -- se activa igual, sin depender del PDB.
+    tocar este orquestador. ``record.position_mapping`` (misma Fase 1.5) se
+    pasa tambien para habilitar el consenso REAL de N-glicosilacion via
+    EMNGly+StackGlyEmbed (``Settings.EMNGLY_ENABLED``, decision 2026-08-06,
+    reemplaza a CoNglyPred -- ver STATUS.md) -- necesita traducir posiciones
+    ATMSEQ a numeracion real de PDB para alinear ``structure_emb``
+    correctamente (ver docstring de ``_emngly_runner.py``).
 
     Devuelve ``(filtered, report_path)`` -- a diferencia de antes de
     2026-08-03, expone tambien el DataFrame en memoria (no solo la ruta del
@@ -170,6 +173,7 @@ def run_fase3_pdb_annotation(
         record.accession, record.sequence, deepmvp_results, deepptmpred_results,
         pdb_path=record.chain_pdb_path, chain_id=record.chain_id,
         enable_stackglyembed=Settings.STACKGLYEMBED_ENABLED,
+        position_mapping=record.position_mapping,
     )
     filtered = apply_workflow_filter(annotated)
 
@@ -177,8 +181,9 @@ def run_fase3_pdb_annotation(
     filtered.to_csv(report_path, index=False)
     n_consenso = int(annotated["consenso"].sum())
     logger.info(
-        "Fase 3 completa (Camino PDB): %d/%d sitio(s) PTM pasan el umbral (%d con consenso "
-        "DeepMVP+DeepPTMPred) -> '%s'.",
+        "Fase 3 completa (Camino PDB): %d/%d sitio(s) PTM pasan el umbral (%d con consenso -- "
+        "DeepMVP+DeepPTMPred para la mayoria de tipos, DeepMVP+EMNGly+StackGlyEmbed para "
+        "N-glicosilacion) -> '%s'.",
         len(filtered), len(annotated), n_consenso, report_path,
     )
     return filtered, report_path
