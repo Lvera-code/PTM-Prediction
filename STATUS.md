@@ -1749,9 +1749,10 @@ declaran `SET_BASE_NAME`.
 
 **Arreglo, en `src/structural/pyrosetta_ptm_patch.py`**: nuevo
 `PTM_BASE_NAME_MAP = {"hydroxylation": "HYP"}`; `apply_ptm_patch` reemplaza
-el `ResidueType` completo por `HYP` (case1, 4-hidroxi-L-prolina trans, el
-producto real de la prolil-4-hidroxilasa, ~95% de los casos reales -- ni
-DeepMVP ni DeepPTMPred distinguen case1/case2) via
+el `ResidueType` completo por `HYP` (case1, 4-hidroxi-L-prolina trans -- el
+UNICO producto posible de las prolil-4-hidroxilasas PHD/EGLN sobre
+sustratos no colagenicos como HIF-1a, que es el caso real que este
+pipeline valida; ni DeepMVP ni DeepPTMPred distinguen case1/case2) via
 `replace_pose_residue_copying_existing_coordinates` en vez de
 `add_variant_type_to_pose_residue` -- mismo patron ya establecido en
 `ubiquitin_sumo.py` de usar la API de Rosetta correcta para una clase de

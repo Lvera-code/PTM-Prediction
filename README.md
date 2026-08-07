@@ -95,14 +95,34 @@ huecos de comunicacion de alcance encontrados, ninguno un bug de codigo.
   "Yin-Yang"). La columna `ptm_crosstalk_aviso` avisa cuando 2+ tipos en
   competencia real pasan en la misma posicion -- ver
   `src/engines/ptm_annotation.py::_PTM_COMPETITION_GROUPS`.
-- **Sin distincion de tipo de cadena en Fase A de ubiquitinacion/
-  SUMOilacion.** `UBQ_GTPaseMover` modela una unica conjugacion
-  isopeptidica -- no distingue topologia de cadena de poliubiquitina (K48 =
-  degradacion proteasomal; K63 = senalizacion/reparacion, NO degradativo).
+- **Sin distincion de tipo de cadena en Fase A de ubiquitinacion.**
+  `UBQ_GTPaseMover` modela una unica conjugacion isopeptidica (MONO-
+  ubiquitinacion real sobre una lisina) -- no distingue topologia de cadena
+  de poliubiquitina (K48 = degradacion proteasomal; K63 = senalizacion/
+  reparacion, NO degradativo), porque eso depende de que E2/E3 real conjuga
+  ubiquitinas adicionales dentro de la celula, no es derivable de esta
+  estructura. Verificado 2026-08-07 que tampoco existe una base de datos
+  publica con tipo de cadena anotado por sitio (UbiNet 2.0/iUUCD 2.0/UUCD
+  cubren pares E3-sustrato, no tipo de enlace por residuo) -- por eso la
+  columna `fase_a_cadena_tipo_aviso` (solo para `ubiquitination`, K48/K63 es
+  terminologia especifica de las lisinas de la propia ubiquitina, no aplica
+  a `sumoylation`) es puramente informativa, sin ningun numero orientativo.
   "Sitio de ubiquitinacion" no implica que la proteina vaya a degradarse.
-- **Sin especificidad de quinasa para fosforilacion** (motores genericos
-  "cualquier quinasa", no por familia dirigida por prolina/basica/acida).
-  Limitacion de alcance documentada, no una mejora planeada actualmente.
+- **Especificidad de quinasa para fosforilacion.** Ni DeepMVP ni DeepPTMPred
+  distinguen QUE familia de quinasa fosforila un sitio -- ambos predicen
+  "fosforilable en general". A diferencia del punto anterior (K48/K63, un
+  evento celular posterior no observable en la estructura), esta SI es una
+  propiedad local de secuencia -- existe una fuente real y publicada:
+  [Kinase Library](https://kinase-library.phosphosite.org) (Johnson et al.
+  2023 *Nature*, 303 quinasas Ser/Thr + Yaron-Barir et al. 2024 *Nature*,
+  kinoma Tyr completo). Para cada sitio de fosforilacion que el consenso
+  acepta, las columnas `kinase_library_top_kinase`/
+  `kinase_library_top_family`/`kinase_library_percentile`/
+  `kinase_library_top3_kinases` (puramente informativas, nunca deciden
+  `pasa_umbral`/`consenso`) reportan la quinasa/familia mas probable segun
+  las matrices de especificidad publicadas. Verificado 2026-08-07 contra un
+  sitio real (p53 S33): top hit ATM, coincide con la literatura real de
+  respuesta a dano en el ADN.
 
 ## Estado actual (2026-08-06)
 
@@ -239,6 +259,21 @@ curl -L -o EMNgly/esm/checkpoints/esm1b_t33_650M_UR50S-contact-regression.pt \
 mkdir -p EMNgly/checkpoints
 curl -L -o EMNgly/checkpoints/N-GlyDE.pickle \
   "https://drive.usercontent.google.com/download?id=1hbnEtHHXTGnQAFm-cCHMj3pWQiAYAUsw&export=download&confirm=t"
+```
+
+Kinase Library (corroboracion OPCIONAL e informativa de especificidad de
+quinasa para fosforilacion, AMBOS caminos -- FASTA y PDB, analisis de
+coherencia biologica 2026-08-07 punto 5, ver seccion "Alcance e
+interpretacion" arriba -- NUNCA un motor de consenso,
+`Settings.KINASE_LIBRARY_ENABLED` degrada solo con un aviso si no esta
+instalado). Entorno DEDICADO: `numpy~=1.26.4`/`pandas~=2.2.3` que fija el
+propio paquete son incompatibles con las versiones fijadas de
+requirements.txt de este pipeline:
+
+```bash
+conda create -n kinase_library python=3.10 -y
+conda run -n kinase_library pip install kinase-library
+export KINASE_LIBRARY_PYTHON_BIN=$(conda run -n kinase_library which python)
 ```
 
 > Los pesos del SVM se generaron con `scikit-learn==1.1.1` -- el

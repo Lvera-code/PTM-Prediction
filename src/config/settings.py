@@ -335,6 +335,50 @@ class Settings:
     # que el proyecto hermano usa para la misma carga en frio.
     STACKGLYEMBED_TIMEOUT_SECONDS: int = _env_int("STACKGLYEMBED_TIMEOUT_SECONDS", 900)
 
+    # --- Kinase Library (corroboracion informativa de especificidad de quinasa,
+    # ambos caminos -- analisis de coherencia biologica 2026-08-07 punto 5) ---
+    # Johnson et al. 2023 Nature (303 quinasas Ser/Thr) + Yaron-Barir et al. 2024
+    # Nature (kinoma Tyr completo), empaquetados en 'kinase-library' (PyPI,
+    # TheKinaseLibrary/kinase-library, licencia CC-BY-NC-SA-3.0 -- misma familia
+    # no comercial ya aceptada para EMNGly). Solo necesita la secuencia completa
+    # + posicion 1-based del fosfoaceptor -- aplica a ambos caminos, igual que
+    # StackGlyEmbed. NUNCA decide pasa_umbral/consenso -- mismo patron
+    # no-decisorio que MeToken/StackGlyEmbed-informativo.
+    KINASE_LIBRARY_ENABLED: bool = _env_bool("KINASE_LIBRARY_ENABLED", True)
+    # Entorno conda DEDICADO (numpy~=1.26.4/pandas~=2.2.3 fijados por el propio
+    # paquete, incompatibles con las versiones fijadas de ESTE venv -- ver
+    # requirements.txt), nunca el venv principal. Verificado 2026-08-07 con una
+    # corrida real (kl.Substrate('PSVEPPLsQETFSDL').predict() sobre p53 S33 --
+    # top hit ATM, coincide con la literatura real de DNA damage response).
+    KINASE_LIBRARY_PYTHON_BIN: str = _env_str(
+        "KINASE_LIBRARY_PYTHON_BIN",
+        "/home/enzo/miniconda3/envs/kinase_library/bin/python",
+    )
+    KINASE_LIBRARY_RUNNER_SCRIPT: Path = Path(
+        _env_str(
+            "KINASE_LIBRARY_RUNNER_SCRIPT",
+            str(Path(__file__).resolve().parent.parent / "engines" / "_kinase_library_runner.py"),
+        )
+    )
+    # CORREGIDO 2026-08-07 (auditoria de robustez post-implementacion): la
+    # suposicion original de "mucho mas rapido que StackGlyEmbed/MeToken,
+    # sin GPU" era CORRECTA por sitio pero IRRELEVANTE -- el costo real es
+    # por LOTE, no por sitio individual, y el lote no es pequeno. Medido real
+    # 2026-08-07 contra la secuencia completa de Tau (758 aa): ~5s/sitio: un
+    # lote de 30 sitios ya tardo ~150s, MAS que el timeout original de 120s.
+    # Proteinas reales del propio panel de validacion aceptan muchos mas
+    # sitios de fosforilacion que eso -- Tau completo tiene 115 sitios
+    # aceptados por el consenso (ver fasta_outputs/AF-P10636-F1-model_v4_ptm_sites.csv),
+    # que a ese ritmo tardarian ~10 min. Confirmado en vivo el mismo dia:
+    # una corrida real del panel de validacion (p53, 33 sitios) tardo mas de
+    # 120s con el default original -- el timeout viejo garantizaba fallo
+    # silencioso (degradacion a None) en cualquier proteina con mas de ~25
+    # sitios aceptados, derrotando el proposito del motor. Generoso por
+    # defecto, mismo orden de magnitud que FASE_A_TIMEOUT_SECONDS/
+    # STACKGLYEMBED_TIMEOUT_SECONDS (900s) pero con mas margen porque el
+    # numero de sitios por proteina (no por corrida) es lo que escala aqui.
+    KINASE_LIBRARY_TIMEOUT_SECONDS: int = _env_int("KINASE_LIBRARY_TIMEOUT_SECONDS", 1800)
+
     # --- EMNGly (motor real de consenso para 'n_linked_glycosylation', Camino PDB
     # unicamente -- reemplaza a CoNglyPred, decision 2026-08-06) ---
     # CoNglyPred (github.com/whm242446/CoNglyPred, candidato original de
@@ -513,6 +557,7 @@ class Settings:
         "estado": None, "clase": None, "ddg": None, "ddg_std": None,
         "wt_score": None, "wt_score_std": None, "mut_score": None, "mut_score_std": None,
         "glycan_tree": None, "glygen_evidencia": None, "conjugation_metrics": None,
+        "cadena_tipo_aviso": None,
         "output_pdb": None, "error": None,
     }
     FASE_A_RUNNER_SCRIPT: Path = Path(

@@ -75,9 +75,22 @@ NO declaran ``SET_BASE_NAME``.
 
 **Arreglado**: en vez de ``add_variant_type_to_pose_residue``, para
 ``hydroxylation`` se reemplaza el ``ResidueType`` completo por ``HYP``
-(4-hidroxi-L-prolina trans, case1 -- el producto real de la prolil-4-
-hidroxilasa, ~95% de los casos reales de hidroxiprolina; ``0AZ``/case2 no
-se usa, ni DeepMVP ni DeepPTMPred distinguen los 2 casos) via
+(4-hidroxi-L-prolina trans, case1). Corregido 2026-08-07 (auditoria de
+coherencia biologica): la version anterior de este docstring afirmaba
+"~95% de los casos reales de hidroxiprolina" sin fuente -- verificado que
+esa cifra no tenia respaldo real. La justificacion real y verificable es
+mecanistica, no estadistica poblacional: las prolil-4-hidroxilasas de la
+familia PHD/EGLN (el mecanismo que este pipeline valida realmente, via los
+sitios HIF-1a P402/P564 del panel de validacion biologica, PMID 11566883)
+producen EXCLUSIVAMENTE 4-hidroxiprolina trans (case1) -- la 3-hidroxi-
+prolina (case2/``0AZ``) es un producto de la prolil-3-hidroxilasa (P3H1),
+una via enzimatica DISTINTA, especifica del colageno fibrilar, que requiere
+la co-chaperona CRTAP y no tiene mecanismo conocido sobre sustratos no
+colagenicos como HIF-1a (Gorres & Raines, *Crit Rev Biochem Mol Biol* 2010;
+ver tambien la caracterizacion de P3H1/CRTAP en *J Biol Chem* 2026). Para
+proteinas de senalizacion (el dominio real de DeepMVP/DeepPTMPred, que
+tampoco distinguen case1/case2 en su prediccion) case2 no es una alternativa
+biologicamente plausible, no solo una minoria estadistica. Via
 ``replace_pose_residue_copying_existing_coordinates``, mismo patron ya
 establecido en ``ubiquitin_sumo.py`` de usar la API de Rosetta correcta
 para una clase de residuo que ``add_variant_type_to_pose_residue`` no puede
@@ -133,11 +146,14 @@ SUPPORTED_PTM_TYPES = frozenset(PTM_VARIANT_MAP)
 # nunca puede resolverlo, pese a que el patch esta cargado y su selector se
 # cumple (ver docstring del modulo). Verificado empiricamente 2026-08-04
 # contra PRO499 de Tau (AF-P10636-F1-model_v4.pdb): reemplazar el
-# ResidueType por HYP (case1, ~95% de los casos reales -- 4R-hidroxiprolina,
-# producto de la prolil-4-hidroxilasa) reproduce la geometria ideal del
-# patch (CG-OD1 1.424A, OD1-HOD 0.970A, chi4 -127.11 grados, coincide con el
-# icoor real de case1, no con case2) sin mover el backbone ni generar clashes,
-# y no afecta a los otros 4 tipos de esta clase.
+# ResidueType por HYP (case1, 4R-hidroxiprolina trans -- el UNICO producto
+# posible de las prolil-4-hidroxilasas PHD/EGLN sobre sustratos no
+# colagenicos, ver docstring del modulo para la justificacion mecanistica
+# real, corregida 2026-08-07 tras auditoria -- la cifra "~95%" previa aqui
+# no tenia fuente real) reproduce la geometria ideal del patch (CG-OD1
+# 1.424A, OD1-HOD 0.970A, chi4 -127.11 grados, coincide con el icoor real
+# de case1, no con case2) sin mover el backbone ni generar clashes, y no
+# afecta a los otros 4 tipos de esta clase.
 PTM_BASE_NAME_MAP = {"hydroxylation": "HYP"}
 
 # Residuo diana esperado por tipo, verificado leyendo

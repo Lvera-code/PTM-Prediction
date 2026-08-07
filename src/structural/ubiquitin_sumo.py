@@ -132,6 +132,32 @@ CONJUGATE_PDB_BY_TYPE = {
 
 SUPPORTED_PTM_TYPES = frozenset(CONJUGATE_PDB_BY_TYPE)
 
+# Analisis de coherencia biologica 2026-08-07, punto 4: ``conjugate()`` modela
+# una MONO-conjugacion isopeptidica real (una sola ubiquitina/SUMO sobre UNA
+# lisina de la proteina query, ver docstring del modulo). Nunca determina tipo
+# de cadena de poliubiquitina (K48 degradativo vs K63 senalizacion): eso
+# depende de que E2/E3 real conjuga ubiquitinas ADICIONALES sobre K48 o K63 de
+# la PRIMERA ubiquitina dentro de la celula -- un evento enzimatico posterior
+# que no se puede leer de la estructura de esta unica conjugacion. Verificado
+# 2026-08-07 que tampoco existe una base de datos publica con tipo de cadena
+# anotado por sitio (UbiNet 2.0/iUUCD 2.0/UUCD cubren pares E3-sustrato, no
+# tipo de enlace por residuo) -- de ahi que este aviso sea solo informativo,
+# sin ningun numero orientativo (una estadistica poblacional de abundancia de
+# enlaces, p. ej. Xu et al. 2009, seria la misma para cualquier sitio y daria
+# una falsa impresion de especificidad por sitio). Aplica SOLO a
+# 'ubiquitination': K48/K63 es terminologia especifica de las lisinas de la
+# propia ubiquitina, las cadenas de poli-SUMO usan una lisina distinta
+# (K11 en SUMO2/3 humano) -- mismo criterio de alcance ya usado para no
+# aplicar 'via_secretora_evidencia' a o_linked_glycosylation.
+CHAIN_TYPE_DISCLAIMER = (
+    "AVISO: esta conjugacion modela MONO-ubiquitinacion real (una ubiquitina "
+    "sobre esta lisina), no determina tipo de cadena de poliubiquitina "
+    "(K48 degradativo vs K63 senalizacion) -- eso depende de que E2/E3 real "
+    "conjuga ubiquitinas adicionales dentro de la celula, no es derivable de "
+    "esta estructura. No existe una base de datos publica con tipo de cadena "
+    "anotado por sitio (verificado 2026-08-07)."
+)
+
 DEFAULT_N_TAIL_RES = 3
 # Emparejados deliberadamente con el default rapido de refine_cycles (3, ver
 # init_pyrosetta): permisivos, igual que el propio test de integracion de

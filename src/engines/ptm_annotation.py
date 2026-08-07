@@ -148,6 +148,23 @@ que comparta grupo+posicion+accession con al menos otra fila tambien
 ejecuta en ambos caminos (FASTA y PDB), tras todas las demas
 corroboraciones, para ver el estado final de ``pasa_umbral`` de cada fila
 (p. ej. tras el consenso de N-glicosilacion).
+
+## Corroboracion opcional de ESPECIFICIDAD DE QUINASA -- fosforilacion, ambos
+   caminos (analisis de coherencia biologica 2026-08-07, punto 5)
+
+Ni DeepMVP ni DeepPTMPred distinguen QUE familia de quinasa fosforila un
+sitio -- ambos predicen "fosforilable en general". A diferencia del punto 4
+(tipo de cadena de poliubiquitina, ver
+``src/structural/ubiquitin_sumo.py::CHAIN_TYPE_DISCLAIMER``, un evento
+celular posterior no derivable de la estructura), la especificidad de
+quinasa SI es una propiedad local de secuencia alrededor del sitio -- existe
+una fuente real, publicada y descargable (Johnson et al. 2023 Nature +
+Yaron-Barir et al. 2024 Nature, empaquetadas en ``kinase-library``, ver
+docstring de ``src/engines/_kinase_library_runner.py``). Para cada fila con
+``tipo_ptm`` en ``_PHOSPHO_TYPES`` y ``pasa_umbral=True``, se anaden 4
+columnas PURAMENTE INFORMATIVAS: ``kinase_library_top_kinase``,
+``kinase_library_top_family``, ``kinase_library_percentile`` y
+``kinase_library_top3_kinases`` -- NUNCA cambian ``pasa_umbral``/``consenso``.
 """
 
 from pathlib import Path
@@ -157,6 +174,7 @@ import pandas as pd
 
 from src.config.settings import Settings
 from src.engines.emngly_engine import get_emngly_predictions
+from src.engines.kinase_library_engine import get_kinase_corroboration
 from src.engines.metoken_engine import get_type_corroboration
 from src.engines.stackglyembed_engine import get_nglyco_corroboration
 from src.structural.uniprot_localization_client import (
@@ -217,6 +235,16 @@ DEEPMVP_TO_CANONICAL_TYPE = {
 # aqui). Cualquier tipo no listado aqui no tiene ventana (motivo puntual:
 # fosforilacion/acetilacion/metilacion/ubiquitinacion/etc.).
 _NGLYCO_TYPES = {"n_linked_glycosylation", "glycosylation_n"}
+
+# tipo_ptm (crudo de DeepMVP o canonico de DeepPTMPred) de fosforilacion --
+# usado por ``_add_kinase_library_corroboration`` (analisis de coherencia
+# biologica 2026-08-07, punto 5). Incluye 'phosphorylation_y' (Tirosina, sin
+# equivalente en DeepPTMPred, ver DEEPMVP_TO_CANONICAL_TYPE) porque Kinase
+# Library cubre el kinoma Tyr completo ademas del Ser/Thr (Yaron-Barir et al.
+# 2024 Nature) -- a diferencia de ``_PTM_COMPETITION_GROUPS`` mas abajo, que
+# deliberadamente la excluye por un motivo distinto (grupo quimico sin
+# competencia real conocida).
+_PHOSPHO_TYPES = {"phosphorylation", "phosphorylation_st", "phosphorylation_y"}
 
 # tipo_ptm (nombre CRUDO de DeepMVP o CANONICO de DeepPTMPred, ambos
 # posibles en esta columna, ver DEEPMVP_TO_CANONICAL_TYPE) -> (grupo de
@@ -352,6 +380,15 @@ def annotate_fasta_path(
         except Exception as exc:  # noqa: BLE001 -- doble seguro, el cliente ya degrada internamente
             logger.warning(
                 "Fallo inesperado anadiendo evidencia de via secretora para '%s' (no fatal, no "
+                "afecta consenso/pasa_umbral): %s", accession, exc,
+            )
+
+    if Settings.KINASE_LIBRARY_ENABLED:
+        try:
+            result = _add_kinase_library_corroboration(result, sequence)
+        except Exception as exc:  # noqa: BLE001 -- doble seguro, kinase_library_engine ya degrada internamente
+            logger.warning(
+                "Fallo inesperado anadiendo corroboracion Kinase Library para '%s' (no fatal, no "
                 "afecta consenso/pasa_umbral): %s", accession, exc,
             )
 
@@ -492,15 +529,17 @@ def annotate_pdb_path(
 
     result = pd.DataFrame(rows, columns=OUTPUT_COLUMNS)
 
-    if pdb_path is not None and Settings.METOKEN_ENABLED:
-        try:
-            result = _add_metoken_corroboration(result, pdb_path, chain_id)
-        except Exception as exc:  # noqa: BLE001 -- doble seguro, metoken_engine ya degrada internamente
-            logger.warning(
-                "Fallo inesperado anadiendo corroboracion MeToken para '%s' (no fatal, no afecta "
-                "consenso/pasa_umbral): %s", accession, exc,
-            )
-
+    # Orden real corregido en auditoria 2026-08-07: el consenso de N-glicosilacion
+    # (_apply_nglyco_consensus) DEBE correr antes que MeToken -- MeToken calcula sus
+    # filas elegibles a partir de 'pasa_umbral' EN EL MOMENTO en que corre (ver
+    # docstring de _add_metoken_corroboration), y el consenso de nglyco puede PROMOVER
+    # una fila de pasa_umbral=False a True (DeepMVP solo no paso su propio umbral, pero
+    # EMNGly/StackGlyEmbed si). Con el orden viejo (MeToken primero), esas filas
+    # promovidas nunca recibian corroboracion MeToken -- quedaban en None
+    # permanentemente pese a que la fila ya paso el consenso, contradiciendo la propia
+    # documentacion de MeToken de ser "independiente de todo lo demas". Mismo criterio
+    # ya aplicado a '_add_ptm_crosstalk_flag' (corre ultimo, tras ver el pasa_umbral
+    # final de cada fila).
     nglyco_consensus_active = pdb_path is not None and Settings.EMNGLY_ENABLED
     if nglyco_consensus_active:
         try:
@@ -511,7 +550,17 @@ def annotate_pdb_path(
                 "para '%s' (no fatal, filas nglyco quedan como motor='DeepMVP' sin cambios): %s",
                 accession, exc,
             )
-    elif enable_stackglyembed and Settings.STACKGLYEMBED_ENABLED:
+
+    if pdb_path is not None and Settings.METOKEN_ENABLED:
+        try:
+            result = _add_metoken_corroboration(result, pdb_path, chain_id)
+        except Exception as exc:  # noqa: BLE001 -- doble seguro, metoken_engine ya degrada internamente
+            logger.warning(
+                "Fallo inesperado anadiendo corroboracion MeToken para '%s' (no fatal, no afecta "
+                "consenso/pasa_umbral): %s", accession, exc,
+            )
+
+    if not nglyco_consensus_active and enable_stackglyembed and Settings.STACKGLYEMBED_ENABLED:
         try:
             result = _add_stackglyembed_corroboration(result, sequence)
         except Exception as exc:  # noqa: BLE001 -- doble seguro, stackglyembed_engine ya degrada internamente
@@ -526,6 +575,15 @@ def annotate_pdb_path(
         except Exception as exc:  # noqa: BLE001 -- doble seguro, el cliente ya degrada internamente
             logger.warning(
                 "Fallo inesperado anadiendo evidencia de via secretora para '%s' (no fatal, no "
+                "afecta consenso/pasa_umbral): %s", accession, exc,
+            )
+
+    if Settings.KINASE_LIBRARY_ENABLED:
+        try:
+            result = _add_kinase_library_corroboration(result, sequence)
+        except Exception as exc:  # noqa: BLE001 -- doble seguro, kinase_library_engine ya degrada internamente
+            logger.warning(
+                "Fallo inesperado anadiendo corroboracion Kinase Library para '%s' (no fatal, no "
                 "afecta consenso/pasa_umbral): %s", accession, exc,
             )
 
@@ -666,6 +724,52 @@ def _add_secretory_pathway_evidence(result: pd.DataFrame, accession: str) -> pd.
     return result
 
 
+def _add_kinase_library_corroboration(result: pd.DataFrame, sequence: str) -> pd.DataFrame:
+    """Anade ``kinase_library_top_kinase``/``kinase_library_top_family``/
+    ``kinase_library_percentile``/``kinase_library_top3_kinases`` a las filas de fosforilacion elegibles.
+
+    Analisis de coherencia biologica 2026-08-07, punto 5 (ver docstring de
+    ``src/engines/_kinase_library_runner.py`` para la fuente real usada --
+    Johnson et al. 2023 Nature + Yaron-Barir et al. 2024 Nature). Puramente
+    informativo: NUNCA modifica ``pasa_umbral``/``consenso``, solo rellena
+    estas 4 columnas nuevas para las filas de fosforilacion (``tipo_ptm`` en
+    ``_PHOSPHO_TYPES``) con ``pasa_umbral=True``. Si Kinase Library no
+    devuelve nada (entorno no instalado, subproceso fallido, timeout -- ver
+    ``kinase_library_engine.get_kinase_corroboration``, degrada sin lanzar),
+    las 4 columnas quedan en ``None`` para toda la tabla.
+
+    A diferencia de ``stackglyembed_coincide``, no hay ninguna columna
+    "coincide": Kinase Library no predice SI el sitio se fosforila (eso ya
+    lo decidio el consenso), solo POR QUIEN -- no hay una prediccion previa
+    con la que comparar.
+    """
+    result = result.copy()
+    result["kinase_library_top_kinase"] = None
+    result["kinase_library_top_family"] = None
+    result["kinase_library_percentile"] = None
+    result["kinase_library_top3_kinases"] = None
+
+    eligible_mask = result["tipo_ptm"].isin(_PHOSPHO_TYPES) & result["pasa_umbral"]
+    eligible_positions = sorted(set(result.loc[eligible_mask, "posicion"]))
+    if not eligible_positions:
+        return result
+
+    corroboration = get_kinase_corroboration(sequence, eligible_positions)
+    if not corroboration:
+        return result
+
+    for idx, row in result.loc[eligible_mask].iterrows():
+        site = corroboration.get(int(row["posicion"]))
+        if site is None:
+            continue
+        result.at[idx, "kinase_library_top_kinase"] = site["kinase_library_top_kinase"]
+        result.at[idx, "kinase_library_top_family"] = site["kinase_library_top_family"]
+        result.at[idx, "kinase_library_percentile"] = site["kinase_library_percentile"]
+        result.at[idx, "kinase_library_top3_kinases"] = site["kinase_library_top3_kinases"]
+
+    return result
+
+
 def _add_ptm_crosstalk_flag(result: pd.DataFrame) -> pd.DataFrame:
     """Anade ``ptm_crosstalk_aviso`` cuando 2+ tipos en competencia real coinciden en el mismo residuo.
 
@@ -786,6 +890,17 @@ def _apply_nglyco_consensus(
         result.at[idx, "motor"] = "+".join(engines_ran)
         result.at[idx, "pasa_umbral"] = bool(n_pass >= 1)
         result.at[idx, "consenso"] = bool(n_pass >= Settings.NGLYCO_CONSENSUS_MIN_ENGINES)
+        # Bug real encontrado en auditoria 2026-08-07: esta funcion nunca canonizaba
+        # tipo_ptm de 'glycosylation_n' (nombre crudo de DeepMVP, unico origen posible
+        # aqui, ver nglyco_mask arriba) a 'n_linked_glycosylation'. Sin esto,
+        # select_fase_a_candidates (que filtra por Settings.FASE_A_SUPPORTED_PTM_TYPES,
+        # solo el nombre canonico) EXCLUIA silenciosamente de Fase A justo los sitios de
+        # mayor confianza -- los que este consenso de 3 motores confirma -- mientras
+        # dejaba pasar filas DeepPTMPred-solo (AUROC ~0.51 para este tipo, modelo muerto,
+        # ver docstring del modulo). _NGLYCO_TYPES/_PTM_COMPETITION_GROUPS ya trataban
+        # ambos nombres como equivalentes, asi que renombrar aqui no rompe ninguna otra
+        # verificacion de elegibilidad.
+        result.at[idx, "tipo_ptm"] = "n_linked_glycosylation"
 
     return result
 

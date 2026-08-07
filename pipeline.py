@@ -215,6 +215,7 @@ _FASE_A_RESULT_COLUMNS = {
     "glycan_tree": "fase_a_glycan_tree",
     "glygen_evidencia": "fase_a_glygen_evidencia",
     "conjugation_metrics": "fase_a_conjugation_metrics",
+    "cadena_tipo_aviso": "fase_a_cadena_tipo_aviso",
     "output_pdb": "fase_a_output_pdb",
 }
 
@@ -235,7 +236,8 @@ def run_fase_a_pdb_modeling(
     modela cada uno via ``FaseAEngine`` (subprocess con PyRosetta, un sitio
     por proceso) y reescribe ``report_path`` con las columnas
     ``fase_a_estado``/``fase_a_clase``/``fase_a_ddg``/``fase_a_ddg_std``/
-    ``fase_a_glycan_tree``/``fase_a_glygen_evidencia``/``fase_a_conjugation_metrics``/``fase_a_output_pdb``
+    ``fase_a_glycan_tree``/``fase_a_glygen_evidencia``/``fase_a_conjugation_metrics``/
+    ``fase_a_cadena_tipo_aviso``/``fase_a_output_pdb``
     anadidas para TODAS las filas de ``filtered`` (no solo las seleccionadas):
     las no seleccionadas quedan con ``fase_a_estado="no_seleccionado"``, para
     que el reporte final documente explicitamente por que un sitio aceptado
@@ -335,13 +337,22 @@ def run_single_input(input_path: Path, output_dir: Path) -> Path:
 def _run_batch(input_dir: Path, output_dir: Path) -> int:
     """Modo batch: corre ``run_single_input`` sobre cada archivo reconocido de ``input_dir``.
 
-    Un archivo que falla (``PipelineError``) se registra como error y NO detiene el resto del
-    batch -- mismo criterio de degradacion no fatal que ``FaseAEngine``/StackGlyEmbed/MeToken
-    aplican por-sitio (un fallo individual real no debe tumbar todo el barrido). Escribe
+    Un archivo que falla se registra como error y NO detiene el resto del batch -- mismo
+    criterio de degradacion no fatal que ``FaseAEngine``/StackGlyEmbed/MeToken aplican
+    por-sitio (un fallo individual real no debe tumbar todo el barrido). Escribe
     ``batch_summary.csv`` (columnas: archivo, estado, reporte/error) en ``output_dir``.
     Codigo de salida: 0 solo si TODOS los archivos completaron sin error, 1 si al menos uno
     fallo (incluye el caso de un directorio sin ningun archivo reconocido -- ver docstring de
     ``_discover_batch_inputs``, "vacio" tambien es un resultado que no debe pasar en silencio).
+
+    Captura ``Exception`` en general, no solo ``PipelineError`` (bug real encontrado en
+    auditoria 2026-08-07: antes, cualquier excepcion inesperada -- p.ej. un ``KeyError``/
+    ``AttributeError`` real de un motor/engine con una salida malformada, no necesariamente
+    un ``PipelineError`` -- escapaba del bucle entero, tumbando TODO el batch antes de
+    escribir ``batch_summary.csv`` y perdiendo el registro de los archivos previos ya
+    procesados con exito, pese a que sus reportes individuales SI quedaban en disco). Mismo
+    patron ``# noqa: BLE001`` ya usado en ``fase_a_dispatch.run_fase_a_for_site`` para el
+    mismo motivo (un item individual de un barrido no debe tumbar el resto).
     """
     inputs = _discover_batch_inputs(input_dir)
     if not inputs:
@@ -356,9 +367,12 @@ def _run_batch(input_dir: Path, output_dir: Path) -> int:
         try:
             report_path = run_single_input(input_path, output_dir)
             rows.append({"archivo": input_path.name, "estado": "ok", "detalle": str(report_path)})
-        except PipelineError as exc:
+        except Exception as exc:  # noqa: BLE001 -- un archivo individual no debe tumbar el resto del batch
             logger.error("Modo batch: '%s' fallo, continua con el resto -- %s", input_path.name, exc)
-            rows.append({"archivo": input_path.name, "estado": "error", "detalle": str(exc)})
+            rows.append({
+                "archivo": input_path.name, "estado": "error",
+                "detalle": f"{type(exc).__name__}: {exc}",
+            })
 
     summary_path = output_dir / "batch_summary.csv"
     pd.DataFrame(rows).to_csv(summary_path, index=False)

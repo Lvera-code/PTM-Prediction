@@ -139,6 +139,22 @@ def test_clase3_rutea_a_ubiquitin_sumo(tmp_path, monkeypatch, fake_pyrosetta_pos
     assert result["estado"] == "modelado"
     assert result["clase"] == "class3_conjugation"
     assert result["conjugation_metrics"] == fake_metrics
+    assert result["cadena_tipo_aviso"] == ubiquitin_sumo.CHAIN_TYPE_DISCLAIMER
+
+
+def test_clase3_sumoylation_no_lleva_aviso_de_cadena(tmp_path, monkeypatch, fake_pyrosetta_pose_from_pdb):
+    # K48/K63 es terminologia especifica de las lisinas de la propia ubiquitina -- las cadenas
+    # de poli-SUMO usan otra lisina (K11 en SUMO2/3 humano), asi que el aviso de clase3 no
+    # aplica aqui (ver CHAIN_TYPE_DISCLAIMER en src/structural/ubiquitin_sumo.py).
+    monkeypatch.setattr(ubiquitin_sumo, "init_pyrosetta", lambda refine_cycles, refine_repack_cycles: None)
+    monkeypatch.setattr(ubiquitin_sumo, "conjugate", lambda pose, pos, t: (pose, {}))
+
+    result = fase_a_dispatch.run_fase_a_for_site(
+        tmp_path / "in.pdb", 30, "sumoylation", tmp_path / "out.pdb",
+    )
+
+    assert result["estado"] == "modelado"
+    assert result["cadena_tipo_aviso"] is None
 
 
 def test_excepcion_de_un_submodulo_se_traduce_a_estado_error_sin_propagar(tmp_path, monkeypatch):

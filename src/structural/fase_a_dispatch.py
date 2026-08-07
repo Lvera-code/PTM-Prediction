@@ -19,7 +19,10 @@ implementado, repartidos en 3 clases mutuamente excluyentes:
   corroboracion opcional de GlyGen si se da un accession UniProt.
 - **Clase 3** (``ubiquitin_sumo.SUPPORTED_PTM_TYPES``, 2 tipos:
   ubiquitination, sumoylation): conjugacion isopeptidica real via
-  ``UBQ_GTPaseMover``.
+  ``UBQ_GTPaseMover`` -- mono-conjugacion unicamente (ver
+  ``ubiquitin_sumo.CHAIN_TYPE_DISCLAIMER``, analisis de coherencia biologica
+  2026-08-07 punto 4: nunca determina tipo de cadena de poliubiquitina K48/K63,
+  columna informativa ``cadena_tipo_aviso`` solo para ``ubiquitination``).
 
 Los otros 8 tipos (malonylation, arg_methylation, crotonylation,
 succinylation, glutathionylation, s_nitrosylation, glutarylation,
@@ -159,6 +162,9 @@ def _run_class3(
         "estado": "modelado",
         "clase": "class3_conjugation",
         "conjugation_metrics": metrics,
+        "cadena_tipo_aviso": (
+            ubiquitin_sumo.CHAIN_TYPE_DISCLAIMER if ptm_type == "ubiquitination" else None
+        ),
         "output_pdb": str(out_pdb),
     }
 

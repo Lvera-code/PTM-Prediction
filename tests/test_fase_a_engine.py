@@ -27,6 +27,7 @@ _EMPTY_EXTRA = {
     "clase": None, "ddg": None, "ddg_std": None,
     "wt_score": None, "wt_score_std": None, "mut_score": None, "mut_score_std": None,
     "glycan_tree": None, "glygen_evidencia": None, "conjugation_metrics": None,
+    "cadena_tipo_aviso": None,
     "output_pdb": None, "error": None,
 }
 

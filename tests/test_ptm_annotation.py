@@ -16,6 +16,15 @@ nunca golpear una API real en tests, ver docstring de test_glygen_client.py).
 Mockea a ``None`` por defecto (mismo significado que "no se pudo verificar"
 -- nunca cambia pasa_umbral/consenso); los tests dedicados de esta funcion
 mas abajo sobreescriben el mock explicitamente para probar True/False/error.
+
+``_mock_kinase_library`` (autouse, analisis 2026-08-07 punto 5): mismo
+motivo -- varios tests usan ``phosphorylation``/``phosphorylation_st``/
+``pasa_umbral=True``, y ``KINASE_LIBRARY_PYTHON_BIN`` apunta a un entorno
+conda REAL ya instalado en esta maquina (ver Settings), asi que sin este
+fixture ``_add_kinase_library_corroboration`` lanzaria un subprocess REAL en
+cada uno de ellos durante la suite principal. Mockea a ``{}`` por defecto
+(dict vacio, mismo significado que "no disponible"); los tests dedicados mas
+abajo sobreescriben el mock explicitamente.
 """
 
 import pandas as pd
@@ -40,12 +49,18 @@ def _mock_uniprot_lookup(monkeypatch):
     monkeypatch.setattr(ptm_annotation, "lookup_secretory_pathway_evidence", lambda accession: None)
 
 
+@pytest.fixture(autouse=True)
+def _mock_kinase_library(monkeypatch):
+    monkeypatch.setattr(ptm_annotation, "get_kinase_corroboration", lambda sequence, positions: {})
+
+
 def test_annotate_fasta_path_columnas_y_valores_basicos(monkeypatch):
     # SECRETORY_PATHWAY_CHECK_ENABLED/PTM_CROSSTALK_CHECK_ENABLED deshabilitados aqui:
     # este test verifica el esquema BASE de columnas, ortogonal a esos 2 avisos
     # informativos (2026-08-07) -- tienen su propio test dedicado mas abajo.
     monkeypatch.setattr(Settings, "SECRETORY_PATHWAY_CHECK_ENABLED", False)
     monkeypatch.setattr(Settings, "PTM_CROSSTALK_CHECK_ENABLED", False)
+    monkeypatch.setattr(Settings, "KINASE_LIBRARY_ENABLED", False)
     deepmvp_df = pd.DataFrame(
         [["ACC1", "K", 17, "xxx", 0.9, 0.01, "acetylation_k"]], columns=DEEPMVP_COLUMNS
     )
@@ -263,6 +278,7 @@ def test_select_fase_a_candidates_multiples_tipos_ordenado_por_tipo():
 def test_annotate_fasta_path_vacio_devuelve_dataframe_vacio_con_columnas(monkeypatch):
     monkeypatch.setattr(Settings, "SECRETORY_PATHWAY_CHECK_ENABLED", False)
     monkeypatch.setattr(Settings, "PTM_CROSSTALK_CHECK_ENABLED", False)
+    monkeypatch.setattr(Settings, "KINASE_LIBRARY_ENABLED", False)
     result = annotate_fasta_path("ACC1", "AAAA", pd.DataFrame(columns=DEEPMVP_COLUMNS))
     assert list(result.columns) == OUTPUT_COLUMNS
     assert len(result) == 0
@@ -274,6 +290,7 @@ def test_annotate_fasta_path_vacio_devuelve_dataframe_vacio_con_columnas(monkeyp
 def test_annotate_pdb_path_sin_pdb_path_no_agrega_columnas_metoken(monkeypatch):
     monkeypatch.setattr(Settings, "SECRETORY_PATHWAY_CHECK_ENABLED", False)
     monkeypatch.setattr(Settings, "PTM_CROSSTALK_CHECK_ENABLED", False)
+    monkeypatch.setattr(Settings, "KINASE_LIBRARY_ENABLED", False)
     called = []
     monkeypatch.setattr(ptm_annotation, "get_type_corroboration", lambda *a, **k: called.append(1))
 
@@ -316,6 +333,38 @@ def test_annotate_pdb_path_con_pdb_path_agrega_columnas_solo_en_filas_pasa_umbra
     # pasa_umbral/consenso identicos a los que calcularia sin MeToken:
     assert bool(by_pos.loc[17, "pasa_umbral"]) is True
     assert bool(by_pos.loc[30, "pasa_umbral"]) is False
+
+
+def test_annotate_pdb_path_metoken_corrobora_fila_nglyco_promovida_por_consenso(monkeypatch, tmp_path):
+    # Bug real encontrado en auditoria 2026-08-07: MeToken corria ANTES que el consenso
+    # de N-glicosilacion (_apply_nglyco_consensus), asi que calculaba sus filas elegibles
+    # (pasa_umbral=True) sobre el estado VIEJO -- una fila que DeepMVP solo NO pasaba
+    # (fpr alto) pero que EMNGly/StackGlyEmbed promovian a pasa_umbral=True nunca recibia
+    # corroboracion MeToken. Este test usa fpr=0.5 (> Settings.DEEPMVP_MAX_FPR, DeepMVP
+    # solo = pasa_umbral False) + EMNGly con probabilidad alta (promueve a True) y verifica
+    # que, con el orden corregido, MeToken SI corrobora esa fila.
+    monkeypatch.setattr(
+        ptm_annotation, "get_emngly_predictions",
+        lambda *a, **k: {25: {"emngly_probability": 0.95}},
+    )
+    monkeypatch.setattr(ptm_annotation, "get_nglyco_corroboration", lambda *a, **k: {})
+    monkeypatch.setattr(
+        ptm_annotation, "get_type_corroboration",
+        lambda *a, **k: {25: {"metoken_type": "N-linked Glycosylation", "metoken_probability": 0.8}},
+    )
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 25, "xxx", 0.3, 0.5, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path(
+        "ACC1", "N" * 30, deepmvp_df, deepptmpred_df,
+        pdb_path=tmp_path / "fake.pdb", position_mapping=_position_mapping_df(),
+    )
+
+    row = result.iloc[0]
+    assert bool(row["pasa_umbral"]) is True  # promovida por EMNGly, no por DeepMVP solo
+    assert row["metoken_type"] == "N-linked Glycosylation"  # corroboracion SI llego
 
 
 def test_annotate_pdb_path_metoken_type_coincide_false_si_discrepa(monkeypatch, tmp_path):
@@ -373,6 +422,7 @@ def test_annotate_pdb_path_metoken_deshabilitado_via_settings_ignora_pdb_path(mo
     monkeypatch.setattr(Settings, "METOKEN_ENABLED", False)
     monkeypatch.setattr(Settings, "SECRETORY_PATHWAY_CHECK_ENABLED", False)
     monkeypatch.setattr(Settings, "PTM_CROSSTALK_CHECK_ENABLED", False)
+    monkeypatch.setattr(Settings, "KINASE_LIBRARY_ENABLED", False)
     called = []
     monkeypatch.setattr(ptm_annotation, "get_type_corroboration", lambda *a, **k: called.append(1))
 
@@ -411,6 +461,7 @@ def test_annotate_pdb_path_metoken_excepcion_inesperada_no_tumba_la_anotacion(mo
 def test_annotate_fasta_path_enable_stackglyembed_false_no_agrega_columnas(monkeypatch):
     monkeypatch.setattr(Settings, "SECRETORY_PATHWAY_CHECK_ENABLED", False)
     monkeypatch.setattr(Settings, "PTM_CROSSTALK_CHECK_ENABLED", False)
+    monkeypatch.setattr(Settings, "KINASE_LIBRARY_ENABLED", False)
     called = []
     monkeypatch.setattr(ptm_annotation, "get_nglyco_corroboration", lambda *a, **k: called.append(1))
 
@@ -520,6 +571,7 @@ def test_annotate_pdb_path_stackglyembed_deshabilitado_via_settings(monkeypatch)
     monkeypatch.setattr(Settings, "STACKGLYEMBED_ENABLED", False)
     monkeypatch.setattr(Settings, "SECRETORY_PATHWAY_CHECK_ENABLED", False)
     monkeypatch.setattr(Settings, "PTM_CROSSTALK_CHECK_ENABLED", False)
+    monkeypatch.setattr(Settings, "KINASE_LIBRARY_ENABLED", False)
     called = []
     monkeypatch.setattr(ptm_annotation, "get_nglyco_corroboration", lambda *a, **k: called.append(1))
 
@@ -591,6 +643,40 @@ def test_annotate_pdb_path_nglyco_consenso_3_motores_todos_pasan(monkeypatch, tm
     assert row["stackglyembed_veredicto"] == "Glicosilado"
     assert bool(row["pasa_umbral"]) is True
     assert bool(row["consenso"]) is True  # 3/3 pasan >= NGLYCO_CONSENSUS_MIN_ENGINES (2)
+
+
+def test_annotate_pdb_path_nglyco_consenso_canoniza_tipo_ptm_para_fase_a(monkeypatch, tmp_path):
+    # Bug real encontrado en auditoria 2026-08-07: _apply_nglyco_consensus dejaba
+    # tipo_ptm='glycosylation_n' (nombre crudo de DeepMVP, unico origen posible) sin
+    # canonizar a 'n_linked_glycosylation' -- select_fase_a_candidates filtra por
+    # Settings.FASE_A_SUPPORTED_PTM_TYPES, que solo contiene el nombre canonico, asi
+    # que los sitios de MAYOR confianza (confirmados por 3 motores) quedaban
+    # silenciosamente excluidos de Fase A. Este test verifica el fix end-to-end: desde
+    # el consenso hasta que select_fase_a_candidates realmente selecciona la fila.
+    monkeypatch.setattr(
+        ptm_annotation, "get_emngly_predictions",
+        lambda *a, **k: {25: {"emngly_probability": 0.9}},
+    )
+    monkeypatch.setattr(
+        ptm_annotation, "get_nglyco_corroboration",
+        lambda *a, **k: {25: {"stackglyembed_veredicto": "Glicosilado", "stackglyembed_score": 0.85}},
+    )
+
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 25, "xxx", 0.95, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path(
+        "ACC1", "N" * 30, deepmvp_df, deepptmpred_df,
+        pdb_path=tmp_path / "fake.pdb", position_mapping=_position_mapping_df(),
+    )
+
+    assert result.iloc[0]["tipo_ptm"] == "n_linked_glycosylation"
+
+    filtered = apply_workflow_filter(result)
+    candidates = select_fase_a_candidates(filtered)
+    assert len(candidates) == 1
+    assert candidates.iloc[0]["posicion"] == 25
 
 
 def test_annotate_pdb_path_nglyco_consenso_false_si_solo_1_de_3_pasa(monkeypatch, tmp_path):
@@ -871,6 +957,131 @@ def test_annotate_fasta_path_via_secretora_evidencia_deshabilitado_via_settings(
 
     assert called == []
     assert "via_secretora_evidencia" not in result.columns
+
+
+# --- Corroboracion opcional de ESPECIFICIDAD DE QUINASA (Kinase Library, analisis 2026-08-07) ---
+
+
+def test_annotate_fasta_path_kinase_library_agrega_columnas(monkeypatch):
+    monkeypatch.setattr(
+        ptm_annotation, "get_kinase_corroboration",
+        lambda sequence, positions: {
+            10: {
+                "kinase_library_top_kinase": "ATM", "kinase_library_top_family": "PIKK",
+                "kinase_library_percentile": 99.83, "kinase_library_top3_kinases": "ATM,SMG1,ATR",
+            },
+        },
+    )
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "S", 10, "xxx", 0.9, 0.01, "phosphorylation_st"]], columns=DEEPMVP_COLUMNS
+    )
+    result = annotate_fasta_path("ACC1", "A" * 20, deepmvp_df)
+
+    row = result.iloc[0]
+    assert row["kinase_library_top_kinase"] == "ATM"
+    assert row["kinase_library_top_family"] == "PIKK"
+    assert row["kinase_library_percentile"] == 99.83
+    assert row["kinase_library_top3_kinases"] == "ATM,SMG1,ATR"
+
+
+def test_annotate_fasta_path_kinase_library_vacio_deja_columnas_en_none():
+    # Fixture autouse ya mockea a {} (equivalente a "no disponible").
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "S", 10, "xxx", 0.9, 0.01, "phosphorylation_st"]], columns=DEEPMVP_COLUMNS
+    )
+    result = annotate_fasta_path("ACC1", "A" * 20, deepmvp_df)
+
+    assert "kinase_library_top_kinase" in result.columns
+    assert result.iloc[0]["kinase_library_top_kinase"] is None
+
+
+def test_annotate_fasta_path_kinase_library_no_afecta_filas_no_elegibles(monkeypatch):
+    monkeypatch.setattr(
+        ptm_annotation, "get_kinase_corroboration",
+        lambda sequence, positions: {
+            8: {
+                "kinase_library_top_kinase": "ATM", "kinase_library_top_family": "PIKK",
+                "kinase_library_percentile": 99.83, "kinase_library_top3_kinases": "ATM,SMG1,ATR",
+            },
+        },
+    )
+    deepmvp_df = pd.DataFrame(
+        [
+            ["ACC1", "K", 4, "xxx", 0.9, 0.01, "acetylation_k"],
+            ["ACC1", "S", 8, "xxx", 0.9, 0.01, "phosphorylation_st"],
+        ],
+        columns=DEEPMVP_COLUMNS,
+    )
+    result = annotate_fasta_path("ACC1", "A" * 20, deepmvp_df)
+
+    by_pos = result.set_index("posicion")
+    assert by_pos.loc[4, "kinase_library_top_kinase"] is None  # no es fosforilacion
+    assert by_pos.loc[8, "kinase_library_top_kinase"] == "ATM"
+
+
+def test_annotate_fasta_path_kinase_library_sin_filas_elegibles_no_invoca(monkeypatch):
+    called = []
+    monkeypatch.setattr(
+        ptm_annotation, "get_kinase_corroboration",
+        lambda sequence, positions: called.append(positions),
+    )
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "K", 4, "xxx", 0.9, 0.01, "acetylation_k"]], columns=DEEPMVP_COLUMNS
+    )
+    result = annotate_fasta_path("ACC1", "A" * 20, deepmvp_df)
+
+    assert called == []
+    assert result.iloc[0]["kinase_library_top_kinase"] is None
+
+
+def test_annotate_pdb_path_kinase_library_no_requiere_pdb_path(monkeypatch):
+    # Igual que StackGlyEmbed (ver seccion arriba): solo necesita la secuencia,
+    # aplica aunque pdb_path sea None.
+    monkeypatch.setattr(
+        ptm_annotation, "get_kinase_corroboration",
+        lambda sequence, positions: {
+            10: {
+                "kinase_library_top_kinase": "ATM", "kinase_library_top_family": "PIKK",
+                "kinase_library_percentile": 99.83, "kinase_library_top3_kinases": "ATM,SMG1,ATR",
+            },
+        },
+    )
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "S", 10, "xxx", 0.9, 0.01, "phosphorylation_st"]], columns=DEEPMVP_COLUMNS
+    )
+    deepptmpred_df = pd.DataFrame(columns=DEEPPTMPRED_COLUMNS)
+    result = annotate_pdb_path("ACC1", "A" * 20, deepmvp_df, deepptmpred_df)  # pdb_path=None
+
+    assert result.iloc[0]["kinase_library_top_kinase"] == "ATM"
+
+
+def test_annotate_fasta_path_kinase_library_deshabilitado_via_settings(monkeypatch):
+    monkeypatch.setattr(Settings, "KINASE_LIBRARY_ENABLED", False)
+    called = []
+    monkeypatch.setattr(
+        ptm_annotation, "get_kinase_corroboration",
+        lambda sequence, positions: called.append(positions),
+    )
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "S", 10, "xxx", 0.9, 0.01, "phosphorylation_st"]], columns=DEEPMVP_COLUMNS
+    )
+    result = annotate_fasta_path("ACC1", "A" * 20, deepmvp_df)
+
+    assert called == []
+    assert "kinase_library_top_kinase" not in result.columns
+
+
+def test_annotate_fasta_path_kinase_library_excepcion_inesperada_no_tumba_la_anotacion(monkeypatch):
+    def _boom(sequence, positions):
+        raise RuntimeError("fallo inesperado simulado")
+
+    monkeypatch.setattr(ptm_annotation, "get_kinase_corroboration", _boom)
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "S", 10, "xxx", 0.9, 0.01, "phosphorylation_st"]], columns=DEEPMVP_COLUMNS
+    )
+    result = annotate_fasta_path("ACC1", "A" * 20, deepmvp_df)
+
+    assert bool(result.iloc[0]["pasa_umbral"]) is True  # sin cambios en el resto de la fila
 
 
 # --- Aviso de competencia/crosstalk entre PTMs del mismo residuo (analisis 2026-08-07) ---
