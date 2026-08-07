@@ -271,12 +271,17 @@ comercial -- consistente con la dependencia real mas restrictiva (ver abajo).
   dentro de CC BY-NC. Detalle completo en `STATUS.md`.
 - **MeToken**: MIT (declarada en `MeToken/LICENSE` del repo original).
 - **EMNGly**: sin LICENSE declarado en ningun repo (`StellaHxy/EMNgly` ni su
-  duplicado `Xiaoyang878/EMNgly`) -- el paper es CC-BY (Bioinformatics) pero
-  eso NO cubre el codigo. Correo pendiente a Xiaoyang Hou/Shiwei Sun/Yaojun
-  Wang (ICT-CAS), mismo patron que funciono con DeepPTMPred -- NO bloqueante
-  (a diferencia de CoNglyPred, los pesos ya son publicos y descargables sin
-  depender de esa respuesta). MIF (vendorizado dentro de EMNgly,
-  `model/MIF/`) es de Microsoft (`microsoft/protein-sequence-models`),
+  duplicado `Xiaoyang878/EMNgly`) -- el paper SI es CC BY 4.0 real
+  (confirmado via el XML de PMC, PMC10627407, no solo asumido) pero eso NO
+  cubre el codigo. Correo redactado 2026-08-07 a los autores de
+  correspondencia reales (Yaojun Wang, `wangyaojun@cau.edu.cn`, China
+  Agricultural University; Shiwei Sun, `dwsun@ict.ac.cn`, ICT-CAS -- ambos
+  verificados via el mismo XML de PMC, no la pagina de Oxford Academic,
+  bloqueada por Cloudflare a fetch directo), envio programado para el
+  2026-08-10 (lunes). Mismo patron que funciono con DeepPTMPred -- NO
+  bloqueante (a diferencia de CoNglyPred, los pesos ya son publicos y
+  descargables sin depender de esa respuesta). MIF (vendorizado dentro de
+  EMNgly, `model/MIF/`) es de Microsoft (`microsoft/protein-sequence-models`),
   licencia BSD-2 permisiva verificada en el repo oficial -- la copia de
   EMNgly perdio su LICENSE al vendorizarlo.
 - **PyRosetta** (Fase A): licencia academica/no-comercial de RosettaCommons,

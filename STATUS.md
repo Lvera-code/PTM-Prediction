@@ -1379,11 +1379,18 @@ secuencia):
   `_nglyco_window`, sin aportar una segunda opinion real.
 - Benchmark publicado (N-GlyDE test set): EMNGly MCC 0.736 vs LMNglyPred
   0.717, DeepNGlyPred 0.605, N-GlyDE 0.499, NetNGlyc 0.265.
-- Sin LICENSE declarado en ningun repo (el paper es CC-BY, no cubre el
-  codigo) -- a diferencia de CoNglyPred, esto NO es bloqueante: los pesos ya
-  estan descargables. Correo pendiente a Xiaoyang Hou/Shiwei Sun/Yaojun Wang
-  (ICT-CAS) solo para limpiar el expediente de licencias, mismo patron que
-  funciono con DeepPTMPred -- no bloquea produccion.
+- Sin LICENSE declarado en ningun repo (el paper SI es CC BY 4.0 real,
+  confirmado 2026-08-07 via el XML de PMC/PMC10627407, no cubre el codigo)
+  -- a diferencia de CoNglyPred, esto NO es bloqueante: los pesos ya estan
+  descargables. Correo REDACTADO 2026-08-07 (envio programado 2026-08-10,
+  lunes) a los autores de correspondencia reales -- Yaojun Wang
+  (`wangyaojun@cau.edu.cn`, China Agricultural University) y Shiwei Sun
+  (`dwsun@ict.ac.cn`, ICT-CAS), ambos verificados via el mismo XML de PMC
+  (la pagina de Oxford Academic esta detras de un challenge de Cloudflare,
+  bloquea fetch directo) -- mismo patron que funciono con DeepPTMPred, no
+  bloquea produccion. Ver vault, addendum 2026-08-07 en
+  `2026-08-06-decision2-cerrada-emngly-reemplaza-conglypred.md`, para el
+  texto completo del correo.
 
 **Implementado** (ver `src/config/settings.py` bloque `EMNGLY_*`,
 `src/engines/_emngly_runner.py`, `src/engines/emngly_engine.py`,
@@ -2060,7 +2067,9 @@ pasando, suite completa en ~37s (sin red real).
 respondido por Junwen Wang ("I confirm that the GitHub code follows the
 same CC BY-NC terms") es sobre **DeepPTMPred** (autores Yong Liu/Junwen
 Wang), ya cerrado desde 2026-07-29 (ver seccion de licencias arriba). La
-licencia de **EMNGly** (autores distintos: Xiaoyang Hou/Shiwei Sun/Yaojun
-Wang, ICT-CAS) sigue siendo el unico item de compliance real abierto en
-todo el proyecto -- ese email todavia no se ha enviado. No bloqueante (los
-pesos de EMNGly ya son descargables sin depender de esa respuesta).
+licencia de **EMNGly** (autores distintos: Yaojun Wang/Shiwei Sun, ver
+seccion de licencias arriba para sus emails reales) sigue siendo el unico
+item de compliance real abierto en todo el proyecto -- correo REDACTADO
+en esta misma sesion, envio programado para el 2026-08-10 (lunes). No
+bloqueante (los pesos de EMNGly ya son descargables sin depender de esa
+respuesta).
