@@ -1404,23 +1404,95 @@ de EMNGly -- ver docstring de `_emngly_runner.py` para el analisis completo,
 incluye tambien la aclaracion de que la convencion de indices BOS-inclusive
 de `site_emb`/`local_emb` NO es un bug pese a la apariencia inicial).
 
-**Pendiente, no bloqueante -- 2 go/no-go checks antes de confiar en produccion**
-(``Settings.EMNGLY_MIN_PROBABILITY=0.5`` es PROVISIONAL, igual que el 0.5
-inicial de DeepPTMPred antes de calibrarse):
-1. Verificar el alineamiento `structure_emb[pdb_seqid-1]` contra sitios de
-   N-glicosilacion reales confirmados en GlyGen (mismo cliente ya
-   implementado, `src/structural/glygen_client.py`), sobre un PDB con
-   huecos/numeracion no continua -- el caso que mas le importa a este fix.
-2. Reproducir MCC~=0.736 corriendo el pipeline completo sobre el split de
-   test de N-GlyDE (con el bug del escalar de `predict.py::get_scores`
-   puenteado, no arreglado en el vendorizado).
+**2026-08-07: los 2 go/no-go checks PASARON, `Settings.EMNGLY_MIN_PROBABILITY=0.5`
+ya NO es provisional.** Pesos reales descargados en esta maquina por primera
+vez (ESM-1b 7.8GB + companero de regresion de contactos, SVM `N-GlyDE.pickle`
+35.9MB via HTTP Range de Google Drive, confirmado `sklearn.svm.SVC` real con
+`n_features_in_=2816`) y corridos de punta a punta.
+
+**4 bugs reales encontrados y arreglados en el camino** (ninguno tocando
+codigo vendorizado, mismo criterio que el resto del proyecto):
+1. `_emngly_runner.py` solo anadia `EMNgly/model` a `sys.path` -- correcto
+   para el propio `from MIF.sequence_models... import`, pero
+   `MIF/sequence_models/*.py` (`pdb_utils.py`, `pretrained.py`, etc.) hacen
+   imports BARE de `sequence_models.xxx` (no `MIF.sequence_models.xxx`),
+   necesitan `EMNgly/model/MIF` en `sys.path` TAMBIEN -- confirmado corriendo
+   el import real, no solo leyendo codigo. El script original
+   `get_mif_embedding.py` nunca expuso este problema porque ademas hace
+   `sys.path.append("./MIF")` Y depende de que su propio directorio ya este
+   en `sys.path` (comportamiento automatico de un script, no de un modulo
+   importado via subprocess).
+2. Esa misma cadena de imports depende de `wget` (paquete pip, dependencia
+   transitiva de `trRosetta_utils.py` nunca usada por este proyecto) --
+   ausente, no documentado en el `environment.yml` de EMNgly.
+3. `pip install scikit-learn==1.1.1` sin pinnear numpy resuelve numpy 2.x
+   por defecto -- binariamente incompatible con el wheel de sklearn 1.1.1
+   (`ValueError: numpy.dtype size changed`). Fix: pinnear `numpy==1.23.5`
+   despues.
+4. `fair-esm` (paquete pip, no vendorizado) llama `torch.load(path,
+   map_location="cpu")` sin `weights_only=False` -- desde PyTorch 2.6 el
+   default cambio a `True` y el checkpoint de fair-esm no pasa el allowlist
+   estricto (`argparse.Namespace`). Parche acotado en
+   `_ESMEmbeddingExtractor.__init__` (unico choke point que carga el
+   checkpoint), mismo patron que el monkeypatch de
+   `_deepptmpred_runner.py::_load_predict_module`.
+
+**Check 1 (alineamiento) PASO**: Alpha-1-antitrypsin (P01009) tiene 3 sitios
+N-glicosilacion reales confirmados en GlyGen (`reported_with_glycan`,
+consulta real via `glygen_client.py`) en numeracion UniProt 70/107/271 --
+numeracion PDB (mature protein, offset -24) 46/83/247. PDB real usado: 1QLP
+("2.0 Angstrom structure of intact alpha-1-antitrypsin", RCSB), con 22
+residuos N-terminales genuinamente ausentes (`REMARK 465`, confirmado) --
+el caso de "PDB con huecos" que le importa a este fix. Fase 1.5 real
+(`parse_structure`) sobre 1QLP: `fasta_position` 24/61/225 -> `pdb_seqid`
+46/83/247, los 3 confirmados `residue_letter='N'`. Verificado a 2 niveles:
+(a) `MIF.sequence_models.pdb_utils.parse_PDB`'s `wt[pdb_seqid-1]` = `'N'`
+para los 3 -- Y se demostro que el indexado NAIVE sin la traduccion
+(`wt[fasta_position-1]`, el bug que este fix previene) da `'F'`/`'G'` en 2 de
+los 3 casos reales, no `'N'` -- bug real, no hipotetico. (b) El runner
+completo (ESM-1b + MIF + SVM reales) sobre esos 3 sitios: probabilidades
+0.887/0.949/0.729 (los 3 por encima del umbral 0.5). Control negativo real:
+2 secuones rotos (`N-x-P`, biologicamente nunca glicosilados) en la misma
+proteina, posiciones 82/345 -> probabilidades 0.526/0.286 (separacion real,
+aunque 82 queda justo en el borde del umbral -- esperado, un modelo real no
+es perfecto).
+
+**Check 2 (MCC) PASO Y SUPERO el numero publicado**: `MCC=0.8197` (AUC
+0.9631, especificidad 0.914, sensibilidad 0.906) sobre 301 sitios reales
+evaluables del set independiente de N-GlyDE (`NGLYDE_independent.txt`, via
+`dukkakc/DeepNGlyPred` -- el propio repo de EMNgly solo documenta la fuente,
+no la empaqueta), vs. el `MCC=0.736` publicado en el paper. 146/447 filas
+(33%) quedaron fuera: 4/86 proteinas sin modelo AlphaFold DB (78 filas) mas
+fallos de alineamiento puntuales en las 82 restantes. Estructura real
+usada: AlphaFold DB, API `https://www.alphafold.ebi.ac.uk/api/prediction/`
+(NUNCA construir la URL `AF-{acc}-F1-model_v4.pdb` a mano -- confirmado real
+2026-08-07 que AlphaFold DB ya sirve v6 y v4 da 404 en el 100% de los casos
+probados, mismo hallazgo y mismo fix que
+`scripts/generate_deepptmpred_calibration.py` ya aplico antes). Superar el
+numero publicado con margen (no solo "acercarse") es razonable, no
+sospechoso: los modelos AlphaFold v6 usados aqui son mas recientes/precisos
+que los disponibles cuando el paper de EMNGly se publico (2023) -- una
+mejora legitima de la fuente estructural, no fuga de datos (el SVM ya
+estaba entrenado, congelado, nunca se reentreno con este set).
+
+`predict.py::get_scores` tiene un bug real confirmado (no arreglado en el
+vendorizado, ver `scripts/verify_emngly_nglyde_mcc.py::get_scores` para el
+puerto corregido): llama `get_scores(label_y, predict_y[0])` -- `predict_y[0]`
+es un escalar (la probabilidad de la PRIMERA fila), no la lista completa.
+
+Scripts nuevos (permanentes, reproducibles, gitignored solo los datos que
+descargan): `scripts/prepare_emngly_nglyde_structures.py` (Fase 1.5 real por
+proteina, venv `cnb_pipeline`), `scripts/verify_emngly_nglyde_mcc.py`
+(embeddings + SVM + scores, venv `.venv-emngly`).
 
 Instalacion (venv dedicado `emngly`, pin `scikit-learn==1.1.1` -- ver
-hallazgo de version arriba, README.md tiene el detalle completo):
+hallazgo de version arriba, README.md tiene el detalle completo incluyendo
+los 4 bugs reales de instalacion documentados arriba):
 ```bash
 git clone https://github.com/StellaHxy/EMNgly
 python3 -m venv .venv-emngly
-.venv-emngly/bin/pip install fair-esm torch "scikit-learn==1.1.1" scipy pandas numpy tqdm
+.venv-emngly/bin/pip install fair-esm torch "scikit-learn==1.1.1" scipy pandas numpy tqdm wget
+.venv-emngly/bin/pip install "numpy==1.23.5"
 # ESM-1b (~7.4GB) + companero de regresion de contactos, descarga manual (ver README.md)
 # SVM: https://drive.usercontent.google.com/download?id=1hbnEtHHXTGnQAFm-cCHMj3pWQiAYAUsw&export=download&confirm=t
 ```

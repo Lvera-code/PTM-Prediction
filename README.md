@@ -66,11 +66,12 @@ sitio -- reemplazado por **EMNGly** (pesos reales, verificados a nivel de
 bytes), implementado y wireado al consenso de `n_linked_glycosylation` junto
 con StackGlyEmbed (promovido de corroboracion informativa a motor de
 consenso en Camino PDB). Ver STATUS.md "Decision 2" para el detalle
-completo. Pendiente, no bloqueante: 2 go/no-go checks (alineamiento de
-`structure_emb` contra sitios reales de GlyGen, reproducir el MCC publicado)
-antes de confiar en el umbral provisional `EMNGLY_MIN_PROBABILITY=0.5` en
-produccion -- ni EMNGly ni sus pesos (ESM-1b/SVM, descarga manual) se han
-corrido todavia contra el entorno real de esta maquina.
+completo, incluyendo los 2 go/no-go checks (ambos PASARON, 2026-08-07): el
+alineamiento de `structure_emb` se verifico contra sitios reales de GlyGen
+en un PDB con huecos (Alpha-1-antitrypsin, 1QLP), y el MCC publicado
+(0.736) se reprodujo -- de hecho se supero, 0.8197 -- corriendo el pipeline
+real sobre el set independiente de N-GlyDE. El umbral
+`EMNGLY_MIN_PROBABILITY=0.5` ya no es provisional.
 
 ## Uso
 
@@ -155,7 +156,16 @@ de N-glicosilacion cae a DeepMVP+StackGlyEmbed si no esta disponible):
 ```bash
 git clone https://github.com/StellaHxy/EMNgly
 python3 -m venv .venv-emngly
-.venv-emngly/bin/pip install fair-esm torch "scikit-learn==1.1.1" scipy pandas numpy tqdm
+.venv-emngly/bin/pip install fair-esm torch "scikit-learn==1.1.1" scipy pandas numpy tqdm wget
+# 'wget' (paquete pip, no el binario CLI): dependencia transitiva real de
+# MIF/sequence_models/trRosetta_utils.py (importado en cadena por
+# pretrained.py aunque este proyecto nunca usa esa ruta de codigo) -- sin
+# ella el import de MIF falla con ModuleNotFoundError (confirmado real
+# 2026-08-07, no documentado en el environment.yml de EMNgly).
+# pip resuelve numpy a la ultima 2.x por defecto, incompatible en runtime con
+# el wheel compilado de scikit-learn==1.1.1 (ValueError: numpy.dtype size
+# changed -- confirmado real 2026-08-07). Reinstalar despues, pinneado:
+.venv-emngly/bin/pip install "numpy==1.23.5"
 export EMNGLY_PYTHON_BIN=$(pwd)/.venv-emngly/bin/python
 
 # MIF (embedding estructural, mif.pt) ya viene bundled en el clon -- sin
@@ -186,8 +196,8 @@ curl -L -o EMNgly/checkpoints/N-GlyDE.pickle \
 
 Ver `STATUS.md` para el detalle completo de que ya se verifico (todos los
 repos/envs clonados y probados en esta maquina, mas el recurso externo de
-StackGlyEmbed, mas los 2 go/no-go checks pendientes de EMNGly antes de
-confiar en produccion) y que falta.
+StackGlyEmbed, mas los 2 go/no-go checks de EMNGly -- ambos PASARON
+2026-08-07) y que falta.
 
 ## Licencias
 

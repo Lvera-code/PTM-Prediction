@@ -426,14 +426,14 @@ class Settings:
     # secuencia/estructura completa en cada corrida).
     EMNGLY_CACHE_DIR: Path = Path(_env_str("EMNGLY_CACHE_DIR", "EMNgly/cache"))
     EMNGLY_TIMEOUT_SECONDS: int = _env_int("EMNGLY_TIMEOUT_SECONDS", 1800)
-    # Umbral PROVISIONAL (decision 2026-08-06, igual de provisional que el
-    # 0.5 inicial de DeepPTMPred antes de su calibracion real 2026-08-01):
-    # el paper de EMNGly no publica un cutoff de probabilidad fijo, solo
-    # AUC/MCC a nivel de dataset completo. 0.5 es el limite de decision
-    # nativo de un SVC(probability=True) sin calibrar contra un umbral
-    # operativo especifico. Pendiente (go/no-go check #2, ver STATUS.md):
-    # reproducir MCC~=0.736 sobre el split de test de N-GlyDE antes de
-    # confiar en este numero en produccion.
+    # Umbral 0.5 (decision 2026-08-06): el paper de EMNGly no publica un
+    # cutoff de probabilidad fijo, solo AUC/MCC a nivel de dataset completo
+    # -- 0.5 es el limite de decision nativo de un SVC(probability=True) sin
+    # calibrar contra un umbral operativo especifico. Ya NO es provisional:
+    # los 2 go/no-go checks (STATUS.md, seccion "Decision 2") PASARON
+    # 2026-08-07 -- alineamiento de structure_emb verificado contra sitios
+    # GlyGen reales en un PDB con huecos, y MCC=0.8197 reproducido (y
+    # superado) contra el 0.736 publicado, en este mismo umbral.
     EMNGLY_MIN_PROBABILITY: float = _env_float("EMNGLY_MIN_PROBABILITY", 0.5)
 
     # --- Consenso de N-glicosilacion (Camino PDB): regla de fusion de 3 motores ---

@@ -110,6 +110,7 @@ class _ESMEmbeddingExtractor:
     """Puerto local-only de ``ESMEmbeddingExtractor`` (misma logica de chunking, checkpoint LOCAL)."""
 
     def __init__(self, checkpoint_path: Path, device):
+        import torch
         from esm import pretrained
 
         # ``pretrained.load_model_and_alphabet`` entra por la rama local
@@ -119,7 +120,32 @@ class _ESMEmbeddingExtractor:
         # archivo companero ``<checkpoint>-contact-regression.pt`` en el
         # mismo directorio (heuristica interna de fair-esm, no excluye
         # esm1b_t33_650M_UR50S), ver README.md - Seccion de instalacion.
-        self.model, alphabet = pretrained.load_model_and_alphabet(str(checkpoint_path))
+        #
+        # Bug real confirmado 2026-08-07 corriendo la carga real (no solo
+        # leyendo codigo): ``esm/pretrained.py::load_model_and_alphabet_local``
+        # llama ``torch.load(path, map_location="cpu")`` SIN
+        # ``weights_only=False`` -- desde PyTorch 2.6 el default de
+        # ``weights_only`` cambio a True, y el checkpoint de fair-esm
+        # (``argparse.Namespace`` en su estado serializado) no pasa el
+        # allowlist estricto. fair-esm (paquete pip, no vendorizado en este
+        # repo) nunca fue actualizado para el nuevo default. Fix acotado al
+        # choke point de esta clase (unico lugar del runner que carga el
+        # checkpoint), no un parche global de ``torch.load`` para todo el
+        # proceso -- misma filosofia que el monkeypatch de
+        # ``_deepptmpred_runner.py::_load_predict_module``. Seguro porque el
+        # checkpoint viene de la URL oficial de Meta
+        # (dl.fbaipublicfiles.com), no de una fuente no confiable.
+        _original_torch_load = torch.load
+
+        def _torch_load_weights_only_false(*args, **kwargs):
+            kwargs.setdefault("weights_only", False)
+            return _original_torch_load(*args, **kwargs)
+
+        torch.load = _torch_load_weights_only_false
+        try:
+            self.model, alphabet = pretrained.load_model_and_alphabet(str(checkpoint_path))
+        finally:
+            torch.load = _original_torch_load
         self.model.eval()
         self.model = self.model.to(device)
         self.device = device
@@ -235,8 +261,19 @@ def main() -> int:
     args = parser.parse_args()
 
     # model/MIF/__init__.py hace de 'MIF' un paquete top-level valido al
-    # anadir 'EMNgly/model' (no 'EMNgly/model/MIF') a sys.path.
+    # anadir 'EMNgly/model' a sys.path (usado por el 'from MIF.sequence_models...'
+    # de abajo). Ademas -- verificado 2026-08-07 corriendo el import real, no
+    # solo leyendo el codigo -- 'MIF/sequence_models/*.py' (pdb_utils.py,
+    # pretrained.py, etc.) hacen imports BARE de 'sequence_models.xxx' (no
+    # relativos ni 'MIF.sequence_models.xxx'), igual que el script original
+    # 'model/get_mif_embedding.py' que ademas de 'sys.path.append("./MIF")'
+    # depende de que su propio directorio ('EMNgly/model') ya este en
+    # sys.path (comportamiento automatico del interprete al correr un
+    # script, no presente al importar este runner via subprocess) -- por
+    # eso hace falta 'EMNgly/model/MIF' en sys.path TAMBIEN, no solo
+    # 'EMNgly/model'.
     sys.path.insert(0, str(Path(args.emngly_home) / "model"))
+    sys.path.insert(0, str(Path(args.emngly_home) / "model" / "MIF"))
 
     import torch
 
