@@ -37,7 +37,12 @@ Fase 1 -> Fase 1.5 (PDB unicamente) -> Fase 2 (motores) -> Fase 3 (nucleo) -> Fa
   informan sobre sitios que el consenso YA acepto): **MeToken** (tipo, Camino
   PDB), **StackGlyEmbed** (N-glicosilacion, Camino FASTA -- en Camino PDB es
   motor de consenso, ver arriba), **GlyGen** (evidencia experimental externa
-  de glicosilacion).
+  de glicosilacion, Fase A), **evidencia de via secretora via UniProt**
+  (columna `via_secretora_evidencia`, N-glicosilacion, ambos caminos) y
+  **aviso de competencia/crosstalk entre PTMs** (columna
+  `ptm_crosstalk_aviso`, cuando 2+ tipos que compiten por el mismo grupo
+  quimico de un residuo pasan en la misma posicion) -- ver "Alcance e
+  interpretacion" abajo.
 - **Fase A (modelado estructural real via PyRosetta, Camino PDB unicamente)**:
   para un top-N de sitios por tipo (default 1, `Settings.FASE_A_TOP_N_PER_TYPE`
   -- modelar TODOS los sitios aceptados es computacionalmente inviable, un
@@ -50,6 +55,54 @@ Fase 1 -> Fase 1.5 (PDB unicamente) -> Fase 2 (motores) -> Fase 3 (nucleo) -> Fa
   no-canonico propio, cheminformatica real, no implementado) -- se marcan
   `fase_a_estado="sin_soporte_fase_a"` en el reporte, nunca se omiten en
   silencio.
+
+## Alcance e interpretacion
+
+Analisis de coherencia biologica 2026-08-07 (equivalente, para este
+proyecto, a las recomendaciones de Carmen Elena Gómez para
+[BCell-Epitope-Prediction](https://github.com/Lvera-code/BCell-Epitope-Prediction)):
+huecos de comunicacion de alcance encontrados, ninguno un bug de codigo.
+
+- **Capacidad predicha, no ocurrencia observada.** Ningun motor de este
+  pipeline (DeepMVP/DeepPTMPred/EMNGly/StackGlyEmbed) modela la via
+  biosintetica real del sustrato -- todos predicen desde secuencia/
+  estructura si un sitio ES modificable en principio, nunca si esa PTM
+  ocurre realmente en una celula/tejido/condicion especifica (eso depende
+  de que la enzima real este co-expresada y co-localizada con el sustrato,
+  algo que ningun predictor de secuencia puede capturar). Un resultado de
+  este pipeline debe leerse como "sitio potencialmente modificable", no
+  como "esta proteina SE modifica". Impreso como aviso al final de cada
+  corrida (`pipeline.py::INTERPRETATION_DISCLAIMER`).
+- **Sin filtro de via secretora para N-glicosilacion.** La N-glicosilacion
+  ocurre quimicamente en el lumen del RE/Golgi -- una proteina puramente
+  citoplasmatica/nuclear practicamente nunca se glicosila en un sequon,
+  sin importar el score de consenso. La columna `via_secretora_evidencia`
+  (via `src/structural/uniprot_localization_client.py`, evidencia REAL de
+  UniProt, nunca inventada) avisa cuando el consenso acepto un sitio
+  N-glico sin evidencia conocida de localizacion secretora -- NUNCA
+  rechaza el candidato (mismo criterio que la recomendacion de Carmen
+  Elena de no descartar candidatos de N-glico en el proyecto 1). Alcance
+  limitado a `n_linked_glycosylation` -- `o_linked_glycosylation` tiene dos
+  vias biologicas distintas (O-GlcNAc citoplasmatica/nuclear vs mucina en
+  la via secretora) que este cliente no distingue.
+- **Sin modelado de competencia entre PTMs del mismo residuo.** Varios
+  tipos modifican el mismo grupo quimico de un residuo y son mutuamente
+  excluyentes en una misma molecula/instante (acilo-lisina: acetilacion/
+  ubiquitinacion/sumoilacion/metilacion/malonilacion/glutarilacion/
+  succinilacion/crotonilacion; tiol de cisteina: S-nitrosilacion/
+  glutationilacion; guanidino de arginina: metilacion/citrulinacion;
+  hidroxilo de Ser/Thr: fosforilacion/O-glicosilacion, la hipotesis
+  "Yin-Yang"). La columna `ptm_crosstalk_aviso` avisa cuando 2+ tipos en
+  competencia real pasan en la misma posicion -- ver
+  `src/engines/ptm_annotation.py::_PTM_COMPETITION_GROUPS`.
+- **Sin distincion de tipo de cadena en Fase A de ubiquitinacion/
+  SUMOilacion.** `UBQ_GTPaseMover` modela una unica conjugacion
+  isopeptidica -- no distingue topologia de cadena de poliubiquitina (K48 =
+  degradacion proteasomal; K63 = senalizacion/reparacion, NO degradativo).
+  "Sitio de ubiquitinacion" no implica que la proteina vaya a degradarse.
+- **Sin especificidad de quinasa para fosforilacion** (motores genericos
+  "cualquier quinasa", no por familia dirigida por prolina/basica/acida).
+  Limitacion de alcance documentada, no una mejora planeada actualmente.
 
 ## Estado actual (2026-08-06)
 

@@ -5,6 +5,17 @@ Los tests de la corroboracion opcional MeToken mockean
 subproceso real, ver ``tests/test_metoken_engine.py`` para esos) --
 verifican unicamente el WIRING (que columnas se agregan/no, en que filas,
 que nunca cambia pasa_umbral/consenso, que un fallo no tumba la anotacion).
+
+``_mock_uniprot_lookup`` (autouse): muchos tests de este archivo usan
+``glycosylation_n``/``pasa_umbral=True`` (secciones de StackGlyEmbed/EMNGly)
+-- sin este fixture, ``_add_secretory_pathway_evidence`` (2026-08-07) haria
+una llamada de red REAL a UniProt en cada uno de ellos (accession='ACC1',
+inexistente mas alla del contexto del test, pero igual un round-trip de red
+real durante la suite principal -- viola la convencion de este proyecto de
+nunca golpear una API real en tests, ver docstring de test_glygen_client.py).
+Mockea a ``None`` por defecto (mismo significado que "no se pudo verificar"
+-- nunca cambia pasa_umbral/consenso); los tests dedicados de esta funcion
+mas abajo sobreescriben el mock explicitamente para probar True/False/error.
 """
 
 import pandas as pd
@@ -24,7 +35,17 @@ DEEPMVP_COLUMNS = ["protein", "aa", "pos", "x", "y_pred", "fpr", "ptm"]
 DEEPPTMPRED_COLUMNS = ["protein_id", "position", "residue", "probability", "ptm_type"]
 
 
-def test_annotate_fasta_path_columnas_y_valores_basicos():
+@pytest.fixture(autouse=True)
+def _mock_uniprot_lookup(monkeypatch):
+    monkeypatch.setattr(ptm_annotation, "lookup_secretory_pathway_evidence", lambda accession: None)
+
+
+def test_annotate_fasta_path_columnas_y_valores_basicos(monkeypatch):
+    # SECRETORY_PATHWAY_CHECK_ENABLED/PTM_CROSSTALK_CHECK_ENABLED deshabilitados aqui:
+    # este test verifica el esquema BASE de columnas, ortogonal a esos 2 avisos
+    # informativos (2026-08-07) -- tienen su propio test dedicado mas abajo.
+    monkeypatch.setattr(Settings, "SECRETORY_PATHWAY_CHECK_ENABLED", False)
+    monkeypatch.setattr(Settings, "PTM_CROSSTALK_CHECK_ENABLED", False)
     deepmvp_df = pd.DataFrame(
         [["ACC1", "K", 17, "xxx", 0.9, 0.01, "acetylation_k"]], columns=DEEPMVP_COLUMNS
     )
@@ -239,7 +260,9 @@ def test_select_fase_a_candidates_multiples_tipos_ordenado_por_tipo():
     assert result["tipo_ptm"].tolist() == ["acetylation", "ubiquitination"]
 
 
-def test_annotate_fasta_path_vacio_devuelve_dataframe_vacio_con_columnas():
+def test_annotate_fasta_path_vacio_devuelve_dataframe_vacio_con_columnas(monkeypatch):
+    monkeypatch.setattr(Settings, "SECRETORY_PATHWAY_CHECK_ENABLED", False)
+    monkeypatch.setattr(Settings, "PTM_CROSSTALK_CHECK_ENABLED", False)
     result = annotate_fasta_path("ACC1", "AAAA", pd.DataFrame(columns=DEEPMVP_COLUMNS))
     assert list(result.columns) == OUTPUT_COLUMNS
     assert len(result) == 0
@@ -249,6 +272,8 @@ def test_annotate_fasta_path_vacio_devuelve_dataframe_vacio_con_columnas():
 
 
 def test_annotate_pdb_path_sin_pdb_path_no_agrega_columnas_metoken(monkeypatch):
+    monkeypatch.setattr(Settings, "SECRETORY_PATHWAY_CHECK_ENABLED", False)
+    monkeypatch.setattr(Settings, "PTM_CROSSTALK_CHECK_ENABLED", False)
     called = []
     monkeypatch.setattr(ptm_annotation, "get_type_corroboration", lambda *a, **k: called.append(1))
 
@@ -346,6 +371,8 @@ def test_annotate_pdb_path_metoken_vacio_deja_columnas_en_none(monkeypatch, tmp_
 
 def test_annotate_pdb_path_metoken_deshabilitado_via_settings_ignora_pdb_path(monkeypatch, tmp_path):
     monkeypatch.setattr(Settings, "METOKEN_ENABLED", False)
+    monkeypatch.setattr(Settings, "SECRETORY_PATHWAY_CHECK_ENABLED", False)
+    monkeypatch.setattr(Settings, "PTM_CROSSTALK_CHECK_ENABLED", False)
     called = []
     monkeypatch.setattr(ptm_annotation, "get_type_corroboration", lambda *a, **k: called.append(1))
 
@@ -382,6 +409,8 @@ def test_annotate_pdb_path_metoken_excepcion_inesperada_no_tumba_la_anotacion(mo
 
 
 def test_annotate_fasta_path_enable_stackglyembed_false_no_agrega_columnas(monkeypatch):
+    monkeypatch.setattr(Settings, "SECRETORY_PATHWAY_CHECK_ENABLED", False)
+    monkeypatch.setattr(Settings, "PTM_CROSSTALK_CHECK_ENABLED", False)
     called = []
     monkeypatch.setattr(ptm_annotation, "get_nglyco_corroboration", lambda *a, **k: called.append(1))
 
@@ -489,6 +518,8 @@ def test_annotate_pdb_path_stackglyembed_vacio_deja_columnas_en_none(monkeypatch
 
 def test_annotate_pdb_path_stackglyembed_deshabilitado_via_settings(monkeypatch):
     monkeypatch.setattr(Settings, "STACKGLYEMBED_ENABLED", False)
+    monkeypatch.setattr(Settings, "SECRETORY_PATHWAY_CHECK_ENABLED", False)
+    monkeypatch.setattr(Settings, "PTM_CROSSTALK_CHECK_ENABLED", False)
     called = []
     monkeypatch.setattr(ptm_annotation, "get_nglyco_corroboration", lambda *a, **k: called.append(1))
 
@@ -724,3 +755,207 @@ def test_annotate_pdb_path_nglyco_consenso_excepcion_inesperada_no_tumba_la_anot
     row = result.iloc[0]
     assert row["motor"] == "DeepMVP"  # sin cambios, el fallo no tumba la anotacion
     assert bool(row["pasa_umbral"]) is True
+
+
+# --- Corroboracion opcional de VIA SECRETORA (UniProt, analisis 2026-08-07) ---
+
+
+def test_annotate_fasta_path_via_secretora_evidencia_true(monkeypatch):
+    monkeypatch.setattr(ptm_annotation, "lookup_secretory_pathway_evidence", lambda accession: True)
+    sequence = "AAAANKSAAAAA"  # N en pos 5, sequon NKS valido
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 5, "xxx", 0.9, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    result = annotate_fasta_path("ACC1", sequence, deepmvp_df)
+
+    assert result.iloc[0]["via_secretora_evidencia"] is True
+
+
+def test_annotate_fasta_path_via_secretora_evidencia_false(monkeypatch):
+    monkeypatch.setattr(ptm_annotation, "lookup_secretory_pathway_evidence", lambda accession: False)
+    sequence = "AAAANKSAAAAA"
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 5, "xxx", 0.9, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    result = annotate_fasta_path("ACC1", sequence, deepmvp_df)
+
+    assert result.iloc[0]["via_secretora_evidencia"] is False
+
+
+def test_annotate_fasta_path_via_secretora_evidencia_none_por_defecto():
+    # Fixture autouse ya mockea a None (equivalente a "no se pudo verificar").
+    sequence = "AAAANKSAAAAA"
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 5, "xxx", 0.9, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    result = annotate_fasta_path("ACC1", sequence, deepmvp_df)
+
+    assert "via_secretora_evidencia" in result.columns
+    assert result.iloc[0]["via_secretora_evidencia"] is None
+
+
+def test_annotate_fasta_path_via_secretora_evidencia_no_afecta_filas_no_elegibles(monkeypatch):
+    monkeypatch.setattr(ptm_annotation, "lookup_secretory_pathway_evidence", lambda accession: True)
+    sequence = "AAAKAANKSAAAAA"  # K en pos 4, N en pos 8 (sequon NKS)
+    deepmvp_df = pd.DataFrame(
+        [
+            ["ACC1", "K", 4, "xxx", 0.9, 0.01, "acetylation_k"],
+            ["ACC1", "N", 8, "xxx", 0.9, 0.01, "glycosylation_n"],
+        ],
+        columns=DEEPMVP_COLUMNS,
+    )
+    result = annotate_fasta_path("ACC1", sequence, deepmvp_df)
+
+    by_pos = result.set_index("posicion")
+    assert by_pos.loc[4, "via_secretora_evidencia"] is None  # no es N-glicosilacion
+    assert by_pos.loc[8, "via_secretora_evidencia"] is True
+
+
+def test_annotate_fasta_path_via_secretora_evidencia_sin_filas_elegibles_no_consulta_uniprot(monkeypatch):
+    called = []
+    monkeypatch.setattr(
+        ptm_annotation, "lookup_secretory_pathway_evidence", lambda accession: called.append(accession)
+    )
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "K", 4, "xxx", 0.9, 0.01, "acetylation_k"]], columns=DEEPMVP_COLUMNS
+    )
+    result = annotate_fasta_path("ACC1", "A" * 20, deepmvp_df)
+
+    assert called == []
+    assert result.iloc[0]["via_secretora_evidencia"] is None
+
+
+def test_annotate_pdb_path_via_secretora_evidencia_o_linked_fuera_de_alcance(monkeypatch):
+    # o_linked_glycosylation deliberadamente fuera de alcance (ver docstring del
+    # modulo): dos vias biologicas distintas, este cliente no las distingue.
+    called = []
+    monkeypatch.setattr(
+        ptm_annotation, "lookup_secretory_pathway_evidence", lambda accession: called.append(accession)
+    )
+    deepmvp_df = pd.DataFrame(columns=DEEPMVP_COLUMNS)
+    deepptmpred_df = pd.DataFrame(
+        [["ACC1", 10, "S", 0.9, "o_linked_glycosylation"]], columns=DEEPPTMPRED_COLUMNS
+    )
+    result = annotate_pdb_path("ACC1", "A" * 20, deepmvp_df, deepptmpred_df)  # pdb_path=None
+
+    assert called == []
+    assert result.iloc[0]["via_secretora_evidencia"] is None
+
+
+def test_annotate_fasta_path_via_secretora_evidencia_error_no_tumba_la_anotacion(monkeypatch):
+    def _boom(accession):
+        raise ptm_annotation.UniProtLookupError("fallo de red simulado")
+
+    monkeypatch.setattr(ptm_annotation, "lookup_secretory_pathway_evidence", _boom)
+    sequence = "AAAANKSAAAAA"
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 5, "xxx", 0.9, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    result = annotate_fasta_path("ACC1", sequence, deepmvp_df)
+
+    assert result.iloc[0]["via_secretora_evidencia"] is None  # degrada, no lanza
+    assert bool(result.iloc[0]["pasa_umbral"]) is True  # sin cambios en el resto de la fila
+
+
+def test_annotate_fasta_path_via_secretora_evidencia_deshabilitado_via_settings(monkeypatch):
+    monkeypatch.setattr(Settings, "SECRETORY_PATHWAY_CHECK_ENABLED", False)
+    called = []
+    monkeypatch.setattr(
+        ptm_annotation, "lookup_secretory_pathway_evidence", lambda accession: called.append(accession)
+    )
+    sequence = "AAAANKSAAAAA"
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "N", 5, "xxx", 0.9, 0.01, "glycosylation_n"]], columns=DEEPMVP_COLUMNS
+    )
+    result = annotate_fasta_path("ACC1", sequence, deepmvp_df)
+
+    assert called == []
+    assert "via_secretora_evidencia" not in result.columns
+
+
+# --- Aviso de competencia/crosstalk entre PTMs del mismo residuo (analisis 2026-08-07) ---
+
+
+def test_annotate_fasta_path_crosstalk_aviso_dos_tipos_compiten_mismo_residuo():
+    # Acetilacion y ubiquitinacion compiten por el mismo grupo epsilon-amino
+    # de la Lys17 -- ambas reales, DeepMVP puede proponer ambas de forma
+    # independiente (2 clasificadores separados por tipo).
+    deepmvp_df = pd.DataFrame(
+        [
+            ["ACC1", "K", 17, "xxx", 0.9, 0.01, "acetylation_k"],
+            ["ACC1", "K", 17, "xxx", 0.9, 0.01, "ubiquitination_k"],
+        ],
+        columns=DEEPMVP_COLUMNS,
+    )
+    result = annotate_fasta_path("ACC1", "A" * 30, deepmvp_df)
+
+    avisos = sorted(result["ptm_crosstalk_aviso"].tolist())
+    assert all(a is not None for a in avisos)
+    assert "acetylation" in avisos[0] or "ubiquitination" in avisos[0]
+    tipos_en_avisos = set(result["tipo_ptm"]) 
+    assert tipos_en_avisos == {"acetylation_k", "ubiquitination_k"}
+
+
+def test_annotate_fasta_path_crosstalk_sin_aviso_un_solo_tipo():
+    deepmvp_df = pd.DataFrame(
+        [["ACC1", "K", 17, "xxx", 0.9, 0.01, "acetylation_k"]], columns=DEEPMVP_COLUMNS
+    )
+    result = annotate_fasta_path("ACC1", "A" * 30, deepmvp_df)
+
+    assert result.iloc[0]["ptm_crosstalk_aviso"] is None
+
+
+def test_annotate_fasta_path_crosstalk_sin_aviso_si_uno_no_pasa_umbral():
+    deepmvp_df = pd.DataFrame(
+        [
+            ["ACC1", "K", 17, "xxx", 0.9, 0.01, "acetylation_k"],   # pasa (fpr bajo)
+            ["ACC1", "K", 17, "xxx", 0.9, 0.99, "ubiquitination_k"],  # no pasa (fpr alto)
+        ],
+        columns=DEEPMVP_COLUMNS,
+    )
+    result = annotate_fasta_path("ACC1", "A" * 30, deepmvp_df)
+
+    assert result["ptm_crosstalk_aviso"].isna().all()
+
+
+def test_annotate_fasta_path_crosstalk_sin_aviso_posiciones_distintas():
+    deepmvp_df = pd.DataFrame(
+        [
+            ["ACC1", "K", 5, "xxx", 0.9, 0.01, "acetylation_k"],
+            ["ACC1", "K", 20, "xxx", 0.9, 0.01, "ubiquitination_k"],
+        ],
+        columns=DEEPMVP_COLUMNS,
+    )
+    result = annotate_fasta_path("ACC1", "A" * 30, deepmvp_df)
+
+    assert result["ptm_crosstalk_aviso"].isna().all()
+
+
+def test_annotate_fasta_path_crosstalk_valida_residuo_wt():
+    # 'acetylation_k' con residuo_wt distinto de 'K' (no deberia pasar en la
+    # practica -- DeepMVP reporta el residuo real -- pero la funcion debe
+    # ignorar la fila si el residuo no coincide, nunca asumir por el tipo).
+    deepmvp_df = pd.DataFrame(
+        [
+            ["ACC1", "X", 17, "xxx", 0.9, 0.01, "acetylation_k"],
+            ["ACC1", "K", 17, "xxx", 0.9, 0.01, "ubiquitination_k"],
+        ],
+        columns=DEEPMVP_COLUMNS,
+    )
+    result = annotate_fasta_path("ACC1", "A" * 30, deepmvp_df)
+
+    assert result["ptm_crosstalk_aviso"].isna().all()  # solo 1 miembro real del grupo (K)
+
+
+def test_annotate_fasta_path_crosstalk_deshabilitado_via_settings(monkeypatch):
+    monkeypatch.setattr(Settings, "PTM_CROSSTALK_CHECK_ENABLED", False)
+    deepmvp_df = pd.DataFrame(
+        [
+            ["ACC1", "K", 17, "xxx", 0.9, 0.01, "acetylation_k"],
+            ["ACC1", "K", 17, "xxx", 0.9, 0.01, "ubiquitination_k"],
+        ],
+        columns=DEEPMVP_COLUMNS,
+    )
+    result = annotate_fasta_path("ACC1", "A" * 30, deepmvp_df)
+
+    assert "ptm_crosstalk_aviso" not in result.columns

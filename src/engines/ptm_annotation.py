@@ -91,6 +91,63 @@ posicion (p. ej. ``'DeepMVP+EMNGly+StackGlyEmbed'``, o
 motores nuevos logra evaluar la posicion, el comportamiento es identico al
 de antes de esta mejora (``motor='DeepMVP'``, ``consenso`` siempre
 ``False`` -- imposible alcanzar el minimo con un unico motor).
+
+## Corroboracion opcional de VIA SECRETORA -- N-glicosilacion, ambos caminos
+   (analisis de coherencia biologica 2026-08-07)
+
+Ni DeepMVP ni DeepPTMPred ni EMNGly ni StackGlyEmbed modelan la via
+biosintetica real del sustrato -- todos predicen desde secuencia/estructura
+si un sequon N-X-[S/T] ES glicosilable, nunca si la proteina realmente
+transita el RE/Golgi (requisito quimico real de la N-glicosilacion). Para
+cada fila con ``tipo_ptm`` en ``_NGLYCO_TYPES`` y ``pasa_umbral=True`` (un
+sitio que el consenso YA acepto), se consulta UniProt
+(``src/structural/uniprot_localization_client.py``) UNA VEZ por accession y
+se anade la columna PURAMENTE INFORMATIVA ``via_secretora_evidencia``:
+``True`` (UniProt reporta localizacion consistente con la via secretora),
+``False`` (UniProt SI tiene datos reales de localizacion pero NINGUNO es
+consistente -- evidencia real en contra, no solo ausencia), o ``None`` (sin
+datos de localizacion en UniProt, accession no reconocido -- el caso mas
+comun aqui, ya que ``accession`` normalmente viene del nombre del archivo de
+entrada, no de un ID UniProt real -- o fallo de red). NUNCA cambia
+``pasa_umbral``/``consenso`` -- mismo patron no-decisorio que MeToken/GlyGen/
+StackGlyEmbed-informativo. Deliberadamente NO aplica a
+``o_linked_glycosylation``: existen dos vias de O-glicosilacion
+biologicamente distintas (O-GlcNAc citoplasmatica/nuclear vs O-glicosilacion
+de tipo mucina en la via secretora) y este cliente no las distingue -- alcance
+limitado a N-glicosilacion para no arriesgar una afirmacion biologica
+incorrecta.
+
+## Aviso de COMPETENCIA/CROSSTALK entre PTMs del mismo residuo (analisis de
+   coherencia biologica 2026-08-07)
+
+Varios grupos de tipos de PTM de este proyecto modifican quimicamente el
+MISMO grupo funcional de un residuo y son mutuamente excluyentes en una
+misma molecula en un mismo instante -- no pueden coexistir literalmente
+sobre el mismo atomo. El nucleo puntua cada tipo/posicion de forma
+independiente, asi que si el consenso acepta 2+ tipos en competencia
+exactamente en la misma posicion, hoy se presentan como hallazgos
+igualmente validos sin ninguna senal de que son excluyentes. Grupos
+reales, conservadores (ver ``_PTM_COMPETITION_GROUPS`` -- basados en
+literatura establecida de PTM crosstalk, no exhaustivos a proposito, cada
+grupo ademas se verifica contra el ``residuo_wt`` real de la fila, nunca
+se asume solo por el tipo):
+- Lisina (acilo-lisina): acetilacion, ubiquitinacion, sumoilacion,
+  metilacion de Lys, malonilacion, glutarilacion, succinilacion,
+  crotonilacion -- todas ocupan el mismo grupo epsilon-amino.
+- Cisteina (tiol): S-nitrosilacion, glutationilacion.
+- Arginina (guanidino): metilacion de Arg, citrulinacion (la citrulinacion
+  ademas puede bloquear biologicamente la metilacion previa -- crosstalk
+  documentado en la literatura de PAD/PRMT).
+- Serina/Treonina (hidroxilo): fosforilacion, O-glicosilacion (la hipotesis
+  "Yin-Yang" fosfo/O-GlcNAc, ampliamente documentada).
+
+``_add_ptm_crosstalk_flag`` (ver mas abajo) anade la columna PURAMENTE
+INFORMATIVA ``ptm_crosstalk_aviso`` a CUALQUIER fila con ``pasa_umbral=True``
+que comparta grupo+posicion+accession con al menos otra fila tambien
+``pasa_umbral=True`` -- NUNCA cambia ``pasa_umbral``/``consenso``. Se
+ejecuta en ambos caminos (FASTA y PDB), tras todas las demas
+corroboraciones, para ver el estado final de ``pasa_umbral`` de cada fila
+(p. ej. tras el consenso de N-glicosilacion).
 """
 
 from pathlib import Path
@@ -102,6 +159,10 @@ from src.config.settings import Settings
 from src.engines.emngly_engine import get_emngly_predictions
 from src.engines.metoken_engine import get_type_corroboration
 from src.engines.stackglyembed_engine import get_nglyco_corroboration
+from src.structural.uniprot_localization_client import (
+    UniProtLookupError,
+    lookup_secretory_pathway_evidence,
+)
 from src.utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
@@ -156,6 +217,46 @@ DEEPMVP_TO_CANONICAL_TYPE = {
 # aqui). Cualquier tipo no listado aqui no tiene ventana (motivo puntual:
 # fosforilacion/acetilacion/metilacion/ubiquitinacion/etc.).
 _NGLYCO_TYPES = {"n_linked_glycosylation", "glycosylation_n"}
+
+# tipo_ptm (nombre CRUDO de DeepMVP o CANONICO de DeepPTMPred, ambos
+# posibles en esta columna, ver DEEPMVP_TO_CANONICAL_TYPE) -> (grupo de
+# competencia quimica real, residuos que ese grupo puede ocupar). Usado por
+# ``_add_ptm_crosstalk_flag`` -- ver docstring del modulo para la
+# justificacion biologica de cada grupo. Deliberadamente conservador: solo
+# incluye tipos de este proyecto con competencia real bien establecida en la
+# literatura por el MISMO grupo funcional de un residuo. Cada grupo se
+# valida ademas contra ``residuo_wt`` real de la fila (nunca se asume el
+# residuo objetivo solo por el nombre del tipo).
+_PTM_COMPETITION_GROUPS = {
+    # Lisina (acilo-lisina): grupo epsilon-amino, unico entre todos estos.
+    "acetylation": ("K_acilo", {"K"}),
+    "acetylation_k": ("K_acilo", {"K"}),
+    "ubiquitination": ("K_acilo", {"K"}),
+    "ubiquitination_k": ("K_acilo", {"K"}),
+    "sumoylation": ("K_acilo", {"K"}),
+    "sumoylation_k": ("K_acilo", {"K"}),
+    "lys_methylation": ("K_acilo", {"K"}),
+    "methylation_k": ("K_acilo", {"K"}),
+    "malonylation": ("K_acilo", {"K"}),
+    "glutarylation": ("K_acilo", {"K"}),
+    "succinylation": ("K_acilo", {"K"}),
+    "crotonylation": ("K_acilo", {"K"}),
+    # Cisteina (tiol).
+    "s_nitrosylation": ("C_tiol", {"C"}),
+    "glutathionylation": ("C_tiol", {"C"}),
+    # Arginina (guanidino).
+    "arg_methylation": ("R_guanidino", {"R"}),
+    "methylation_r": ("R_guanidino", {"R"}),
+    "citrullination": ("R_guanidino", {"R"}),
+    # Serina/Treonina (hidroxilo) -- NUNCA incluye 'phosphorylation_y'
+    # (fosforilacion en Tirosina, sin equivalente en DeepPTMPred, ver
+    # DEEPMVP_TO_CANONICAL_TYPE): ocupa un grupo quimico distinto (hidroxilo
+    # fenolico, no alcoholico), sin competencia real conocida con los tipos
+    # de este proyecto.
+    "phosphorylation": ("ST_hidroxilo", {"S", "T"}),
+    "phosphorylation_st": ("ST_hidroxilo", {"S", "T"}),
+    "o_linked_glycosylation": ("ST_hidroxilo", {"S", "T"}),
+}
 
 # Tipos excluidos deliberadamente de la fusion DeepMVP+DeepPTMPred (decision
 # 2026-08-01, ver STATUS.md "investigacion de n_linked_glycosylation y los 4
@@ -244,6 +345,18 @@ def annotate_fasta_path(
                 "Fallo inesperado anadiendo corroboracion StackGlyEmbed para '%s' (no fatal, no "
                 "afecta consenso/pasa_umbral): %s", accession, exc,
             )
+
+    if Settings.SECRETORY_PATHWAY_CHECK_ENABLED:
+        try:
+            result = _add_secretory_pathway_evidence(result, accession)
+        except Exception as exc:  # noqa: BLE001 -- doble seguro, el cliente ya degrada internamente
+            logger.warning(
+                "Fallo inesperado anadiendo evidencia de via secretora para '%s' (no fatal, no "
+                "afecta consenso/pasa_umbral): %s", accession, exc,
+            )
+
+    if Settings.PTM_CROSSTALK_CHECK_ENABLED:
+        result = _add_ptm_crosstalk_flag(result)
 
     return result
 
@@ -407,6 +520,18 @@ def annotate_pdb_path(
                 "afecta consenso/pasa_umbral): %s", accession, exc,
             )
 
+    if Settings.SECRETORY_PATHWAY_CHECK_ENABLED:
+        try:
+            result = _add_secretory_pathway_evidence(result, accession)
+        except Exception as exc:  # noqa: BLE001 -- doble seguro, el cliente ya degrada internamente
+            logger.warning(
+                "Fallo inesperado anadiendo evidencia de via secretora para '%s' (no fatal, no "
+                "afecta consenso/pasa_umbral): %s", accession, exc,
+            )
+
+    if Settings.PTM_CROSSTALK_CHECK_ENABLED:
+        result = _add_ptm_crosstalk_flag(result)
+
     return result
 
 
@@ -501,6 +626,88 @@ def _add_stackglyembed_corroboration(result: pd.DataFrame, sequence: str) -> pd.
         result.at[idx, "stackglyembed_veredicto"] = site["stackglyembed_veredicto"]
         result.at[idx, "stackglyembed_score"] = site["stackglyembed_score"]
         result.at[idx, "stackglyembed_coincide"] = bool(site["stackglyembed_veredicto"] == "Glicosilado")
+
+    return result
+
+
+def _add_secretory_pathway_evidence(result: pd.DataFrame, accession: str) -> pd.DataFrame:
+    """Anade ``via_secretora_evidencia`` a las filas de N-glicosilacion elegibles.
+
+    Puramente informativo (ver docstring del modulo): NUNCA modifica
+    ``pasa_umbral``/``consenso``. Una unica consulta a UniProt por accession
+    (nunca por fila/posicion -- la localizacion subcelular es una propiedad
+    de la proteina completa, no de un sitio individual), reutilizada para
+    todas las filas elegibles (``tipo_ptm`` en ``_NGLYCO_TYPES`` -- excluye
+    deliberadamente ``o_linked_glycosylation``, ver docstring del modulo --
+    con ``pasa_umbral=True``).
+
+    Un accession no reconocido por UniProt (el caso mas comun aqui, ver
+    docstring del modulo) o un fallo de red dejan la columna en ``None`` para
+    toda la tabla -- nunca ``False`` por defecto, para no afirmar "sin via
+    secretora" cuando en realidad es "no se pudo verificar".
+    """
+    result = result.copy()
+    result["via_secretora_evidencia"] = None
+
+    eligible_mask = result["tipo_ptm"].isin(_NGLYCO_TYPES) & result["pasa_umbral"]
+    if not eligible_mask.any():
+        return result
+
+    try:
+        evidencia = lookup_secretory_pathway_evidence(accession)
+    except UniProtLookupError as exc:
+        logger.warning(
+            "No se pudo consultar UniProt para '%s' -- 'via_secretora_evidencia' queda sin "
+            "determinar para todas las filas de N-glicosilacion (no fatal): %s", accession, exc,
+        )
+        return result
+
+    result.loc[eligible_mask, "via_secretora_evidencia"] = evidencia
+    return result
+
+
+def _add_ptm_crosstalk_flag(result: pd.DataFrame) -> pd.DataFrame:
+    """Anade ``ptm_crosstalk_aviso`` cuando 2+ tipos en competencia real coinciden en el mismo residuo.
+
+    Puramente informativo (ver docstring del modulo): NUNCA modifica
+    ``pasa_umbral``/``consenso``. Solo considera filas ``pasa_umbral=True``
+    (sitios que el consenso YA acepto) -- agrupadas por
+    ``(accession, posicion, grupo de competencia)`` via
+    ``_PTM_COMPETITION_GROUPS``, validando ademas que ``residuo_wt`` de cada
+    fila coincida con el residuo real que ese grupo puede ocupar (nunca se
+    asume el residuo objetivo solo por el nombre del tipo). Si 2+ tipos
+    DISTINTOS del mismo grupo pasan en la misma posicion, cada fila
+    involucrada recibe un aviso listando los otros tipos en competencia.
+    """
+    result = result.copy()
+    result["ptm_crosstalk_aviso"] = None
+
+    eligible = result[result["pasa_umbral"]]
+    if eligible.empty:
+        return result
+
+    groups: dict = {}
+    for idx, row in eligible.iterrows():
+        group_info = _PTM_COMPETITION_GROUPS.get(row["tipo_ptm"])
+        if group_info is None:
+            continue
+        group_name, expected_residues = group_info
+        if row["residuo_wt"] not in expected_residues:
+            continue
+        key = (row["accession"], int(row["posicion"]), group_name)
+        groups.setdefault(key, []).append((idx, row["tipo_ptm"]))
+
+    for members in groups.values():
+        distinct_types = sorted({DEEPMVP_TO_CANONICAL_TYPE.get(t, t) for _, t in members})
+        if len(distinct_types) < 2:
+            continue
+        for idx, tipo in members:
+            tipo_normalizado = DEEPMVP_TO_CANONICAL_TYPE.get(tipo, tipo)
+            others = [t for t in distinct_types if t != tipo_normalizado]
+            result.at[idx, "ptm_crosstalk_aviso"] = (
+                f"Compite con: {', '.join(others)} (mismo residuo, mutuamente excluyentes en una "
+                "misma molecula/instante -- ver docstring del modulo)"
+            )
 
     return result
 

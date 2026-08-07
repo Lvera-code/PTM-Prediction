@@ -461,6 +461,18 @@ class Settings:
     # consenso) que existia antes de esta mejora.
     NGLYCO_CONSENSUS_MIN_ENGINES: int = _env_int("NGLYCO_CONSENSUS_MIN_ENGINES", 2)
 
+    # --- Avisos informativos de coherencia biologica (analisis 2026-08-07,
+    # ver README.md "Alcance e interpretacion") -- ambos NUNCA deciden
+    # pasa_umbral/consenso, mismo patron que MeToken/StackGlyEmbed/GlyGen.
+    # A diferencia de esos, no dependen de pdb_path/enable_stackglyembed --
+    # se ejecutan en ambos caminos siempre que esten habilitados (son
+    # chequeos ligeros: una consulta HTTP a UniProt por accession, o logica
+    # pura de pandas -- sin instalacion externa que degradar). Ambos
+    # default True, toggleable por si se necesita una corrida
+    # deterministica/offline (tests, red no disponible).
+    SECRETORY_PATHWAY_CHECK_ENABLED: bool = _env_bool("SECRETORY_PATHWAY_CHECK_ENABLED", True)
+    PTM_CROSSTALK_CHECK_ENABLED: bool = _env_bool("PTM_CROSSTALK_CHECK_ENABLED", True)
+
     # --- Fase A / Extension 3: modelado estructural real (PyRosetta), Camino PDB
     # unicamente -- conectado al pipeline principal 2026-08-03 ---
     # Revierte la decision 2026-07-27 de que D (apply_workflow_filter) no ruta a

@@ -40,6 +40,24 @@ from src.engines.ptm_annotation import (
 from src.utils.exceptions import PipelineError
 from src.utils.fasta_parser import load_and_sanitize, write_fasta
 from src.utils.input_router import FASTA_EXTENSIONS, STRUCTURE_EXTENSIONS, route_input
+
+# Analisis de coherencia biologica 2026-08-07 (cambio 1 de 3): ningun motor
+# de este pipeline (DeepMVP/DeepPTMPred/EMNGly/StackGlyEmbed) modela la
+# via biosintetica real del sustrato (co-expresion/co-localizacion de la
+# enzima) -- todos predicen CAPACIDAD de un sitio de modificarse a partir de
+# secuencia/estructura, nunca si esa PTM ocurre realmente en una celula/
+# tejido/condicion dada (eso depende de contexto biologico que ningun
+# predictor de secuencia puede capturar). Impreso una vez al final de cada
+# corrida (no se escribe dentro del CSV del reporte -- cambiaria su esquema,
+# rompiendo lectores existentes que no esperan una fila de comentario).
+INTERPRETATION_DISCLAIMER = (
+    "AVISO DE INTERPRETACION: este reporte predice sitios POTENCIALMENTE "
+    "modificables (propiedad de secuencia/estructura), no si esa "
+    "modificacion ocurre realmente en una celula/tejido/condicion "
+    "especifica -- eso depende de la co-expresion y co-localizacion de la "
+    "enzima real, que este pipeline no modela. Ver README.md - seccion "
+    "'Alcance e interpretacion'."
+)
 from src.utils.logger_config import setup_logger
 from src.utils.structure_parser import parse_structure
 
@@ -310,6 +328,7 @@ def run_single_input(input_path: Path, output_dir: Path) -> Path:
         run_fase_a_pdb_modeling(record, filtered, output_dir, report_path)
         print(f"Camino PDB completo. Consenso DeepMVP+DeepPTMPred + Fase A. Reporte: {report_path}")
 
+    print(INTERPRETATION_DISCLAIMER)
     return report_path
 
 

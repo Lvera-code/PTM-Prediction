@@ -1982,3 +1982,85 @@ proponer containerizar salvo que Carlos o la integracion a Scipion lo
 requieran explicitamente. El wheel de PyRosetta (licencia academica) se
 conservo, movido a la raiz del repo (gitignorado) para no repetir el
 problema de mirrors si se necesita reinstalar en el futuro.
+
+## Analisis de coherencia biologica (2026-08-07): 3 mejoras implementadas, 2 diferidas
+
+A peticion de Enzo, analisis completo del proyecto (robustez de produccion +
+coherencia biologica del workflow, equivalente para este proyecto a las
+recomendaciones de Carmen Elena Gómez para
+[[project_carmen_elena_gomez_feedback_2026-07-30|BCell-Epitope-Prediction]]).
+5 recomendaciones concretas encontradas, ninguna un bug de codigo -- huecos
+de comunicacion de alcance/interpretacion. Implementadas las 3 de mayor
+valor/menor costo; las otras 2 (ambigüedad de tipo de cadena en Fase A de
+ubiquitinacion/SUMOilacion, falta de especificidad de quinasa en
+fosforilacion) quedan documentadas en README.md "Alcance e interpretacion"
+como limitaciones de alcance, sin implementacion planeada.
+
+**Cambio 1 -- disclaimer de interpretacion**: ningun motor modela la via
+biosintetica real del sustrato (co-expresion/co-localizacion de la enzima)
+-- todos predicen CAPACIDAD de modificarse desde secuencia/estructura, nunca
+ocurrencia real en una celula/tejido/condicion. `pipeline.py::INTERPRETATION_DISCLAIMER`
+se imprime una vez al final de cada corrida (no se escribe dentro del CSV --
+cambiaria su esquema, rompiendo lectores existentes).
+
+**Cambio 2 -- evidencia de via secretora (N-glicosilacion)**: nuevo
+`src/structural/uniprot_localization_client.py` (stdlib-only, mismo patron
+que `glygen_client.py`), consulta real a `rest.uniprot.org` (endpoint
+`/uniprotkb/{accession}.json`, verificado en vivo, no asumido). Columna
+`via_secretora_evidencia` (True/False/None), puramente informativa (nunca
+decide `pasa_umbral`/`consenso`, mismo patron que MeToken/GlyGen), aplicada
+solo a `n_linked_glycosylation`/`glycosylation_n` (deliberadamente NO a
+`o_linked_glycosylation` -- dos vias biologicas distintas, O-GlcNAc vs
+mucina, que este cliente no distingue). Toggle: `Settings.SECRETORY_PATHWAY_CHECK_ENABLED`
+(default True).
+
+3 bugs reales encontrados verificando contra la API real (no asumidos):
+1. UniProt devuelve HTTP 400 (no solo 404) para accessions con formato
+   invalido -- el caso MAS COMUN aqui, ya que `accession` normalmente viene
+   del stem del archivo de entrada, casi nunca un ID UniProt real. Ambos
+   codigos se tratan como "sin datos" (`None`), nunca lanzan.
+2. La keyword `'Membrane'` sola es demasiado amplia -- descartada tras un
+   falso positivo real contra GAPDH/P04406 (proteina citoplasmatica/nuclear
+   con reportes de asociacion periferica de membrana).
+3. Contar CUALQUIER keyword como "hay datos de localizacion" (sin filtrar
+   por `category`) daba un falso `False` en vez del `None` correcto cuando
+   UniProt solo tenia keywords no relacionadas con localizacion (p.ej.
+   `'3D-structure'`, categoria real `'Technical term'`) -- corregido
+   filtrando por `category == 'Cellular component'`.
+
+Verificado en vivo contra 5 casos reales: P01588/EPO (True, secretada),
+P04406/GAPDH (False, citoplasmatica/nuclear, localizacion real conocida),
+`1qlp`/`NOTREAL999` (None, accession no reconocido).
+
+**Cambio 3 -- aviso de competencia/crosstalk entre PTMs**: varios tipos
+modifican el MISMO grupo quimico de un residuo y son mutuamente excluyentes
+en una misma molecula/instante (nunca modelado antes de esta mejora, cada
+tipo/posicion se puntuaba independiente). Grupos reales, conservadores,
+verificados contra `residuo_wt` de cada fila (nunca asumidos solo por el
+tipo) en `src/engines/ptm_annotation.py::_PTM_COMPETITION_GROUPS`: acilo-
+lisina (acetilacion/ubiquitinacion/sumoilacion/metilacion-Lys/malonilacion/
+glutarilacion/succinilacion/crotonilacion), tiol de cisteina (S-nitrosilacion/
+glutationilacion), guanidino de arginina (metilacion-Arg/citrulinacion),
+hidroxilo de Ser/Thr (fosforilacion/O-glicosilacion, hipotesis "Yin-Yang").
+Columna `ptm_crosstalk_aviso`, puramente informativa. Toggle:
+`Settings.PTM_CROSSTALK_CHECK_ENABLED` (default True).
+
+**Riesgo real evitado durante el testing**: muchos tests preexistentes de
+`test_ptm_annotation.py` (secciones StackGlyEmbed/EMNGly) usan
+`glycosylation_n`/`pasa_umbral=True` -- sin mockear, el Cambio 2 habria hecho
+llamadas de red REALES a UniProt en cada uno de ellos durante la suite
+principal (viola la convencion de este proyecto de nunca golpear una API
+real en tests). Arreglado con un fixture `autouse` (`_mock_uniprot_lookup`)
+que mockea el limite de red a `None` por defecto para todo el archivo. 23
+tests nuevos (14 en `test_ptm_annotation.py`, 9 en el nuevo
+`tests/test_uniprot_localization_client.py`), 276 tests en total, todos
+pasando, suite completa en ~37s (sin red real).
+
+**Ítem de licencia aclarado en esta sesion (no confundir)**: el email ya
+respondido por Junwen Wang ("I confirm that the GitHub code follows the
+same CC BY-NC terms") es sobre **DeepPTMPred** (autores Yong Liu/Junwen
+Wang), ya cerrado desde 2026-07-29 (ver seccion de licencias arriba). La
+licencia de **EMNGly** (autores distintos: Xiaoyang Hou/Shiwei Sun/Yaojun
+Wang, ICT-CAS) sigue siendo el unico item de compliance real abierto en
+todo el proyecto -- ese email todavia no se ha enviado. No bloqueante (los
+pesos de EMNGly ya son descargables sin depender de esa respuesta).
