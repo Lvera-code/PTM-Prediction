@@ -149,8 +149,8 @@ real sobre el set independiente de N-GlyDE. El umbral
 ## Uso
 
 ```bash
-python pipeline.py --input fasta_inputs/mi_proteina.fasta
-python pipeline.py --input fasta_inputs/mi_estructura.pdb   # Camino PDB: motores + Fase A
+python pipeline.py --input Inputs/mi_proteina.fasta
+python pipeline.py --input Inputs/mi_estructura.pdb   # Camino PDB: motores + Fase A
 ```
 
 ## Instalacion

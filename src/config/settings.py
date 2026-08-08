@@ -45,8 +45,8 @@ class Settings:
     """Punto unico de verdad para toda configuracion del pipeline."""
 
     # --- Fase 1 / Orquestador: carpetas de entrada y salida del pipeline ---
-    FASTA_INPUT_DIR: Path = Path(_env_str("FASTA_INPUT_DIR", "fasta_inputs"))
-    FASTA_OUTPUT_DIR: Path = Path(_env_str("FASTA_OUTPUT_DIR", "fasta_outputs"))
+    FASTA_INPUT_DIR: Path = Path(_env_str("FASTA_INPUT_DIR", "Inputs"))
+    FASTA_OUTPUT_DIR: Path = Path(_env_str("FASTA_OUTPUT_DIR", "Outputs"))
 
     # --- Fase 1.5: Extraccion de estructura (PDB/mmCIF via gemmi, LOCAL) ---
     # Estrategia de seleccion de cadena cuando el archivo de entrada tiene mas
@@ -368,7 +368,7 @@ class Settings:
     # lote de 30 sitios ya tardo ~150s, MAS que el timeout original de 120s.
     # Proteinas reales del propio panel de validacion aceptan muchos mas
     # sitios de fosforilacion que eso -- Tau completo tiene 115 sitios
-    # aceptados por el consenso (ver fasta_outputs/AF-P10636-F1-model_v4_ptm_sites.csv),
+    # aceptados por el consenso (ver Outputs/AF-P10636-F1-model_v4_ptm_sites.csv),
     # que a ese ritmo tardarian ~10 min. Confirmado en vivo el mismo dia:
     # una corrida real del panel de validacion (p53, 33 sitios) tardo mas de
     # 120s con el default original -- el timeout viejo garantizaba fallo

@@ -69,7 +69,7 @@ def main(argv: List[str] = None) -> int:
         help="Nombres de entradas del panel a correr (por defecto, todas). Ver "
              "src/validation/biological_panel.py::PANEL para los nombres validos.",
     )
-    parser.add_argument("--output-dir", default="fasta_outputs/validation_panel")
+    parser.add_argument("--output-dir", default="Outputs/validation_panel")
     args = parser.parse_args(argv)
 
     entries = [e for e in PANEL if args.only is None or e.name in args.only]

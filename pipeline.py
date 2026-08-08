@@ -73,7 +73,7 @@ def parse_args(argv: List[str] = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--input", required=True,
-        help="Ruta a un archivo de entrada (dentro de fasta_inputs/): FASTA (Camino FASTA, "
+        help="Ruta a un archivo de entrada (dentro de Inputs/): FASTA (Camino FASTA, "
         "DeepMVP solo) o PDB/mmCIF (Camino PDB, consenso DeepMVP+DeepPTMPred); o a un "
         "directorio con varios de estos archivos, para correr el pipeline sobre todos en "
         "una sola invocacion (modo batch). El tipo de cada archivo se detecta "
@@ -291,7 +291,7 @@ def run_fase_a_pdb_modeling(
 def _discover_batch_inputs(directory: Path) -> List[Path]:
     """Lista, en orden alfabetico, los archivos de ``directory`` con una extension reconocida
     por ``src.utils.input_router`` (FASTA o estructura). No recursivo -- mismo alcance plano
-    que ``fasta_inputs/`` en el uso de un solo archivo. El contenido de cada archivo se
+    que ``Inputs/`` en el uso de un solo archivo. El contenido de cada archivo se
     revalida igual que en modo de un solo archivo (``route_input`` dentro de ``run_single_input``),
     esto es solo un filtro rapido por extension para no intentar rutear cada archivo random
     que pueda haber en la carpeta (p.ej. ``.csv``/``.log`` de una corrida anterior).

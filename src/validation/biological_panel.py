@@ -17,7 +17,7 @@ completo y las 3 trampas de numeracion encontradas.
 
 ## Por que AlphaFold, no PDBs experimentales
 
-Verificado empiricamente (``fasta_inputs/validation_panel/*.pdb``, descargados de
+Verificado empiricamente (``Inputs/*.pdb``, descargados de
 ``alphafold.ebi.ac.uk/files/AF-<accession>-F1-model_v6.pdb``): la numeracion de residuos
 de AlphaFold coincide 1:1 con la numeracion canonica de UniProt para las 7 proteinas de
 este panel (confirmado corriendo ``src.utils.structure_parser.parse_structure`` sobre cada
@@ -52,7 +52,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Tuple
 
-PANEL_DIR = Path(__file__).resolve().parent.parent.parent / "fasta_inputs" / "validation_panel"
+PANEL_DIR = Path(__file__).resolve().parent.parent.parent / "Inputs"
 
 
 @dataclass(frozen=True)
