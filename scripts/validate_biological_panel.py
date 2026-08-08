@@ -38,7 +38,7 @@ def _accepted_positions(entry: PanelEntry, output_dir: Path) -> set:
     todo lo que ``apply_workflow_filter`` acepto (pasa_umbral=True)."""
     record = run_fase1_5_structure(entry.pdb_path, output_dir)
     deepmvp_results, deepptmpred_results = run_fase2_pdb_motors(record, output_dir)
-    filtered, _ = run_fase3_pdb_annotation(record, deepmvp_results, deepptmpred_results, output_dir)
+    filtered, _, _ = run_fase3_pdb_annotation(record, deepmvp_results, deepptmpred_results, output_dir)
     return {(int(row["posicion"]), row["tipo_ptm"]) for _, row in filtered.iterrows()}
 
 
@@ -69,7 +69,7 @@ def main(argv: List[str] = None) -> int:
         help="Nombres de entradas del panel a correr (por defecto, todas). Ver "
              "src/validation/biological_panel.py::PANEL para los nombres validos.",
     )
-    parser.add_argument("--output-dir", default="Outputs/validation_panel")
+    parser.add_argument("--output-dir", default="outputs/validation_panel")
     args = parser.parse_args(argv)
 
     entries = [e for e in PANEL if args.only is None or e.name in args.only]

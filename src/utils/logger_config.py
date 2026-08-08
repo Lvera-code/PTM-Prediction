@@ -32,8 +32,13 @@ def setup_logger(name: str = "PTM_Pipeline") -> logging.Logger:
             datefmt="%Y-%m-%d %H:%M:%S",
         )
 
+        # Consola: solo WARNING en adelante. Los mensajes INFO (comandos de
+        # subprocess ejecutados, detalle por-tipo de cada motor) quedan solo
+        # en el archivo de log -- pipeline.py imprime su propio resumen
+        # limpio por fases via print(), mismo patron que
+        # BCell-Epitope-Prediction (ver su logger_config.py).
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
+        console_handler.setLevel(logging.WARNING)
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
 

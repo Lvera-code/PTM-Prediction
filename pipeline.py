@@ -3,16 +3,22 @@
 Numeracion de fases alineada con `BCell-Epitope-Prediction` (proyecto 1):
 Fase 1 (saneamiento) -> Fase 1.5 (extraccion de estructura, Camino PDB
 unicamente) -> Fase 2 (motores: DeepMVP / DeepMVP+DeepPTMPred) -> Fase 3
-(nucleo: anotacion + filtro). Renombrado 2026-07-28 -- antes los motores se
-llamaban "Fase 3a" en vez de "Fase 2", inconsistente con el numerado del
-proyecto 1 sin que hubiera una decision documentada detras; ningun cambio
-de comportamiento, solo de nombres (funciones, docstrings, logs).
+(nucleo: anotacion + filtro) -> Fase 3b (cruces informativos: via secretora,
+Kinase Library, MeToken, competencia entre PTMs) -> Fase 3c (modelado
+estructural real, Camino PDB unicamente). Renombrado 2026-08-08 -- Fase 3b/3c
+antes se llamaban "cruces informativos"/"Fase A" en la documentacion; sin
+cambio de comportamiento, ambas siguen calculandose exactamente igual
+(3b dentro de ``annotate_pdb_path``, 3c via ``run_fase_a_pdb_modeling``/
+``FaseAEngine``) -- el nombre nuevo es solo para el resumen en pantalla y la
+documentacion, los nombres de funciones/columnas/variables de entorno
+(``fase_a_*``, ``FASE_A_ENABLED``, etc.) no cambian.
 
 Camino FASTA: Fase 1 (saneamiento) -> Fase 2 (DeepMVP, unico motor) -> Fase 3
 (nucleo: anotacion + filtro).
 Camino PDB: Fase 1.5 (extraccion ATMSEQ + pdb de una cadena) -> Fase 2
 (DeepMVP + DeepPTMPred en consenso) -> Fase 3 (nucleo: anotacion + filtro,
-fusiona consenso donde ambos motores coinciden en tipo+posicion).
+fusiona consenso donde ambos motores coinciden en tipo+posicion) -> Fase 3b
+(cruces informativos) -> Fase 3c (modelado estructural real).
 
 Diseno del nucleo de Fase 3 (B: anotacion/filtrado, D: logica de flujo) en
 ``01-Proyectos/PTM-Prediction/Decisiones/2026-07-27-diseno-nucleo-fase3-anotacion-flujo.md``
@@ -63,6 +69,56 @@ from src.utils.structure_parser import parse_structure
 
 logger = setup_logger(__name__)
 
+_SEPARATOR = "=" * 70
+
+
+def _print_table(headers: List[str], rows: List[list]) -> None:
+    """Imprime una tabla alineada por ancho de columna con ``print()`` plano.
+
+    Sin dependencias nuevas (no usa ``DataFrame.to_string``, que arrastra
+    indice/dtypes que no aportan nada a un resumen en pantalla) -- mismo
+    espiritu que los resumenes por fase de BCell-Epitope-Prediction, que
+    tambien son ``print()`` simples, no volcados de pandas.
+    """
+    widths = [len(str(h)) for h in headers]
+    str_rows = [[str(c) for c in row] for row in rows]
+    for row in str_rows:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], len(cell))
+
+    def _fmt(cells: List[str]) -> str:
+        return "  ".join(cell.ljust(w) for cell, w in zip(cells, widths))
+
+    print(_fmt([str(h) for h in headers]))
+    print(_fmt(["-" * w for w in widths]))
+    for row in str_rows:
+        print(_fmt(row))
+
+
+def _ground_truth_lookup(accession: str) -> dict:
+    """Si ``accession`` coincide con una entrada de
+    ``src/validation/biological_panel.py`` (panel de 7 proteinas con sitios
+    PTM reales documentados en literatura), devuelve ``{(posicion, tipo_ptm):
+    tier}`` para marcar en el resumen en pantalla que sitios de consenso ya
+    estan confirmados por PMID real -- nunca inventa literatura donde no la
+    hay: para cualquier proteina fuera del panel devuelve ``{}`` y el resumen
+    simplemente no muestra la columna.
+    """
+    from src.validation.biological_panel import PANEL
+
+    for entry in PANEL:
+        if Path(entry.pdb_filename).stem == accession:
+            return {
+                (site.position, site.ptm_type): site.tier
+                for site in entry.sites
+                if not site.is_negative
+            }
+    return {}
+
+
+def _fmt_score(value) -> str:
+    return f"{float(value):.3f}" if pd.notna(value) else "-"
+
 
 def parse_args(argv: List[str] = None) -> argparse.Namespace:
     """Define y parsea los argumentos de linea de comandos del pipeline."""
@@ -73,7 +129,7 @@ def parse_args(argv: List[str] = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--input", required=True,
-        help="Ruta a un archivo de entrada (dentro de Inputs/): FASTA (Camino FASTA, "
+        help="Ruta a un archivo de entrada (dentro de inputs/): FASTA (Camino FASTA, "
         "DeepMVP solo) o PDB/mmCIF (Camino PDB, consenso DeepMVP+DeepPTMPred); o a un "
         "directorio con varios de estos archivos, para correr el pipeline sobre todos en "
         "una sola invocacion (modo batch). El tipo de cada archivo se detecta "
@@ -122,7 +178,7 @@ def run_fase2_fasta_motor(clean_fasta: Path, output_dir: Path) -> pd.DataFrame:
 
 def run_fase3_fasta_annotation(
     records, deepmvp_results: pd.DataFrame, output_dir: Path, out_stem: str
-) -> Path:
+) -> "tuple[pd.DataFrame, int, Path]":
     """Camino FASTA: Fase 3, nucleo (B: anotacion + D: filtro). Escribe el reporte final.
 
     DeepMVP procesa el FASTA completo (posiblemente multi-accession) en una
@@ -130,6 +186,10 @@ def run_fase3_fasta_annotation(
     salida): se anota cada accession por separado (secuencia correcta para
     el calculo de ventanas de cada una) y se concatena, en vez de tratar el
     FASTA como una unica secuencia fusionada.
+
+    Devuelve ``(filtered, n_evaluados, report_path)`` -- ``n_evaluados`` es
+    ``len(annotated)`` (antes del filtro de umbral), para que el resumen en
+    pantalla pueda mostrar "X/Y pasan el umbral" sin releer el CSV.
     """
     per_accession = []
     for record in records:
@@ -149,7 +209,7 @@ def run_fase3_fasta_annotation(
         "Fase 3 completa (Camino FASTA): %d/%d sitio(s) PTM pasan el umbral -> '%s'.",
         len(filtered), len(annotated), report_path,
     )
-    return report_path
+    return filtered, len(annotated), report_path
 
 
 def run_fase2_pdb_motors(record, output_dir: Path):
@@ -165,7 +225,7 @@ def run_fase2_pdb_motors(record, output_dir: Path):
 
 def run_fase3_pdb_annotation(
     record, deepmvp_results: pd.DataFrame, deepptmpred_results: pd.DataFrame, output_dir: Path
-) -> "tuple[pd.DataFrame, Path]":
+) -> "tuple[pd.DataFrame, int, Path]":
     """Camino PDB: Fase 3, nucleo con consenso (B: anotacion + D: filtro).
 
     ``record.chain_pdb_path`` (no ``record.pdb_path``, que puede tener mas
@@ -181,11 +241,13 @@ def run_fase3_pdb_annotation(
     ATMSEQ a numeracion real de PDB para alinear ``structure_emb``
     correctamente (ver docstring de ``_emngly_runner.py``).
 
-    Devuelve ``(filtered, report_path)`` -- a diferencia de antes de
-    2026-08-03, expone tambien el DataFrame en memoria (no solo la ruta del
-    CSV ya escrito) porque ``run_fase_a_pdb_modeling`` (paso siguiente en
-    ``main()``) necesita seleccionar candidatos de ``filtered`` sin tener que
-    releerlo de disco.
+    Devuelve ``(filtered, n_evaluados, report_path)`` -- a diferencia de
+    antes de 2026-08-03, expone tambien el DataFrame en memoria (no solo la
+    ruta del CSV ya escrito) porque ``run_fase_a_pdb_modeling`` (paso
+    siguiente en ``main()``) necesita seleccionar candidatos de ``filtered``
+    sin tener que releerlo de disco; ``n_evaluados`` (``len(annotated)``,
+    antes del filtro de umbral) es lo que el resumen en pantalla necesita
+    para mostrar "X/Y pasan el umbral".
     """
     annotated = annotate_pdb_path(
         record.accession, record.sequence, deepmvp_results, deepptmpred_results,
@@ -204,7 +266,7 @@ def run_fase3_pdb_annotation(
         "N-glicosilacion) -> '%s'.",
         len(filtered), len(annotated), n_consenso, report_path,
     )
-    return filtered, report_path
+    return filtered, len(annotated), report_path
 
 
 _FASE_A_RESULT_COLUMNS = {
@@ -256,7 +318,7 @@ def run_fase_a_pdb_modeling(
 
     candidates = select_fase_a_candidates(filtered, Settings.FASE_A_TOP_N_PER_TYPE)
     if candidates.empty:
-        logger.info("Fase A: ningun candidato seleccionable (0 sitios de los 9 tipos soportados).")
+        logger.info("Fase 3c: ningun candidato seleccionable (0 sitios de los 9 tipos soportados).")
         enriched.to_csv(report_path, index=False)
         return enriched
 
@@ -282,7 +344,7 @@ def run_fase_a_pdb_modeling(
     enriched.to_csv(report_path, index=False)
     n_modelado = int((enriched["fase_a_estado"] == "modelado").sum())
     logger.info(
-        "Fase A completa (Camino PDB): %d/%d sitio(s) candidato(s) modelados con exito -> '%s'.",
+        "Fase 3c completa (Camino PDB): %d/%d sitio(s) candidato(s) modelados con exito -> '%s'.",
         n_modelado, len(candidates), report_path,
     )
     return enriched
@@ -291,7 +353,7 @@ def run_fase_a_pdb_modeling(
 def _discover_batch_inputs(directory: Path) -> List[Path]:
     """Lista, en orden alfabetico, los archivos de ``directory`` con una extension reconocida
     por ``src.utils.input_router`` (FASTA o estructura). No recursivo -- mismo alcance plano
-    que ``Inputs/`` en el uso de un solo archivo. El contenido de cada archivo se
+    que ``inputs/`` en el uso de un solo archivo. El contenido de cada archivo se
     revalida igual que en modo de un solo archivo (``route_input`` dentro de ``run_single_input``),
     esto es solo un filtro rapido por extension para no intentar rutear cada archivo random
     que pueda haber en la carpeta (p.ej. ``.csv``/``.log`` de una corrida anterior).
@@ -300,6 +362,126 @@ def _discover_batch_inputs(directory: Path) -> List[Path]:
     return sorted(
         p for p in directory.iterdir() if p.is_file() and p.suffix.lower() in recognized
     )
+
+
+def _print_fasta_summary(filtered: pd.DataFrame, n_evaluados: int, report_path: Path) -> None:
+    """Resumen limpio del Camino FASTA -- sin motor de estructura, no hay consenso
+    ni Fase 3b/3c: la unica pregunta real es cuantos sitios acepta DeepMVP y de que tipo.
+    """
+    print(f"\n{_SEPARATOR}\nFASE 3 | Anotacion + filtro (DeepMVP)\n{_SEPARATOR}")
+    print(f"{len(filtered)}/{n_evaluados} sitio(s) pasan el umbral.")
+    if len(filtered):
+        counts = filtered["tipo_ptm"].value_counts()
+        print("Por tipo: " + " . ".join(f"{tipo} {n}" for tipo, n in counts.items()))
+    print(f"\nReporte completo: {report_path}")
+
+
+def _print_pdb_summary(
+    record, deepmvp_results: pd.DataFrame, deepptmpred_results: pd.DataFrame,
+    filtered: pd.DataFrame, n_evaluados: int, enriched: pd.DataFrame, report_path: Path,
+) -> None:
+    """Resumen limpio del Camino PDB -- lo unico que se ve en pantalla tras una corrida.
+
+    Todo el detalle de subprocess/progreso por-tipo que antes saturaba la
+    consola (una linea INFO por cada uno de los 17 tipos de DeepPTMPred, por
+    ejemplo) ya no llega aqui -- vive solo en ``logs/ptm_pipeline.log`` (ver
+    ``src/utils/logger_config.py``). Lo que se muestra es exactamente lo que
+    un usuario necesita para juzgar el resultado: cuanto paso, que tiene
+    consenso real, y que se modelo estructuralmente -- nunca la mecanica
+    interna de como se llego ahi.
+    """
+    print(f"\n{_SEPARATOR}\nFASE 1.5 | Extraccion de estructura\n{_SEPARATOR}")
+    print(f"Cadena '{record.chain_id}' ({len(record.sequence)} residuo(s)) -> {record.chain_pdb_path}")
+
+    print(f"\n{_SEPARATOR}\nFASE 2 | Motores (DeepMVP + DeepPTMPred)\n{_SEPARATOR}")
+    print(
+        f"DeepMVP: {len(deepmvp_results)} prediccion(es) crudas | "
+        f"DeepPTMPred: {len(deepptmpred_results)} prediccion(es) crudas"
+    )
+
+    print(f"\n{_SEPARATOR}\nFASE 3 | Consenso + anotacion\n{_SEPARATOR}")
+    n_consenso = int(filtered["consenso"].sum()) if len(filtered) else 0
+    print(f"{len(filtered)}/{n_evaluados} sitio(s) pasan el umbral | {n_consenso} con consenso real (2+ motores de acuerdo)")
+    if len(filtered):
+        counts = filtered["tipo_ptm"].value_counts()
+        print("Por tipo: " + " . ".join(f"{tipo} {n}" for tipo, n in counts.items()))
+
+    ground_truth = _ground_truth_lookup(record.accession)
+    consenso_df = filtered[filtered["consenso"] == True].sort_values("posicion") if len(filtered) else filtered  # noqa: E712
+    if len(consenso_df):
+        print(f"\n-- Consenso real ({len(consenso_df)} sitio(s)) --")
+        headers = ["Pos", "Res", "Tipo", "Motor", "DeepMVP", "DeepPTMPred", "Avisos"]
+        if ground_truth:
+            headers.append("Literatura")
+        rows = []
+        for _, row in consenso_df.iterrows():
+            avisos = []
+            if row.get("metoken_type_coincide") is False:
+                avisos.append("MeToken<>")
+            if pd.notna(row.get("ptm_crosstalk_aviso")):
+                avisos.append("crosstalk")
+            cells = [
+                int(row["posicion"]), row["residuo_wt"], row["tipo_ptm"], row["motor"],
+                _fmt_score(row.get("score_deepmvp")), _fmt_score(row.get("score_deepptmpred")),
+                ", ".join(avisos) if avisos else "-",
+            ]
+            if ground_truth:
+                tier = ground_truth.get((int(row["posicion"]), row["tipo_ptm"]))
+                cells.append(f"tier {tier}" if tier else "-")
+            rows.append(cells)
+        _print_table(headers, rows)
+    else:
+        print("\nNingun sitio con consenso real en esta corrida.")
+
+    print(f"\n{_SEPARATOR}\nFASE 3b | Cruces informativos\n{_SEPARATOR}")
+    if len(filtered):
+        nglyco = filtered[filtered["tipo_ptm"].isin(["n_linked_glycosylation", "glycosylation_n"])]
+        if len(nglyco):
+            via_sec = nglyco["via_secretora_evidencia"]
+            print(
+                f"Via secretora (N-glico, UniProt): {int((via_sec == True).sum())} con evidencia, "  # noqa: E712
+                f"{int((via_sec == False).sum())} sin evidencia, {int(via_sec.isna().sum())} sin dato."  # noqa: E712
+            )
+        fosfo = filtered[filtered["tipo_ptm"] == "phosphorylation"]
+        if len(fosfo):
+            con_kinasa = int(fosfo["kinase_library_top_kinase"].notna().sum())
+            print(f"Kinase Library: {con_kinasa}/{len(fosfo)} fosforilacion(es) con familia de quinasa asignada.")
+        con_metoken = int(filtered["metoken_type"].notna().sum())
+        if con_metoken:
+            desacuerdo = int((filtered["metoken_type_coincide"] == False).sum())  # noqa: E712
+            print(f"MeToken: {con_metoken} sitio(s) corroborado(s), {desacuerdo} en desacuerdo con el tipo de consenso.")
+        con_crosstalk = int(filtered["ptm_crosstalk_aviso"].notna().sum())
+        if con_crosstalk:
+            print(f"Competencia entre PTMs: {con_crosstalk} sitio(s) con aviso de crosstalk real (ver columna 'Avisos' arriba).")
+    else:
+        print("Sin sitios que evaluar.")
+
+    print(f"\n{_SEPARATOR}\nFASE 3c | Modelado estructural real\n{_SEPARATOR}")
+    candidatos = enriched[enriched["fase_a_estado"] != "no_seleccionado"]
+    if candidatos.empty:
+        print("Ningun candidato seleccionable (0 sitios de los 9 tipos con modulo real).")
+    elif (candidatos["fase_a_estado"] == "no_disponible").all():
+        print(f"Desactivada para esta corrida (FASE_A_ENABLED=false) -- {len(candidatos)} candidato(s) habrian sido seleccionados.")
+    else:
+        n_modelado = int((candidatos["fase_a_estado"] == "modelado").sum())
+        print(f"{n_modelado}/{len(candidatos)} candidato(s) modelados con exito.")
+        headers = ["Pos", "Tipo", "Estado", "Detalle"]
+        rows = []
+        for _, row in candidatos.sort_values("posicion").iterrows():
+            detalle = "-"
+            if row["fase_a_estado"] == "modelado":
+                if pd.notna(row.get("fase_a_ddg")):
+                    detalle = f"ddG={float(row['fase_a_ddg']):.2f}"
+                elif pd.notna(row.get("fase_a_glycan_tree")):
+                    detalle = "glicano adjuntado"
+                elif pd.notna(row.get("fase_a_conjugation_metrics")):
+                    detalle = "conjugacion modelada"
+            elif row["fase_a_estado"] == "error":
+                detalle = "fallo (ver log)"
+            rows.append([int(row["posicion"]), row["tipo_ptm"], row["fase_a_estado"], detalle])
+        _print_table(headers, rows)
+
+    print(f"\nReporte completo: {report_path}")
 
 
 def run_single_input(input_path: Path, output_dir: Path) -> Path:
@@ -319,18 +501,22 @@ def run_single_input(input_path: Path, output_dir: Path) -> Path:
         out_stem = records[0].accession if len(records) == 1 else input_path.stem
         clean_path = run_fase1_fasta(input_path, output_dir)
         deepmvp_results = run_fase2_fasta_motor(clean_path, output_dir)
-        report_path = run_fase3_fasta_annotation(records, deepmvp_results, output_dir, out_stem)
-        print(f"Camino FASTA completo. Motor: DeepMVP. Reporte: {report_path}")
+        filtered, n_evaluados, report_path = run_fase3_fasta_annotation(
+            records, deepmvp_results, output_dir, out_stem
+        )
+        _print_fasta_summary(filtered, n_evaluados, report_path)
     else:
         record = run_fase1_5_structure(input_path, output_dir)
         deepmvp_results, deepptmpred_results = run_fase2_pdb_motors(record, output_dir)
-        filtered, report_path = run_fase3_pdb_annotation(
+        filtered, n_evaluados, report_path = run_fase3_pdb_annotation(
             record, deepmvp_results, deepptmpred_results, output_dir
         )
-        run_fase_a_pdb_modeling(record, filtered, output_dir, report_path)
-        print(f"Camino PDB completo. Consenso DeepMVP+DeepPTMPred + Fase A. Reporte: {report_path}")
+        enriched = run_fase_a_pdb_modeling(record, filtered, output_dir, report_path)
+        _print_pdb_summary(
+            record, deepmvp_results, deepptmpred_results, filtered, n_evaluados, enriched, report_path
+        )
 
-    print(INTERPRETATION_DISCLAIMER)
+    print(f"\n{INTERPRETATION_DISCLAIMER}")
     return report_path
 
 
