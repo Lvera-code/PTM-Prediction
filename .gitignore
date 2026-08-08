@@ -5,7 +5,7 @@ logs/
 
 # Salida del pipeline: resultados regenerables de cada corrida de
 # pipeline.py, no es codigo fuente ni un artefacto versionable.
-Outputs/
+outputs/
 
 # DeepMVP (Fase 3, motor unico Camino FASTA): repo empaquetado, pesos NO
 # incluidos (descarga separada). Nunca debe subirse.

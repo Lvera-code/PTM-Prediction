@@ -1087,7 +1087,7 @@ para las 353 posiciones (confirmado en el log: `Fase 2 completa` a
 `17:56:45`, `Fase 3 completa` a `17:56:51`, incluye la invocacion completa
 de MeToken entre medias).
 
-Reporte final (`Outputs/AF-P10636-F1-model_v4_ptm_sites.csv`, 749
+Reporte final (`outputs/AF-P10636-F1-model_v4_ptm_sites.csv`, 749
 filas que pasan el umbral, 116 con consenso real DeepMVP+DeepPTMPred):
 `metoken_type` poblado en las 749/749 filas (MeToken predijo algo para
 TODAS las posiciones pedidas, ninguna cayo fuera de rango). Desglose real
@@ -1284,7 +1284,7 @@ REAL del proyecto hermano, sobre la secuencia completa de Tau (758
 residuos, la misma ya extraida por Fase 1.5 en una corrida previa de este
 proyecto) y los 3 candidatos REALES de `n_linked_glycosylation` que el
 pipeline ya habia aceptado (`pasa_umbral=true`) en la corrida completa mas
-reciente (`Outputs/AF-P10636-F1-model_v4_ptm_sites.csv`): posiciones
+reciente (`outputs/AF-P10636-F1-model_v4_ptm_sites.csv`): posiciones
 484 (secuon `NAT`), 676 (`NIT`), 727 (`NVS`). Carga en frio real de los 3
 embedders (ProteinBERT + ESM-2 650M + ProtT5) + inferencia: **52.5s** de
 tiempo real (`time`, no estimado).
@@ -1665,7 +1665,7 @@ sobre un unico archivo. Extraido `run_single_input()` (misma logica de
 `main()` de antes, factorizada para que el modo de un solo archivo y el modo
 batch reusen exactamente el mismo camino, sin duplicarlo) y añadido
 `_run_batch()`: descubre archivos con extension reconocida en el directorio
-(no recursivo, mismo alcance plano que `Inputs/`), corre cada uno,
+(no recursivo, mismo alcance plano que `inputs/`), corre cada uno,
 **un archivo que falla no detiene el resto del batch** (mismo criterio de
 degradacion no fatal que `FaseAEngine`/StackGlyEmbed/MeToken aplican
 por-sitio), y escribe `batch_summary.csv` en `output_dir` (columnas
@@ -1811,7 +1811,7 @@ experimental = UniProt - 27) -- documentadas en el docstring de
 un PDB experimental en el futuro.
 
 **Panel final, 7 proteinas + 1 control negativo real** (`src/validation/
-biological_panel.py`, PDBs reales en `Inputs/validation_panel/`,
+biological_panel.py`, PDBs reales en `inputs/validation_panel/`,
 descargados y verificados -- cada residuo del ground truth se comprueba
 contra la secuencia real del PDB en `tests/test_biological_panel.py`, 30
 tests, todos pasando):
