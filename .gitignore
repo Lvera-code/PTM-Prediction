@@ -40,3 +40,8 @@ MeToken/
 # descargas manuales aparte. Nunca debe subirse (pesado + regenerable).
 EMNgly/
 .venv-emngly/
+
+# Panel de validacion biologica derivado de dbPTM (decision 2026-08-09, vault):
+# lista de accessions humanas reviewed + lookup.sqlite3, ambos regenerables via
+# scripts/import_dbptm_panel.py. Nunca fuente, no se versiona.
+data/

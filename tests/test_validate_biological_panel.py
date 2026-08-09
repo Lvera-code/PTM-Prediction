@@ -52,9 +52,11 @@ def test_only_filtra_por_nombre_y_falla_si_no_hay_coincidencias(capsys):
 
 def test_main_end_to_end_con_motores_mockeados(tmp_path, monkeypatch):
     """Corrida real de Fase 1.5/2/3 (sin mock de subprocess) sobre un PDB real del panel
-    (histone_h4, el mas pequeño), motores mockeados para no depender de que
-    DeepMVP/DeepPTMPred esten instalados en el entorno que corre pytest."""
-    entry = next(e for e in PANEL if e.name == "histone_h4")
+    (el mas pequeño -- no se hardcodea el nombre, el panel crece desde la
+    migracion a dbPTM (decision 2026-08-09) y ya no es necesariamente
+    histone_h4), motores mockeados para no depender de que DeepMVP/DeepPTMPred
+    esten instalados en el entorno que corre pytest."""
+    entry = min(PANEL, key=lambda e: e.length)
 
     fake_deepmvp = pd.DataFrame(
         [[entry.uniprot_accession, "K", 6, "xxx", 0.9, 0.01, "acetylation_k"]],
@@ -66,6 +68,6 @@ def test_main_end_to_end_con_motores_mockeados(tmp_path, monkeypatch):
     monkeypatch.setattr(DeepMVPEngine, "run", lambda self, items, output_dir=None: [fake_deepmvp])
     monkeypatch.setattr(DeepPTMPredEngine, "run", lambda self, items, output_dir=None: [fake_deepptmpred])
 
-    exit_code = main(["--only", "histone_h4", "--output-dir", str(tmp_path)])
+    exit_code = main(["--only", entry.name, "--output-dir", str(tmp_path)])
 
     assert exit_code == 0

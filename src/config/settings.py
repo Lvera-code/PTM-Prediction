@@ -48,6 +48,11 @@ class Settings:
     FASTA_INPUT_DIR: Path = Path(_env_str("FASTA_INPUT_DIR", "inputs"))
     FASTA_OUTPUT_DIR: Path = Path(_env_str("FASTA_OUTPUT_DIR", "outputs"))
 
+    # --- Panel de validacion biologica: cache local derivada de dbPTM ---
+    # Ver decision 2026-08-09 (vault). Cache regenerable via
+    # scripts/import_dbptm_panel.py, nunca fuente -- no se versiona (.gitignore).
+    DBPTM_DATA_DIR: Path = Path(_env_str("DBPTM_DATA_DIR", "data/dbptm"))
+
     # --- Fase 1.5: Extraccion de estructura (PDB/mmCIF via gemmi, LOCAL) ---
     # Estrategia de seleccion de cadena cuando el archivo de entrada tiene mas
     # de una cadena proteica (ver `src/utils/structure_parser.py`). Nunca
@@ -580,3 +585,4 @@ class Settings:
         """Crea todas las carpetas de entrada/salida configuradas si no existen."""
         cls.FASTA_INPUT_DIR.mkdir(parents=True, exist_ok=True)
         cls.FASTA_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        cls.DBPTM_DATA_DIR.mkdir(parents=True, exist_ok=True)

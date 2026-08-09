@@ -96,24 +96,83 @@ def _print_table(headers: List[str], rows: List[list]) -> None:
 
 
 def _ground_truth_lookup(accession: str) -> dict:
-    """Si ``accession`` coincide con una entrada de
-    ``src/validation/biological_panel.py`` (panel de 7 proteinas con sitios
-    PTM reales documentados en literatura), devuelve ``{(posicion, tipo_ptm):
-    tier}`` para marcar en el resumen en pantalla que sitios de consenso ya
-    estan confirmados por PMID real -- nunca inventa literatura donde no la
-    hay: para cualquier proteina fuera del panel devuelve ``{}`` y el resumen
-    simplemente no muestra la columna.
+    """``{(posicion, tipo_ptm): (tier, fuente, pmids)}`` para marcar en el resumen
+    en pantalla que sitios de consenso ya estan confirmados por PMID real --
+    nunca inventa literatura donde no la hay.
+
+    Dos fuentes, en orden de precedencia (decision 2026-08-09, vault):
+    1. ``src/validation/biological_panel.py::PANEL`` -- el subconjunto chico
+       (~20-30 proteinas) curado a mano: cada PMID verificado individualmente
+       contra NCBI eutils, las unicas que ademas corren el pipeline completo
+       para medir recall (``scripts/validate_biological_panel.py``). Marcado
+       ``fuente="curado"``.
+    2. ``src/validation/dbptm_lookup.py`` -- base grande derivada de dbPTM
+       (miles de proteinas humanas reviewed), solo lookup, nunca corre
+       motores. Marcado ``fuente="dbPTM"`` -- es una señal MAS DEBIL que
+       "curado": el tier ahi es solo un conteo de PMIDs sin verificar
+       individualmente, y la verificacion real del subconjunto curado
+       encontro PMIDs inexistentes o mal atribuidos en el borrador dbPTM
+       (ver decision 2026-08-09), asi que un "tier A" de esta fuente no tiene
+       el mismo peso que uno "curado".
+    Para cualquier proteina fuera de ambas devuelve ``{}`` y el resumen
+    simplemente no muestra las columnas.
     """
     from src.validation.biological_panel import PANEL
+    from src.validation.dbptm_lookup import lookup_ground_truth
 
     for entry in PANEL:
         if Path(entry.pdb_filename).stem == accession:
             return {
-                (site.position, site.ptm_type): site.tier
+                (site.position, site.ptm_type): (site.tier, "curado", site.pmids)
                 for site in entry.sites
                 if not site.is_negative
             }
-    return {}
+    return {
+        key: (tier, "dbPTM", pmids)
+        for key, (tier, pmids) in lookup_ground_truth(accession).items()
+    }
+
+
+def _fmt_pmids(pmids: tuple, max_shown: int = 1) -> str:
+    """``"20123963+7"`` -- primeros ``max_shown`` PMIDs + conteo del resto.
+
+    Default ``max_shown=1`` (decision 2026-08-10): verificado que en el panel
+    curado los PMIDs estan casi siempre ordenados ascendente (~92% de los 484
+    sitios, ``pmids`` mas viejo primero -- ver ``import_dbptm_panel.py`` para
+    el fallback dbPTM, que SIEMPRE ordena asi), asi que el primero es una cita
+    razonable ("el estudio que lo reporto primero", no necesariamente "el mas
+    citado"). El ~8% restante (5 proteinas verificadas por un subagente que
+    puso deliberadamente el paper dedicado/landmark primero) tambien queda
+    bien representado por el primero. Nunca es "el mas importante" en sentido
+    estricto, pero es una cita defendible para mostrar sola.
+    """
+    shown = ",".join(str(p) for p in pmids[:max_shown])
+    resto = len(pmids) - max_shown
+    return f"{shown}+{resto}" if resto > 0 else shown
+
+
+def _crosstalk_count(aviso: str) -> int:
+    """Cantidad de tipos competidores en ``ptm_crosstalk_aviso`` (formato fijo de
+    ``_add_ptm_crosstalk_flag``: ``"Compite con: tipo1, tipo2 (...)"``).
+
+    Solo cuenta, no nombra ninguno como "principal": verificado en el codigo
+    (``_add_ptm_crosstalk_flag``, ``sorted(set(...))``) que la lista esta
+    ordenada ALFABETICAMENTE, no por relevancia biologica -- mostrar el
+    primero sugeriria un sesgo que no existe (ej. "acetylation" gana casi
+    siempre por orden alfabetico, no porque sea el competidor dominante).
+    Decision 2026-08-10.
+    """
+    marker = "Compite con: "
+    if marker not in aviso:
+        return 0
+    return len(aviso.split(marker, 1)[1].split(" (mismo residuo", 1)[0].split(", "))
+
+
+def _abbrev_motor(motor: str) -> str:
+    """Solo para mostrar en pantalla -- NUNCA tocar la columna ``motor`` real del
+    DataFrame, que ``ptm_annotation.py`` usa como logica (ej.
+    ``result["motor"] == "DeepMVP"`` para filas nglyco, linea 836)."""
+    return motor.replace("DeepPTMPred", "DPTMP").replace("DeepMVP", "DMVP")
 
 
 def _fmt_score(value) -> str:
@@ -410,24 +469,51 @@ def _print_pdb_summary(
     consenso_df = filtered[filtered["consenso"] == True].sort_values("posicion") if len(filtered) else filtered  # noqa: E712
     if len(consenso_df):
         print(f"\n-- Consenso real ({len(consenso_df)} sitio(s)) --")
-        headers = ["Pos", "Res", "Tipo", "Motor", "DeepMVP", "DeepPTMPred", "Avisos"]
         if ground_truth:
-            headers.append("Literatura")
+            # La fuente es constante por accession -- _ground_truth_lookup nunca
+            # mezcla PANEL (curado) y el fallback dbPTM en la misma corrida -- asi
+            # que repetirla en cada fila solo desperdicia ancho. Se imprime una vez.
+            fuente = next(iter(ground_truth.values()))[1]
+            if fuente == "curado":
+                print("Literatura: fuente = panel curado (cada PMID verificado a mano contra NCBI eutils).")
+            else:
+                print(
+                    "Literatura: fuente = base dbPTM (tier por conteo de PMIDs, NUNCA verificado "
+                    "individualmente -- tratar como señal mas debil que el panel curado)."
+                )
+        headers = ["Pos", "Res", "Tipo", "Motor", "DMVP", "DPTMP", "Avisos"]
+        mostrar_quinasa = (
+            (consenso_df["tipo_ptm"] == "phosphorylation").any()
+            and consenso_df["kinase_library_top_kinase"].notna().any()
+        )
+        if mostrar_quinasa:
+            headers.append("Quinasa")
+        if ground_truth:
+            headers.extend(["Literatura", "PMIDs"])
         rows = []
         for _, row in consenso_df.iterrows():
             avisos = []
+            crosstalk_aviso = row.get("ptm_crosstalk_aviso")
+            if pd.notna(crosstalk_aviso):
+                avisos.append(f"crosstalk:+{_crosstalk_count(crosstalk_aviso)}")
             if row.get("metoken_type_coincide") is False:
-                avisos.append("MeToken<>")
-            if pd.notna(row.get("ptm_crosstalk_aviso")):
-                avisos.append("crosstalk")
+                metoken_tipo = row.get("metoken_type")
+                avisos.append(f"MeToken<>{metoken_tipo}" if pd.notna(metoken_tipo) else "MeToken<>")
             cells = [
-                int(row["posicion"]), row["residuo_wt"], row["tipo_ptm"], row["motor"],
+                int(row["posicion"]), row["residuo_wt"], row["tipo_ptm"], _abbrev_motor(row["motor"]),
                 _fmt_score(row.get("score_deepmvp")), _fmt_score(row.get("score_deepptmpred")),
                 ", ".join(avisos) if avisos else "-",
             ]
+            if mostrar_quinasa:
+                kinasa = row.get("kinase_library_top_kinase")
+                cells.append(kinasa if pd.notna(kinasa) else "-")
             if ground_truth:
-                tier = ground_truth.get((int(row["posicion"]), row["tipo_ptm"]))
-                cells.append(f"tier {tier}" if tier else "-")
+                entry = ground_truth.get((int(row["posicion"]), row["tipo_ptm"]))
+                if entry:
+                    tier, _fuente, pmids = entry
+                    cells.extend([f"tier {tier}", _fmt_pmids(pmids)])
+                else:
+                    cells.extend(["-", "-"])
             rows.append(cells)
         _print_table(headers, rows)
     else:
