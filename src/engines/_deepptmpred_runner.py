@@ -37,6 +37,7 @@ checkpoint ESM-2 no instalados en esta maquina) -- ver STATUS.md.
 """
 
 import argparse
+import contextlib
 import hashlib
 import sys
 from pathlib import Path
@@ -100,7 +101,16 @@ def _extract_esm_features(sequence: str, checkpoint_path: Path, esm_dim: int = 1
     from esm import pretrained
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    with torch.serialization.safe_globals([argparse.Namespace]):
+    # safe_globals llego en torch 2.4 (weights_only=True paso a default en
+    # 2.6) -- el environment.yml de DeepPTMPred fija pytorch=2.0, que ni
+    # tiene el atributo ni lo necesita (su torch.load por defecto ya es
+    # weights_only=False, permite el unpickle de argparse.Namespace sin mas).
+    safe_ctx = (
+        torch.serialization.safe_globals([argparse.Namespace])
+        if hasattr(torch.serialization, "safe_globals")
+        else contextlib.nullcontext()
+    )
+    with safe_ctx:
         model, alphabet = pretrained.load_model_and_alphabet(str(checkpoint_path))
     model = model.to(device)
     model.eval()
