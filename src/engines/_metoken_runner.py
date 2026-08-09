@@ -112,8 +112,18 @@ import os
 import sys
 from pathlib import Path
 
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
-os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+# Offline SOLO si "facebook/esm2_t33_650M_UR50D" ya esta en la cache local de
+# HF Hub -- en una maquina que ya lo descargo una vez (dev local) esto evita
+# tocar red en cada corrida, pero forzarlo siempre e incondicionalmente (como
+# hacia esto antes) rompe la primera corrida en una maquina nueva sin cache
+# (p. ej. un runtime de Colab recien creado): LocalEntryNotFoundError, sin
+# forma de descargar nunca. Layout de cache verificado contra la
+# documentacion de huggingface_hub: "<HF_HOME>/hub/models--<org>--<name>".
+_HF_HOME = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface"))
+_ESM2_CACHE_DIR = _HF_HOME / "hub" / "models--facebook--esm2_t33_650M_UR50D"
+if _ESM2_CACHE_DIR.is_dir():
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
 import pandas as pd  # noqa: E402
 
