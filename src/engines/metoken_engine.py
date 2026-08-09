@@ -96,7 +96,7 @@ def get_type_corroboration(
         logger.warning(
             "MeToken termino con exit code %d para '%s' -- se omite la corroboracion de tipo "
             "(no fatal, no afecta consenso/pasa_umbral). stderr: %s",
-            exc.returncode, pdb_path, (exc.stderr or "<vacio>")[:2000],
+            exc.returncode, pdb_path, (exc.stderr or "<vacio>")[-6000:],
         )
         return {}
     except subprocess.TimeoutExpired:

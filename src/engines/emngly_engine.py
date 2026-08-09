@@ -119,7 +119,7 @@ def get_emngly_predictions(
         logger.warning(
             "EMNGly termino con exit code %d -- se omite del consenso de N-glicosilacion (no "
             "fatal, degrada a los motores restantes). stderr: %s",
-            exc.returncode, (exc.stderr or "<vacio>")[:2000],
+            exc.returncode, (exc.stderr or "<vacio>")[-6000:],
         )
         return {}
     except subprocess.TimeoutExpired:

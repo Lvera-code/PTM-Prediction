@@ -153,7 +153,7 @@ class FaseAEngine(BaseEngine[FaseASiteRequest, dict]):
             logger.warning(
                 "Fase A (%s @ %d) termino con exit code %d -- se omite el modelado de este sitio "
                 "(no fatal). stderr: %s",
-                item.ptm_type, item.position, exc.returncode, (exc.stderr or "<vacio>")[:2000],
+                item.ptm_type, item.position, exc.returncode, (exc.stderr or "<vacio>")[-6000:],
             )
             return _empty_result("error", f"exit code {exc.returncode}: {(exc.stderr or '')[:500]}")
         except subprocess.TimeoutExpired:

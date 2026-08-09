@@ -112,7 +112,7 @@ def get_nglyco_corroboration(
         logger.warning(
             "StackGlyEmbed termino con exit code %d -- se omite la corroboracion de N-glicosilacion "
             "(no fatal, no afecta consenso/pasa_umbral). stderr: %s",
-            exc.returncode, (exc.stderr or "<vacio>")[:2000],
+            exc.returncode, (exc.stderr or "<vacio>")[-6000:],
         )
         return {}
     except subprocess.TimeoutExpired:

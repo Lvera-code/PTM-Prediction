@@ -112,7 +112,7 @@ def get_kinase_corroboration(
         logger.warning(
             "Kinase Library termino con exit code %d -- se omite la corroboracion de especificidad "
             "de quinasa (no fatal, no afecta consenso/pasa_umbral). stderr: %s",
-            exc.returncode, (exc.stderr or "<vacio>")[:2000],
+            exc.returncode, (exc.stderr or "<vacio>")[-6000:],
         )
         return {}
     except subprocess.TimeoutExpired:
