@@ -167,7 +167,7 @@ class DeepPTMPredEngine(BaseEngine[StructureRecord, pd.DataFrame]):
         except subprocess.CalledProcessError as exc:
             raise DeepPTMPredExecutionError(
                 f"DeepPTMPred ({ptm_type}) termino con exit code {exc.returncode} para "
-                f"'{record.accession}'. stderr: {(exc.stderr or '<vacio>')[:2000]}"
+                f"'{record.accession}'. stderr: {(exc.stderr or '<vacio>')[-6000:]}"
             ) from exc
         except subprocess.TimeoutExpired as exc:
             raise DeepPTMPredExecutionError(
