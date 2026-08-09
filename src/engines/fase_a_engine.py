@@ -32,6 +32,7 @@ reporte final se genere. Quien llama decide que hacer con
 """
 
 import json
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -140,8 +141,13 @@ class FaseAEngine(BaseEngine[FaseASiteRequest, dict]):
             item.ptm_type, item.position, item.accession, " ".join(cmd),
         )
         try:
+            # MPLBACKEND se hereda del proceso padre (Jupyter/Colab lo fija a un
+            # backend inline que no existe en el conda env aislado) -- ver
+            # deepptmpred_engine.py para el caso real que disparo esto.
+            env = {**os.environ, "MPLBACKEND": "Agg"}
             subprocess.run(
                 cmd, check=True, capture_output=True, text=True, timeout=self._timeout_seconds,
+                env=env,
             )
         except subprocess.CalledProcessError as exc:
             logger.warning(

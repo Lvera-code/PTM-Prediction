@@ -27,6 +27,7 @@ que tumbe el pipeline principal. Quien llama
 exactamente igual).
 """
 
+import os
 import subprocess
 from pathlib import Path
 from typing import Dict, Sequence
@@ -99,8 +100,13 @@ def get_kinase_corroboration(
         len(positions),
     )
     try:
+        # MPLBACKEND se hereda del proceso padre (Jupyter/Colab lo fija a un
+        # backend inline que no existe en el conda env aislado) -- ver
+        # deepptmpred_engine.py para el caso real que disparo esto.
+        env = {**os.environ, "MPLBACKEND": "Agg"}
         subprocess.run(
             cmd, check=True, capture_output=True, text=True, timeout=Settings.KINASE_LIBRARY_TIMEOUT_SECONDS,
+            env=env,
         )
     except subprocess.CalledProcessError as exc:
         logger.warning(

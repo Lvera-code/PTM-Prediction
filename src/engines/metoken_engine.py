@@ -17,6 +17,7 @@ un resultado vacio (no anota corroboracion en ninguna fila, el resto del
 pipeline sigue exactamente igual).
 """
 
+import os
 import subprocess
 from pathlib import Path
 from typing import Dict, Sequence
@@ -83,8 +84,13 @@ def get_type_corroboration(
 
     logger.info("Ejecutando MeToken (corroboracion de tipo) sobre '%s': %s", pdb_path, " ".join(cmd))
     try:
+        # MPLBACKEND se hereda del proceso padre (Jupyter/Colab lo fija a un
+        # backend inline que no existe en el conda env aislado) -- ver
+        # deepptmpred_engine.py para el caso real que disparo esto.
+        env = {**os.environ, "MPLBACKEND": "Agg"}
         subprocess.run(
             cmd, check=True, capture_output=True, text=True, timeout=Settings.METOKEN_TIMEOUT_SECONDS,
+            env=env,
         )
     except subprocess.CalledProcessError as exc:
         logger.warning(

@@ -38,6 +38,7 @@ verificar) -- decision pendiente de discutir con el usuario, no se relaja
 la politica de Fase 1 unilateralmente aqui.
 """
 
+import os
 import subprocess
 from pathlib import Path
 from typing import List, Sequence
@@ -154,6 +155,10 @@ class DeepMVPEngine(BaseEngine[str, pd.DataFrame]):
 
         logger.info("Ejecutando DeepMVP local para '%s': %s", fasta.name, " ".join(cmd))
         try:
+            # MPLBACKEND se hereda del proceso padre (Jupyter/Colab lo fija a un
+            # backend inline que no existe en el conda env aislado) -- ver
+            # deepptmpred_engine.py para el caso real que disparo esto.
+            env = {**os.environ, "MPLBACKEND": "Agg"}
             subprocess.run(
                 cmd,
                 cwd=str(self._deepmvp_home),
@@ -161,6 +166,7 @@ class DeepMVPEngine(BaseEngine[str, pd.DataFrame]):
                 capture_output=True,
                 text=True,
                 timeout=Settings.DEEPMVP_TIMEOUT_SECONDS,
+                env=env,
             )
         except subprocess.CalledProcessError as exc:
             raise DeepMVPExecutionError(

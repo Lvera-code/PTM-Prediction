@@ -28,6 +28,7 @@ checkpoint ESM-2 no instalados en esta maquina, ver STATUS.md) -- los tests
 mockean ``subprocess.run``.
 """
 
+import os
 import subprocess
 from pathlib import Path
 from typing import List, Sequence
@@ -156,6 +157,13 @@ class DeepPTMPredEngine(BaseEngine[StructureRecord, pd.DataFrame]):
             "Ejecutando DeepPTMPred local (%s) para '%s': %s",
             ptm_type, record.accession, " ".join(cmd),
         )
+        # MPLBACKEND se hereda del proceso padre (Jupyter/Colab lo fija a
+        # 'module://matplotlib_inline.backend_inline' para graficos inline) y
+        # ese backend no existe en el conda env aislado de DeepPTMPred --
+        # predict.py importa matplotlib.pyplot y revienta con ValueError al
+        # intentar fijar ese backend invalido. 'Agg' es headless y siempre
+        # valido, sin importar el proceso que invoque.
+        env = {**os.environ, "MPLBACKEND": "Agg"}
         try:
             subprocess.run(
                 cmd,
@@ -163,6 +171,7 @@ class DeepPTMPredEngine(BaseEngine[StructureRecord, pd.DataFrame]):
                 capture_output=True,
                 text=True,
                 timeout=Settings.DEEPPTMPRED_TIMEOUT_SECONDS,
+                env=env,
             )
         except subprocess.CalledProcessError as exc:
             raise DeepPTMPredExecutionError(
