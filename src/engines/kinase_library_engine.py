@@ -19,7 +19,7 @@ conda DEDICADO ``Settings.KINASE_LIBRARY_PYTHON_BIN`` (``numpy``/``pandas``
 que fija el paquete ``kinase-library`` son incompatibles con las versiones
 fijadas del venv principal, ver requirements.txt).
 
-Mismo patron no-decisorio que GlyGen/MeToken/StackGlyEmbed: cualquier fallo
+Mismo patron no-decisorio que MeToken/StackGlyEmbed: cualquier fallo
 (entorno no instalado, subproceso que revienta, timeout, salida malformada)
 degrada a un aviso en el log y devuelve ``{}`` -- NUNCA propaga una excepcion
 que tumbe el pipeline principal. Quien llama

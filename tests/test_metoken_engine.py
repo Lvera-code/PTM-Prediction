@@ -2,8 +2,8 @@
 
 Mockea ``subprocess.run`` (nunca invoca torch/torch_scatter/transformers
 reales, no instalados en el venv principal). Corroboracion PURAMENTE
-informativa (mismo patron que GlyGen): cualquier fallo debe degradar a un
-dict vacio, NUNCA lanzar -- estos tests verifican explicitamente esa
+informativa: cualquier fallo debe degradar a un dict vacio, NUNCA lanzar --
+estos tests verifican explicitamente esa
 propiedad para cada modo de fallo real (repo ausente, checkpoint ausente,
 exit code != 0, timeout, salida malformada, archivo de salida ausente).
 """

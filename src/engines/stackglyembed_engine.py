@@ -22,7 +22,7 @@ A diferencia de MeToken (requiere un PDB, Camino PDB unicamente), StackGlyEmbed
 solo necesita la SECUENCIA COMPLETA de la proteina -- aplica igual a Camino
 FASTA (``annotate_fasta_path``) y Camino PDB (``annotate_pdb_path``).
 
-Mismo patron no-decisorio que GlyGen/MeToken: cualquier fallo (venv/pickles
+Mismo patron no-decisorio que MeToken: cualquier fallo (venv/pickles
 no instalados, subproceso que revienta, timeout, salida malformada) degrada
 a un aviso en el log y devuelve ``{}`` -- NUNCA propaga una excepcion que
 tumbe el pipeline principal. Quien llama

@@ -512,7 +512,7 @@ class Settings:
 
     # --- Avisos informativos de coherencia biologica (analisis 2026-08-07,
     # ver README.md "Alcance e interpretacion") -- ambos NUNCA deciden
-    # pasa_umbral/consenso, mismo patron que MeToken/StackGlyEmbed/GlyGen.
+    # pasa_umbral/consenso, mismo patron que MeToken/StackGlyEmbed.
     # A diferencia de esos, no dependen de pdb_path/enable_stackglyembed --
     # se ejecutan en ambos caminos siempre que esten habilitados (son
     # chequeos ligeros: una consulta HTTP a UniProt por accession, o logica

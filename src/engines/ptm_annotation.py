@@ -58,8 +58,8 @@ INFORMATIVAS: ``stackglyembed_veredicto`` (``'Glicosilado'``/``'No
 glicosilado'``), ``stackglyembed_score`` (su probabilidad cruda) y
 ``stackglyembed_coincide`` (``True`` si el veredicto es ``'Glicosilado'``).
 En Camino FASTA esto NUNCA cambia ``pasa_umbral``/``consenso`` -- mismo
-patron no-decisorio que MeToken/GlyGen (EMNGly no puede correr aqui, exige
-un PDB real via MIF): un fallo deja las 3 columnas en ``None``.
+patron no-decisorio que MeToken (EMNGly no puede correr aqui, exige un PDB
+real via MIF): un fallo deja las 3 columnas en ``None``.
 
 ## Consenso real de N-GLICOSILACION -- Camino PDB (EMNGly + StackGlyEmbed, decision 2026-08-06)
 
@@ -108,7 +108,7 @@ consistente -- evidencia real en contra, no solo ausencia), o ``None`` (sin
 datos de localizacion en UniProt, accession no reconocido -- el caso mas
 comun aqui, ya que ``accession`` normalmente viene del nombre del archivo de
 entrada, no de un ID UniProt real -- o fallo de red). NUNCA cambia
-``pasa_umbral``/``consenso`` -- mismo patron no-decisorio que MeToken/GlyGen/
+``pasa_umbral``/``consenso`` -- mismo patron no-decisorio que MeToken/
 StackGlyEmbed-informativo. Deliberadamente NO aplica a
 ``o_linked_glycosylation``: existen dos vias de O-glicosilacion
 biologicamente distintas (O-GlcNAc citoplasmatica/nuclear vs O-glicosilacion

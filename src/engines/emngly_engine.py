@@ -10,7 +10,7 @@ dedicado ``Settings.EMNGLY_PYTHON_BIN``.
 
 ## Rol en el consenso (decision 2026-08-06, ver ``src/engines/ptm_annotation.py``)
 
-A diferencia de MeToken/GlyGen (puramente informativos, nunca deciden
+A diferencia de MeToken (puramente informativo, nunca decide
 ``pasa_umbral``/``consenso``), EMNGly SI es un motor de consenso real --
 junto con StackGlyEmbed (promovido del mismo rol informativo a este mismo
 papel, ver ``stackglyembed_engine.py``), es la segunda/tercera opinion real

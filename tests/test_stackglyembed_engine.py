@@ -3,7 +3,7 @@
 Mockea ``subprocess.run`` (nunca invoca torch/tensorflow/transformers/
 ProteinBERT reales, no instalados en el venv principal -- viven en el venv
 dedicado del proyecto hermano). Corroboracion PURAMENTE informativa (mismo
-patron que MeToken/GlyGen): cualquier fallo debe degradar a un dict vacio,
+patron que MeToken): cualquier fallo debe degradar a un dict vacio,
 NUNCA lanzar -- estos tests verifican explicitamente esa propiedad para cada
 modo de fallo real (venv ausente, runner ausente, pickles ausentes, exit
 code != 0, timeout, salida malformada, archivo de salida ausente).
