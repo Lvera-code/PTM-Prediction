@@ -28,8 +28,7 @@ Entorno DEDICADO (conda env ``kinase_library``, ver ``Settings.KINASE_LIBRARY_*`
 ``numpy~=1.26.4``/``pandas~=2.2.3`` que fija el propio paquete son
 incompatibles con las versiones fijadas del venv principal de este pipeline
 (``numpy==2.2.6``/``pandas==2.3.3``, ver requirements.txt) -- mismo motivo por
-el que DeepMVP/DeepPTMPred/MeToken/StackGlyEmbed tampoco viven en el venv
-principal.
+el que DeepMVP/DeepPTMPred/MeToken tampoco viven en el venv principal.
 
 Un sitio individual que falla (residuo real no es S/T/Y en esa posicion,
 posicion fuera de rango, etc.) NUNCA tumba el resto del lote -- se omite y se

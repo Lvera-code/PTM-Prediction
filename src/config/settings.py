@@ -277,78 +277,15 @@ class Settings:
     )
     METOKEN_TIMEOUT_SECONDS: int = _env_int("METOKEN_TIMEOUT_SECONDS", 600)
 
-    # --- StackGlyEmbed (N-glicosilacion, ambos caminos -- FASTA y PDB) ---
-    # Motivo original (decision 2026-08-01, ver STATUS.md): 'n_linked_glycosylation'
-    # en DeepPTMPred esta CONFIRMADO como modelo muerto (AUROC ~0.51, ya
-    # excluido del consenso via CONSENSUS_EXCLUDED_TYPES en
-    # ptm_annotation.py) -- no arreglable reentrenando, un problema real del
-    # dataset/modelo publicado. StackGlyEmbed (github.com/GaryChan-lab/StackGlyEmbed)
-    # es un motor INDEPENDIENTE de arquitectura (ProteinBERT + ESM-2 650M +
-    # ProtT5 apilados -> meta-clasificador SVM), especializado solo en
-    # N-glicosilacion -- ya instalado y verificado funcionando de verdad en
-    # el proyecto HERMANO 'B-Cell-Epitope-Prediction' (proyecto 1,
-    # independiente de este por decision explicita 2026-07-26 -- NO se
-    # importa codigo de un proyecto al otro, pero SI se reusa su
-    # venv/pickles ya instalados como recurso externo, mismo criterio que
-    # cualquier otro motor externo de este proyecto). A diferencia de
-    # MeToken (requiere PDB, Camino PDB unicamente), StackGlyEmbed solo
-    # necesita la secuencia completa -- aplica a ambos caminos.
-    #
-    # ROL PROMOVIDO 2026-08-06 en Camino PDB (ver bloque EMNGly/
-    # NGLYCO_CONSENSUS_MIN_ENGINES abajo): deja de ser puramente informativo
-    # para 'n_linked_glycosylation'/'glycosylation_n' -- pasa a decidir
-    # 'pasa_umbral'/'consenso' junto con DeepMVP y EMNGly (motor de consenso
-    # real, 3 vias). En Camino FASTA (EMNGly no puede correr sin PDB) sigue
-    # exactamente como antes: puramente informativo, nunca decide
-    # pasa_umbral/consenso.
-    STACKGLYEMBED_ENABLED: bool = _env_bool("STACKGLYEMBED_ENABLED", True)
-    # Venv REAL del proyecto hermano (torch/tensorflow/transformers/sklearn +
-    # ProteinBERT ya instalados, ~pesado -- nunca reinstalado aqui). Verificado
-    # 2026-08-01: existe de verdad en esta maquina (python3.10).
-    STACKGLYEMBED_PYTHON_BIN: str = _env_str(
-        "STACKGLYEMBED_PYTHON_BIN",
-        "/home/enzo/DiffSBDD/B-Cell-Epitope-Prediction/StackGlyEmbed/.venv-stackglyembed/bin/python",
-    )
-    # Runner PROPIO de este proyecto (vendorizado, adaptacion de la logica real
-    # ya verificada en stackglyembed_predict_local.py del proyecto hermano --
-    # NUNCA se importa ese archivo directamente). Vive dentro de este repo,
-    # mismo patron que DEEPPTMPRED_RUNNER_SCRIPT/METOKEN_RUNNER_SCRIPT.
-    STACKGLYEMBED_RUNNER_SCRIPT: Path = Path(
-        _env_str(
-            "STACKGLYEMBED_RUNNER_SCRIPT",
-            str(Path(__file__).resolve().parent.parent / "engines" / "_stackglyembed_runner.py"),
-        )
-    )
-    # Carpeta 'prediction/' del clon externo de StackGlyEmbed (proyecto
-    # hermano): aqui viven los pickles del clasificador ya entrenado
-    # (power_transformer_*.sav, base_layer_pickle_files/). Verificado 2026-08-01
-    # con 'ls' real, no asumido.
-    STACKGLYEMBED_MODELS_DIR: str = _env_str(
-        "STACKGLYEMBED_MODELS_DIR",
-        "/home/enzo/DiffSBDD/B-Cell-Epitope-Prediction/StackGlyEmbed/prediction",
-    )
-    # Pesos de ProtT5 (~3GB) reusados de scipion-chem-tmbed (mismo encoder que
-    # usa el proyecto hermano para su propio StackGlyEmbed, ver su
-    # settings.py) -- nunca descargados de nuevo aqui.
-    STACKGLYEMBED_T5_MODEL_PATH: str = _env_str(
-        "STACKGLYEMBED_T5_MODEL_PATH",
-        "/home/enzo/DiffSBDD/scipion-chem-tmbed/tmbed_src/tmbed/models/t5",
-    )
-    STACKGLYEMBED_ESM_MODEL_NAME: str = _env_str("STACKGLYEMBED_ESM_MODEL_NAME", "facebook/esm2_t33_650M_UR50D")
-    # Generoso por defecto: carga en frio de 3 modelos (ProteinBERT + ESM-2
-    # 650M + ProtT5) sobre CPU antes de procesar el primer sitio -- mismo valor
-    # que el proyecto hermano usa para la misma carga en frio.
-    STACKGLYEMBED_TIMEOUT_SECONDS: int = _env_int("STACKGLYEMBED_TIMEOUT_SECONDS", 900)
-
     # --- Kinase Library (corroboracion informativa de especificidad de quinasa,
     # ambos caminos -- analisis de coherencia biologica 2026-08-07 punto 5) ---
     # Johnson et al. 2023 Nature (303 quinasas Ser/Thr) + Yaron-Barir et al. 2024
     # Nature (kinoma Tyr completo), empaquetados en 'kinase-library' (PyPI,
     # TheKinaseLibrary/kinase-library, licencia CC-BY-NC-SA-3.0 -- misma familia
-    # no comercial ya aceptada para EMNGly). Solo necesita la secuencia completa
-    # + posicion 1-based del fosfoaceptor -- aplica a ambos caminos, igual que
-    # StackGlyEmbed. NUNCA decide pasa_umbral/consenso -- mismo patron
-    # no-decisorio que MeToken/StackGlyEmbed-informativo.
+    # no comercial ya aceptada para EMNGly). Solo necesita la secuencia
+    # completa + posicion 1-based del fosfoaceptor -- aplica a ambos caminos.
+    # NUNCA decide pasa_umbral/consenso -- mismo patron no-decisorio que
+    # MeToken.
     KINASE_LIBRARY_ENABLED: bool = _env_bool("KINASE_LIBRARY_ENABLED", True)
     # Entorno conda DEDICADO (numpy~=1.26.4/pandas~=2.2.3 fijados por el propio
     # paquete, incompatibles con las versiones fijadas de ESTE venv -- ver
@@ -366,8 +303,8 @@ class Settings:
         )
     )
     # CORREGIDO 2026-08-07 (auditoria de robustez post-implementacion): la
-    # suposicion original de "mucho mas rapido que StackGlyEmbed/MeToken,
-    # sin GPU" era CORRECTA por sitio pero IRRELEVANTE -- el costo real es
+    # suposicion original de "mucho mas rapido que MeToken, sin GPU" era
+    # CORRECTA por sitio pero IRRELEVANTE -- el costo real es
     # por LOTE, no por sitio individual, y el lote no es pequeno. Medido real
     # 2026-08-07 contra la secuencia completa de Tau (758 aa): ~5s/sitio: un
     # lote de 30 sitios ya tardo ~150s, MAS que el timeout original de 120s.
@@ -379,15 +316,15 @@ class Settings:
     # 120s con el default original -- el timeout viejo garantizaba fallo
     # silencioso (degradacion a None) en cualquier proteina con mas de ~25
     # sitios aceptados, derrotando el proposito del motor. Generoso por
-    # defecto, mismo orden de magnitud que STACKGLYEMBED_TIMEOUT_SECONDS
-    # (900s) pero con mas margen porque el numero de sitios por proteina (no
-    # por corrida) es lo que escala aqui.
+    # defecto, 900s de margen mas alla del pico ya visto en produccion,
+    # porque el numero de sitios por proteina (no por corrida) es lo que
+    # escala aqui.
     KINASE_LIBRARY_TIMEOUT_SECONDS: int = _env_int("KINASE_LIBRARY_TIMEOUT_SECONDS", 1800)
 
     # --- EMNGly (motor real de consenso para 'n_linked_glycosylation', Camino PDB
     # unicamente -- reemplaza a CoNglyPred, decision 2026-08-06) ---
     # CoNglyPred (github.com/whm242446/CoNglyPred, candidato original de
-    # Decision 2, ver seccion STackGlyEmbed arriba) quedo confirmado
+    # Decision 2) quedo confirmado
     # DEFINITIVAMENTE muerto 2026-08-06 (re-verificado via API de GitHub: 0
     # releases/tags/issues, ultimo push 2024-08-15, CERO archivos .pth/.pt/.pkl
     # en todo el arbol pese a que su propio README instruye cargar
@@ -485,35 +422,36 @@ class Settings:
     # superado) contra el 0.736 publicado, en este mismo umbral.
     EMNGLY_MIN_PROBABILITY: float = _env_float("EMNGLY_MIN_PROBABILITY", 0.5)
 
-    # --- Consenso de N-glicosilacion (Camino PDB): regla de fusion de 3 motores ---
-    # Decision 2026-08-06: promueve a StackGlyEmbed de corroboracion
-    # puramente informativa (ver seccion STackGlyEmbed arriba, sigue asi
-    # tal cual en Camino FASTA y quedaba asi tambien en Camino PDB hasta
-    # ahora) a motor de consenso real, JUNTO con EMNGly, especificamente
-    # para 'n_linked_glycosylation'/'glycosylation_n' en Camino PDB (unico
-    # lugar donde EMNGly puede correr -- exige un PDB real). Motivo:
-    # DeepPTMPred esta confirmado muerto para este tipo exacto (AUROC~=0.51,
+    # --- Consenso de N-glicosilacion (Camino PDB): regla de fusion de 2 motores ---
+    # Decision 2026-08-06: promueve a EMNGly (junto con StackGlyEmbed en su
+    # momento, eliminado del proyecto 2026-08-10 por decision de Carlos --
+    # dependia del venv de un proyecto hermano, friccion real de cara a la
+    # integracion a Scipion) a motor de consenso real para
+    # 'n_linked_glycosylation'/'glycosylation_n' en Camino PDB (unico lugar
+    # donde EMNGly puede correr -- exige un PDB real). Motivo: DeepPTMPred
+    # esta confirmado muerto para este tipo exacto (AUROC~=0.51,
     # CONSENSUS_EXCLUDED_TYPES en ptm_annotation.py) -- sin un segundo motor
     # real, este tipo se quedaba con DeepMVP en solitario, sin ningun
     # consenso posible.
     #
     # Regla (provisional, decision de Enzo si se ajusta tras el uso real):
     # de los motores que SI lograron evaluar la posicion (DeepMVP siempre;
-    # EMNGly/StackGlyEmbed degradan a ausentes sin lanzar si no estan
-    # instalados o el subproceso falla, ver sus respectivos engines) --
-    # 'pasa_umbral' = al menos 1 motor pasa su propio umbral (generaliza la
-    # regla OR de 2 motores ya usada en el resto de tipos); 'consenso' = al
-    # menos NGLYCO_CONSENSUS_MIN_ENGINES (default 2) pasan. Si solo DeepMVP
-    # logro evaluar la posicion (EMNGly y StackGlyEmbed ambos degradados),
-    # 'consenso' queda SIEMPRE False -- no hay forma de alcanzar 2 con un
-    # solo motor disponible, mismo comportamiento (motor unico, sin
-    # consenso) que existia antes de esta mejora.
+    # EMNGly degrada a ausente sin lanzar si no esta instalado o el
+    # subproceso falla, ver emngly_engine.py) -- 'pasa_umbral' = al menos 1
+    # motor pasa su propio umbral (generaliza la regla OR de 2 motores ya
+    # usada en el resto de tipos); 'consenso' = al menos
+    # NGLYCO_CONSENSUS_MIN_ENGINES (default 2) pasan, lo que en la practica
+    # exige que AMBOS motores (DeepMVP y EMNGly) pasen. Si solo DeepMVP
+    # logro evaluar la posicion (EMNGly degradado), 'consenso' queda SIEMPRE
+    # False -- no hay forma de alcanzar 2 con un solo motor disponible,
+    # mismo comportamiento (motor unico, sin consenso) que existia antes de
+    # esta mejora.
     NGLYCO_CONSENSUS_MIN_ENGINES: int = _env_int("NGLYCO_CONSENSUS_MIN_ENGINES", 2)
 
     # --- Avisos informativos de coherencia biologica (analisis 2026-08-07,
     # ver README.md "Alcance e interpretacion") -- ambos NUNCA deciden
-    # pasa_umbral/consenso, mismo patron que MeToken/StackGlyEmbed.
-    # A diferencia de esos, no dependen de pdb_path/enable_stackglyembed --
+    # pasa_umbral/consenso, mismo patron que MeToken.
+    # A diferencia de ese, no dependen de pdb_path --
     # se ejecutan en ambos caminos siempre que esten habilitados (son
     # chequeos ligeros: una consulta HTTP a UniProt por accession, o logica
     # pura de pandas -- sin instalacion externa que degradar). Ambos

@@ -2128,8 +2128,63 @@ historico de lo que existio y se verifico, no como estado actual):
 
 **Prioridad inmediata antes de la integracion a Scipion** (pedido explicito
 de Enzo, "dejar todo sin friccion"): cachear los 5 entornos conda del
-notebook de Colab con `conda-pack` en Drive (documentado como TODO en la
-celda de intro del notebook y en la decision del vault de 2026-08-09
-`notebook-colab-fases-1-3b-gpu.md`, no implementado todavia) y una
+notebook de Colab con `conda-pack` en Drive -- IMPLEMENTADO mas tarde la
+misma sesion (commit `58e66dc`, ver seccion "conda-pack" mas abajo) -- y una
 auditoria de robustez end-to-end del pipeline actual antes de darlo por
-listo para portar a Scipion.
+listo para portar a Scipion -- tambien completada la misma sesion
+(`/code-review` + pase de seguridad manual + corrida real end-to-end, 6
+referencias colgantes a `glygen_client.py` encontradas y corregidas, commit
+`8b3473c`).
+
+## StackGlyEmbed ELIMINADO del proyecto (2026-08-10, mismo dia, sesion posterior)
+
+Segunda decision de Carlos en la misma reunion de feedback (ver seccion de
+Fase A/3c arriba para la primera): **StackGlyEmbed queda eliminado por
+completo del proyecto** -- motivo real: dependia del venv de un proyecto
+hermano (`B-Cell-Epitope-Prediction/StackGlyEmbed/.venv-stackglyembed`) +
+pesos de un tercero (`scipion-chem-tmbed`, ProtT5 ~3GB), friccion real de
+cara a la integracion a Scipion (un protocolo de Scipion no puede depender
+de rutas absolutas de OTRO proyecto local). Confirma el mismo patron que ya
+motivo la eliminacion de Fase A/3c: friccion de dependencias antes de
+portar codigo a Scipion, no un problema de calidad del motor en si.
+
+**Impacto real en el consenso de N-glicosilacion (Camino PDB)**: el
+consenso de `n_linked_glycosylation` (decision 2026-08-06) ya estaba
+disenado para degradar con cualquier subconjunto de motores disponibles
+(`nglyco_consensus_active = pdb_path is not None and Settings.EMNGLY_ENABLED`,
+independiente de StackGlyEmbed) -- quitar StackGlyEmbed simplifica el
+consenso a 2 motores (DeepMVP+EMNGly) en vez de 3, sin necesidad de tocar
+`NGLYCO_CONSENSUS_MIN_ENGINES` (sigue en 2): en la practica ahora exige que
+AMBOS motores pasen, en vez de 2 de 3. Verificado leyendo
+`_apply_nglyco_consensus` antes de tocar nada -- no fue una suposicion.
+
+**Codigo eliminado**:
+- `src/engines/stackglyembed_engine.py`, `src/engines/_stackglyembed_runner.py`.
+- `src/engines/ptm_annotation.py`: import de `get_nglyco_corroboration`,
+  parametro `enable_stackglyembed` de `annotate_fasta_path`/`annotate_pdb_path`
+  (breaking change de API interna, aceptado -- no hay consumidores externos
+  del modulo), funcion `_add_stackglyembed_corroboration` completa (rol
+  informativo en Camino FASTA, ya no existe en absoluto), rama StackGlyEmbed
+  de `_apply_nglyco_consensus` (rol de consenso en Camino PDB).
+- Bloque `STACKGLYEMBED_*` completo de `src/config/settings.py` (7 settings:
+  `ENABLED`, `PYTHON_BIN`, `RUNNER_SCRIPT`, `MODELS_DIR`, `T5_MODEL_PATH`,
+  `ESM_MODEL_NAME`, `TIMEOUT_SECONDS`) -- incluia las 3 rutas absolutas al
+  proyecto hermano que causaban la friccion real.
+- `pipeline.py`: los 2 call sites que pasaban
+  `enable_stackglyembed=Settings.STACKGLYEMBED_ENABLED`.
+- Tests: `test_stackglyembed_engine.py` borrado completo; recortado en
+  `test_ptm_annotation.py` el bloque entero de corroboracion informativa
+  FASTA (8 tests) + 2 tests del "pathway generico" en Camino PDB que ya no
+  existe (el fallback a StackGlyEmbed cuando `EMNGLY_ENABLED=False`); los
+  tests de consenso de 3 motores reescritos a 2 motores en vez de borrados
+  (cobertura equivalente, sin StackGlyEmbed). 338 tests finales (desde 357).
+- Notebook de Colab: quitada la Seccion 10 completa ("StackGlyEmbed
+  (opcional, desactivado)") y la linea `STACKGLYEMBED_ENABLED` de las
+  variables de entorno.
+- `README.md`: quitado de Arquitectura (consenso ahora DeepMVP+EMNGly),
+  Corroboracion opcional, Alcance e interpretacion, Estado actual, e
+  Instalacion (el bloque completo de export de rutas del proyecto hermano).
+
+Commit pendiente (sesion en curso). Notebook probado localmente (sintaxis,
+338 tests pasando -- ver arriba), pendiente de confirmar en una corrida real
+de Colab.

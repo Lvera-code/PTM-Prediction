@@ -6,8 +6,7 @@ transformers/biopython/omegaconf, dependencias SOLO presentes en el venv
 dedicado de MeToken (``Settings.METOKEN_PYTHON_BIN``, distinto de
 ``DEEPMVP_PYTHON_BIN``/``DEEPPTMPRED_PYTHON_BIN``). Se invoca EXCLUSIVAMENTE
 via subprocess desde ``src/engines/metoken_engine.py``, mismo patron que
-``_deepptmpred_runner.py`` (Fase 2) y ``stackglyembed_predict_local.py`` en
-``BCell-Epitope-Prediction``.
+``_deepptmpred_runner.py`` (Fase 2).
 
 ## Por que existe (rol en el pipeline, decision 2026-08-01)
 
@@ -89,10 +88,7 @@ DOS veces en el repo (``src/metoken_model.py`` y
 encoder ESM-2 completo, MeToken usa su propio ``nn.Embedding`` entrenado
 desde cero, ``wo_esm``, no representaciones ESM reales pese al nombre del
 atributo) -- descarga de HF Hub la primera vez, cacheable localmente despues
-(mismo cache que ya usa ``StackGlyEmbed`` del proyecto hermano para el mismo
-checkpoint, ver ``HF_HUB_OFFLINE``/``TRANSFORMERS_OFFLINE`` abajo, patron
-identico a
-``BCell-Epitope-Prediction/src/engines/stackglyembed_predict_local.py``).
+(ver ``HF_HUB_OFFLINE``/``TRANSFORMERS_OFFLINE`` abajo).
 
 ## torch_scatter sin wheel prebuilt
 

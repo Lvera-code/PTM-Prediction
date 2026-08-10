@@ -46,58 +46,43 @@ no-decisorio que la via secretora
 instalado, subproceso revienta, timeout) deja las 3 columnas en ``None``
 para toda la tabla, sin afectar el resto del reporte.
 
-## Corroboracion opcional de N-GLICOSILACION -- Camino FASTA (StackGlyEmbed, decision 2026-08-01)
+## Consenso real de N-GLICOSILACION -- Camino PDB (EMNGly, decision 2026-08-06)
 
-``annotate_fasta_path`` acepta opcionalmente ``enable_stackglyembed``
-(``False`` por defecto -- comportamiento identico al de antes de esta
-mejora): si es ``True`` y ``Settings.STACKGLYEMBED_ENABLED``, para cada fila
-con ``tipo_ptm`` en {``n_linked_glycosylation``, ``glycosylation_n``} (ver
-``_NGLYCO_TYPES``) y ``pasa_umbral=True`` se invoca StackGlyEmbed
-(``src/engines/stackglyembed_engine.py``) y se anaden 3 columnas PURAMENTE
-INFORMATIVAS: ``stackglyembed_veredicto`` (``'Glicosilado'``/``'No
-glicosilado'``), ``stackglyembed_score`` (su probabilidad cruda) y
-``stackglyembed_coincide`` (``True`` si el veredicto es ``'Glicosilado'``).
-En Camino FASTA esto NUNCA cambia ``pasa_umbral``/``consenso`` -- mismo
-patron no-decisorio que MeToken (EMNGly no puede correr aqui, exige un PDB
-real via MIF): un fallo deja las 3 columnas en ``None``.
-
-## Consenso real de N-GLICOSILACION -- Camino PDB (EMNGly + StackGlyEmbed, decision 2026-08-06)
-
-``annotate_pdb_path`` promueve StackGlyEmbed del mismo rol informativo de
-arriba a MOTOR DE CONSENSO REAL, junto con EMNGly (``src/engines/emngly_engine.py``,
+``annotate_pdb_path`` promueve EMNGly (``src/engines/emngly_engine.py``,
 reemplazo de CoNglyPred -- confirmado sin pesos publicados en ningun sitio,
-ver STATUS.md "Decision 2"), especificamente para las filas con ``tipo_ptm``
-en ``_NGLYCO_TYPES`` y ``motor == 'DeepMVP'`` (candidatos propuestos por
-DeepMVP que DeepPTMPred nunca fusiona para este tipo, ver
-``CONSENSUS_EXCLUDED_TYPES`` mas abajo -- DeepPTMPred sigue reportandose
-por separado, sin cambios). Se activa automaticamente cuando ``pdb_path`` no
-es ``None`` y ``Settings.EMNGLY_ENABLED`` (mismo patron de activacion que
-MeToken, sin parametro nuevo en la firma), independientemente del flag
-``enable_stackglyembed`` -- en ese caso el pathway informativo de arriba se
-omite para Camino PDB (no se invoca dos veces el mismo subproceso de
-StackGlyEmbed, ver ``_apply_nglyco_consensus``).
+ver STATUS.md "Decision 2") a MOTOR DE CONSENSO REAL junto con DeepMVP,
+especificamente para las filas con ``tipo_ptm`` en ``_NGLYCO_TYPES`` y
+``motor == 'DeepMVP'`` (candidatos propuestos por DeepMVP que DeepPTMPred
+nunca fusiona para este tipo, ver ``CONSENSUS_EXCLUDED_TYPES`` mas abajo --
+DeepPTMPred sigue reportandose por separado, sin cambios). Se activa
+automaticamente cuando ``pdb_path`` no es ``None`` y
+``Settings.EMNGLY_ENABLED`` (mismo patron de activacion que MeToken).
+StackGlyEmbed corria aqui como tercer motor de consenso desde el
+2026-08-06 -- eliminado del proyecto 2026-08-10 por decision de Carlos
+(dependia del venv de un proyecto hermano, friccion real de cara a la
+integracion a Scipion); el consenso degrada de forma natural a 2 motores,
+sin cambios de codigo mas alla de quitar su rama (ver
+``_apply_nglyco_consensus``).
 
 Regla (provisional, ver ``Settings.NGLYCO_CONSENSUS_MIN_ENGINES``): de los
 motores que lograron evaluar la posicion (DeepMVP siempre disponible;
-EMNGly/StackGlyEmbed degradan a ausentes sin lanzar si no estan instalados,
-ver sus respectivos ``_validate_installation``), ``pasa_umbral`` = al menos
-1 pasa su propio umbral (generaliza la regla OR de 2 motores ya usada para
-el resto de tipos), ``consenso`` = al menos
-``Settings.NGLYCO_CONSENSUS_MIN_ENGINES`` (default 2) pasan. ``motor`` se
-reescribe para reflejar exactamente que motores lograron evaluar la
-posicion (p. ej. ``'DeepMVP+EMNGly+StackGlyEmbed'``, o
-``'DeepMVP+StackGlyEmbed'`` si EMNGly esta degradado). Si ninguno de los 2
-motores nuevos logra evaluar la posicion, el comportamiento es identico al
-de antes de esta mejora (``motor='DeepMVP'``, ``consenso`` siempre
-``False`` -- imposible alcanzar el minimo con un unico motor).
+EMNGly degrada a ausente sin lanzar si no esta instalado, ver
+``_validate_installation``), ``pasa_umbral`` = al menos 1 pasa su propio
+umbral (generaliza la regla OR de 2 motores ya usada para el resto de
+tipos), ``consenso`` = al menos ``Settings.NGLYCO_CONSENSUS_MIN_ENGINES``
+(default 2) pasan -- en la practica exige que AMBOS motores pasen.
+``motor`` se reescribe para reflejar exactamente que motores lograron
+evaluar la posicion (``'DeepMVP+EMNGly'``, o ``'DeepMVP'`` si EMNGly esta
+degradado, en cuyo caso ``consenso`` queda siempre ``False`` -- imposible
+alcanzar el minimo con un unico motor).
 
 ## Corroboracion opcional de VIA SECRETORA -- N-glicosilacion, ambos caminos
    (analisis de coherencia biologica 2026-08-07)
 
-Ni DeepMVP ni DeepPTMPred ni EMNGly ni StackGlyEmbed modelan la via
-biosintetica real del sustrato -- todos predicen desde secuencia/estructura
-si un sequon N-X-[S/T] ES glicosilable, nunca si la proteina realmente
-transita el RE/Golgi (requisito quimico real de la N-glicosilacion). Para
+Ni DeepMVP ni DeepPTMPred ni EMNGly modelan la via biosintetica real del
+sustrato -- todos predicen desde secuencia/estructura si un sequon
+N-X-[S/T] ES glicosilable, nunca si la proteina realmente transita el
+RE/Golgi (requisito quimico real de la N-glicosilacion). Para
 cada fila con ``tipo_ptm`` en ``_NGLYCO_TYPES`` y ``pasa_umbral=True`` (un
 sitio que el consenso YA acepto), se consulta UniProt
 (``src/structural/uniprot_localization_client.py``) UNA VEZ por accession y
@@ -108,8 +93,8 @@ consistente -- evidencia real en contra, no solo ausencia), o ``None`` (sin
 datos de localizacion en UniProt, accession no reconocido -- el caso mas
 comun aqui, ya que ``accession`` normalmente viene del nombre del archivo de
 entrada, no de un ID UniProt real -- o fallo de red). NUNCA cambia
-``pasa_umbral``/``consenso`` -- mismo patron no-decisorio que MeToken/
-StackGlyEmbed-informativo. Deliberadamente NO aplica a
+``pasa_umbral``/``consenso`` -- mismo patron no-decisorio que MeToken.
+Deliberadamente NO aplica a
 ``o_linked_glycosylation``: existen dos vias de O-glicosilacion
 biologicamente distintas (O-GlcNAc citoplasmatica/nuclear vs O-glicosilacion
 de tipo mucina en la via secretora) y este cliente no las distingue -- alcance
@@ -175,7 +160,6 @@ from src.config.settings import Settings
 from src.engines.emngly_engine import get_emngly_predictions
 from src.engines.kinase_library_engine import get_kinase_corroboration
 from src.engines.metoken_engine import get_type_corroboration
-from src.engines.stackglyembed_engine import get_nglyco_corroboration
 from src.structural.uniprot_localization_client import (
     UniProtLookupError,
     lookup_secretory_pathway_evidence,
@@ -293,9 +277,9 @@ _PTM_COMPETITION_GROUPS = {
 # reportando, nunca fusionados en una fila de consenso entre ELLOS DOS. Esto
 # NO significa que el tipo se quede sin consenso posible: desde 2026-08-06,
 # 'n_linked_glycosylation'/'glycosylation_n' en Camino PDB tiene un consenso
-# real DISTINTO (DeepMVP+EMNGly+StackGlyEmbed, ver
-# ``_apply_nglyco_consensus`` mas abajo) que reemplaza el rol que hubiera
-# tenido DeepPTMPred si no estuviera muerto para este tipo.
+# real DISTINTO (DeepMVP+EMNGly, ver ``_apply_nglyco_consensus`` mas abajo)
+# que reemplaza el rol que hubiera tenido DeepPTMPred si no estuviera muerto
+# para este tipo.
 CONSENSUS_EXCLUDED_TYPES = {"n_linked_glycosylation"}
 
 OUTPUT_COLUMNS = [
@@ -322,9 +306,7 @@ def _window_for(tipo_ptm: str, sequence: str, position: int) -> Optional[str]:
     return None
 
 
-def annotate_fasta_path(
-    accession: str, sequence: str, deepmvp_df: pd.DataFrame, enable_stackglyembed: bool = False,
-) -> pd.DataFrame:
+def annotate_fasta_path(accession: str, sequence: str, deepmvp_df: pd.DataFrame) -> pd.DataFrame:
     """Fase 3 nucleo (B), Camino FASTA: solo DeepMVP, sin consenso posible.
 
     Args:
@@ -332,20 +314,11 @@ def annotate_fasta_path(
         sequence: Secuencia saneada de Fase 1 (para calcular ventanas).
         deepmvp_df: Salida cruda de ``DeepMVPEngine.run()`` para este accession
             (columnas ``protein|aa|pos|x|y_pred|fpr|ptm``).
-        enable_stackglyembed: ``False`` (default) desactiva la corroboracion
-            de N-glicosilacion via StackGlyEmbed sin cambiar ningun otro
-            comportamiento -- identico a antes de esta mejora. ``True``
-            (y ``Settings.STACKGLYEMBED_ENABLED``) la habilita, ver
-            docstring del modulo.
 
     Returns:
         DataFrame con ``OUTPUT_COLUMNS``, una fila por sitio candidato
         reportado por DeepMVP, sin ningun filtrado (ver
-        :func:`apply_workflow_filter` para la capa D). Si
-        ``enable_stackglyembed`` y ``Settings.STACKGLYEMBED_ENABLED``,
-        incluye ademas ``stackglyembed_veredicto``/``stackglyembed_score``/
-        ``stackglyembed_coincide`` -- ausentes (mismas ``OUTPUT_COLUMNS`` de
-        siempre) en caso contrario.
+        :func:`apply_workflow_filter` para la capa D).
     """
     rows = []
     for _, r in deepmvp_df.iterrows():
@@ -363,15 +336,6 @@ def annotate_fasta_path(
             "pasa_umbral": bool(r["fpr"] <= Settings.DEEPMVP_MAX_FPR),
         })
     result = pd.DataFrame(rows, columns=OUTPUT_COLUMNS)
-
-    if enable_stackglyembed and Settings.STACKGLYEMBED_ENABLED:
-        try:
-            result = _add_stackglyembed_corroboration(result, sequence)
-        except Exception as exc:  # noqa: BLE001 -- doble seguro, stackglyembed_engine ya degrada internamente
-            logger.warning(
-                "Fallo inesperado anadiendo corroboracion StackGlyEmbed para '%s' (no fatal, no "
-                "afecta consenso/pasa_umbral): %s", accession, exc,
-            )
 
     if Settings.SECRETORY_PATHWAY_CHECK_ENABLED:
         try:
@@ -399,7 +363,7 @@ def annotate_fasta_path(
 
 def annotate_pdb_path(
     accession: str, sequence: str, deepmvp_df: pd.DataFrame, deepptmpred_df: pd.DataFrame,
-    pdb_path: Optional[Path] = None, chain_id: str = "A", enable_stackglyembed: bool = False,
+    pdb_path: Optional[Path] = None, chain_id: str = "A",
     position_mapping: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """Fase 3 nucleo (B), Camino PDB: consenso DeepMVP + DeepPTMPred donde exista.
@@ -419,13 +383,6 @@ def annotate_pdb_path(
             de esta mejora.
         chain_id: Cadena a leer del PDB si ``pdb_path`` no es ``None``
             (default ``"A"``).
-        enable_stackglyembed: ``False`` (default) desactiva la corroboracion
-            INFORMATIVA de N-glicosilacion via StackGlyEmbed sin cambiar
-            ningun otro comportamiento -- identico a antes de esta mejora.
-            Se ignora (no se invoca dos veces) cuando el consenso real de
-            N-glicosilacion esta activo (``pdb_path`` no ``None`` y
-            ``Settings.EMNGLY_ENABLED``, ver docstring del modulo) -- ese
-            camino ya promueve StackGlyEmbed a motor de consenso.
         position_mapping: Opcional -- tabla de Fase 1.5
             (``StructureRecord.position_mapping``, columnas
             ``fasta_position``/``pdb_seqid``) necesaria para que EMNGly
@@ -449,14 +406,9 @@ def annotate_pdb_path(
         (``tipo_ptm`` en ``_NGLYCO_TYPES``), si el consenso real esta activo
         (``pdb_path`` no ``None`` y ``Settings.EMNGLY_ENABLED``, ver
         ``_apply_nglyco_consensus``): ``motor``/``pasa_umbral``/``consenso``
-        reflejan la fusion de hasta 3 motores, y se agregan ``score_emngly``/
-        ``stackglyembed_veredicto``/``stackglyembed_score``/
-        ``stackglyembed_coincide``. Si ese consenso NO esta activo pero
-        ``enable_stackglyembed`` y ``Settings.STACKGLYEMBED_ENABLED``, se
-        agregan las mismas 3 columnas de StackGlyEmbed pero puramente
-        informativas (comportamiento identico a antes de esta mejora, ver
-        docstring del modulo). Columnas ausentes (mismas ``OUTPUT_COLUMNS``
-        de siempre) si ninguna condicion se cumple.
+        reflejan la fusion DeepMVP+EMNGly, y se agrega ``score_emngly``.
+        Columna ausente (mismas ``OUTPUT_COLUMNS`` de siempre) si el
+        consenso no esta activo.
     """
     ptmpred_lookup = {
         (int(r["position"]), r["ptm_type"]): r
@@ -533,19 +485,18 @@ def annotate_pdb_path(
     # filas elegibles a partir de 'pasa_umbral' EN EL MOMENTO en que corre (ver
     # docstring de _add_metoken_corroboration), y el consenso de nglyco puede PROMOVER
     # una fila de pasa_umbral=False a True (DeepMVP solo no paso su propio umbral, pero
-    # EMNGly/StackGlyEmbed si). Con el orden viejo (MeToken primero), esas filas
+    # EMNGly si). Con el orden viejo (MeToken primero), esas filas
     # promovidas nunca recibian corroboracion MeToken -- quedaban en None
     # permanentemente pese a que la fila ya paso el consenso, contradiciendo la propia
     # documentacion de MeToken de ser "independiente de todo lo demas". Mismo criterio
     # ya aplicado a '_add_ptm_crosstalk_flag' (corre ultimo, tras ver el pasa_umbral
     # final de cada fila).
-    nglyco_consensus_active = pdb_path is not None and Settings.EMNGLY_ENABLED
-    if nglyco_consensus_active:
+    if pdb_path is not None and Settings.EMNGLY_ENABLED:
         try:
             result = _apply_nglyco_consensus(result, accession, sequence, pdb_path, position_mapping)
-        except Exception as exc:  # noqa: BLE001 -- doble seguro, emngly_engine/stackglyembed_engine ya degradan internamente
+        except Exception as exc:  # noqa: BLE001 -- doble seguro, emngly_engine ya degrada internamente
             logger.warning(
-                "Fallo inesperado aplicando el consenso de N-glicosilacion (EMNGly+StackGlyEmbed) "
+                "Fallo inesperado aplicando el consenso de N-glicosilacion (EMNGly) "
                 "para '%s' (no fatal, filas nglyco quedan como motor='DeepMVP' sin cambios): %s",
                 accession, exc,
             )
@@ -557,15 +508,6 @@ def annotate_pdb_path(
             logger.warning(
                 "Fallo inesperado anadiendo corroboracion MeToken para '%s' (no fatal, no afecta "
                 "consenso/pasa_umbral): %s", accession, exc,
-            )
-
-    if not nglyco_consensus_active and enable_stackglyembed and Settings.STACKGLYEMBED_ENABLED:
-        try:
-            result = _add_stackglyembed_corroboration(result, sequence)
-        except Exception as exc:  # noqa: BLE001 -- doble seguro, stackglyembed_engine ya degrada internamente
-            logger.warning(
-                "Fallo inesperado anadiendo corroboracion StackGlyEmbed para '%s' (no fatal, no "
-                "afecta consenso/pasa_umbral): %s", accession, exc,
             )
 
     if Settings.SECRETORY_PATHWAY_CHECK_ENABLED:
@@ -641,52 +583,6 @@ def _add_metoken_corroboration(result: pd.DataFrame, pdb_path: Path, chain_id: s
     return result
 
 
-def _add_stackglyembed_corroboration(result: pd.DataFrame, sequence: str) -> pd.DataFrame:
-    """Anade ``stackglyembed_veredicto``/``stackglyembed_score``/``stackglyembed_coincide`` a las filas elegibles.
-
-    Puramente informativo (ver docstring del modulo): NUNCA modifica
-    ``pasa_umbral``/``consenso`` de ninguna fila, solo rellena estas 3
-    columnas nuevas para las filas de N-glicosilacion (``tipo_ptm`` en
-    ``_NGLYCO_TYPES`` -- cubre tanto el nombre crudo de DeepMVP
-    ``glycosylation_n`` como el canonico ``n_linked_glycosylation`` de
-    DeepPTMPred, ver ``annotate_pdb_path``) con ``pasa_umbral=True``. Si
-    StackGlyEmbed no devuelve nada (venv/pickles no instalados, subproceso
-    fallido, timeout -- ver ``stackglyembed_engine.get_nglyco_corroboration``,
-    degrada sin lanzar), las 3 columnas quedan en ``None`` para toda la
-    tabla.
-
-    ``stackglyembed_coincide`` es ``True`` si el veredicto es
-    ``'Glicosilado'`` (StackGlyEmbed corrobora el candidato que
-    DeepMVP/DeepPTMPred ya propusieron), ``False`` si es
-    ``'No glicosilado'`` (StackGlyEmbed discrepa) -- a diferencia de
-    ``metoken_type_coincide``, no hay ambiguedad de "tipo sin equivalente"
-    porque StackGlyEmbed solo predice N-glicosilacion, siempre comparable.
-    """
-    result = result.copy()
-    result["stackglyembed_veredicto"] = None
-    result["stackglyembed_score"] = None
-    result["stackglyembed_coincide"] = None
-
-    eligible_mask = result["tipo_ptm"].isin(_NGLYCO_TYPES) & result["pasa_umbral"]
-    eligible_positions = sorted(set(result.loc[eligible_mask, "posicion"]))
-    if not eligible_positions:
-        return result
-
-    corroboration = get_nglyco_corroboration(sequence, eligible_positions)
-    if not corroboration:
-        return result
-
-    for idx, row in result.loc[eligible_mask].iterrows():
-        site = corroboration.get(int(row["posicion"]))
-        if site is None:
-            continue
-        result.at[idx, "stackglyembed_veredicto"] = site["stackglyembed_veredicto"]
-        result.at[idx, "stackglyembed_score"] = site["stackglyembed_score"]
-        result.at[idx, "stackglyembed_coincide"] = bool(site["stackglyembed_veredicto"] == "Glicosilado")
-
-    return result
-
-
 def _add_secretory_pathway_evidence(result: pd.DataFrame, accession: str) -> pd.DataFrame:
     """Anade ``via_secretora_evidencia`` a las filas de N-glicosilacion elegibles.
 
@@ -737,7 +633,7 @@ def _add_kinase_library_corroboration(result: pd.DataFrame, sequence: str) -> pd
     ``kinase_library_engine.get_kinase_corroboration``, degrada sin lanzar),
     las 4 columnas quedan en ``None`` para toda la tabla.
 
-    A diferencia de ``stackglyembed_coincide``, no hay ninguna columna
+    A diferencia de ``metoken_type_coincide``, no hay ninguna columna
     "coincide": Kinase Library no predice SI el sitio se fosforila (eso ya
     lo decidio el consenso), solo POR QUIEN -- no hay una prediccion previa
     con la que comparar.
@@ -821,12 +717,14 @@ def _apply_nglyco_consensus(
 ) -> pd.DataFrame:
     """Consenso real de 'n_linked_glycosylation'/'glycosylation_n' (Camino PDB, decision 2026-08-06).
 
-    A diferencia de ``_add_metoken_corroboration``/``_add_stackglyembed_corroboration``
-    (puramente informativos, evaluan solo filas YA con ``pasa_umbral=True``),
-    esta funcion DECIDE ``pasa_umbral``/``consenso``/``motor`` -- evalua TODAS
-    las filas nglyco propuestas por DeepMVP (``motor == 'DeepMVP'``, el unico
-    motor de origen posible para este tipo, ver ``CONSENSUS_EXCLUDED_TYPES``),
-    no solo las que ya pasaban el umbral de DeepMVP en solitario.
+    A diferencia de ``_add_metoken_corroboration`` (puramente informativa,
+    evalua solo filas YA con ``pasa_umbral=True``), esta funcion DECIDE
+    ``pasa_umbral``/``consenso``/``motor`` -- evalua TODAS las filas nglyco
+    propuestas por DeepMVP (``motor == 'DeepMVP'``, el unico motor de origen
+    posible para este tipo, ver ``CONSENSUS_EXCLUDED_TYPES``), no solo las
+    que ya pasaban el umbral de DeepMVP en solitario. StackGlyEmbed corria
+    aqui como tercer motor de consenso hasta 2026-08-10 (eliminado del
+    proyecto, ver STATUS.md) -- el consenso queda en DeepMVP+EMNGly.
 
     No-op (devuelve ``result`` sin tocar, sin agregar columnas) si no hay
     ninguna fila nglyco elegible -- evita ensuciar el esquema de reportes que
@@ -838,9 +736,6 @@ def _apply_nglyco_consensus(
 
     result = result.copy()
     result["score_emngly"] = None
-    result["stackglyembed_veredicto"] = None
-    result["stackglyembed_score"] = None
-    result["stackglyembed_coincide"] = None
 
     positions = sorted(set(result.loc[nglyco_mask, "posicion"].astype(int)))
 
@@ -856,12 +751,8 @@ def _apply_nglyco_consensus(
     else:
         logger.warning(
             "'position_mapping' no disponible para '%s' -- EMNGly se omite del consenso de "
-            "N-glicosilacion (no fatal, degrada a DeepMVP+StackGlyEmbed).", accession,
+            "N-glicosilacion (no fatal, degrada a solo DeepMVP).", accession,
         )
-
-    stackglyembed_results = {}
-    if Settings.STACKGLYEMBED_ENABLED:
-        stackglyembed_results = get_nglyco_corroboration(sequence, positions)
 
     for idx, row in result.loc[nglyco_mask].iterrows():
         pos = int(row["posicion"])
@@ -874,16 +765,6 @@ def _apply_nglyco_consensus(
             score = emngly_site["emngly_probability"]
             result.at[idx, "score_emngly"] = score
             if score >= Settings.EMNGLY_MIN_PROBABILITY:
-                n_pass += 1
-
-        sge_site = stackglyembed_results.get(pos)
-        if sge_site is not None:
-            engines_ran.append("StackGlyEmbed")
-            sge_pasa = bool(sge_site["stackglyembed_veredicto"] == "Glicosilado")
-            result.at[idx, "stackglyembed_veredicto"] = sge_site["stackglyembed_veredicto"]
-            result.at[idx, "stackglyembed_score"] = sge_site["stackglyembed_score"]
-            result.at[idx, "stackglyembed_coincide"] = sge_pasa
-            if sge_pasa:
                 n_pass += 1
 
         result.at[idx, "motor"] = "+".join(engines_ran)

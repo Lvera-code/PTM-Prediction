@@ -45,7 +45,7 @@ from src.utils.fasta_parser import load_and_sanitize, write_fasta
 from src.utils.input_router import FASTA_EXTENSIONS, STRUCTURE_EXTENSIONS, route_input
 
 # Analisis de coherencia biologica 2026-08-07 (cambio 1 de 3): ningun motor
-# de este pipeline (DeepMVP/DeepPTMPred/EMNGly/StackGlyEmbed) modela la
+# de este pipeline (DeepMVP/DeepPTMPred/EMNGly) modela la
 # via biosintetica real del sustrato (co-expresion/co-localizacion de la
 # enzima) -- todos predicen CAPACIDAD de un sitio de modificarse a partir de
 # secuencia/estructura, nunca si esa PTM ocurre realmente en una celula/
@@ -250,12 +250,7 @@ def run_fase3_fasta_annotation(
     per_accession = []
     for record in records:
         subset = deepmvp_results[deepmvp_results["protein"] == record.accession]
-        per_accession.append(
-            annotate_fasta_path(
-                record.accession, record.sequence, subset,
-                enable_stackglyembed=Settings.STACKGLYEMBED_ENABLED,
-            )
-        )
+        per_accession.append(annotate_fasta_path(record.accession, record.sequence, subset))
     annotated = pd.concat(per_accession, ignore_index=True) if per_accession else deepmvp_results
     filtered = apply_workflow_filter(annotated)
 
@@ -292,10 +287,10 @@ def run_fase3_pdb_annotation(
     ``Settings.METOKEN_ENABLED`` (ver ``src/engines/ptm_annotation.py``), sin
     tocar este orquestador. ``record.position_mapping`` (misma Fase 1.5) se
     pasa tambien para habilitar el consenso REAL de N-glicosilacion via
-    EMNGly+StackGlyEmbed (``Settings.EMNGLY_ENABLED``, decision 2026-08-06,
-    reemplaza a CoNglyPred -- ver STATUS.md) -- necesita traducir posiciones
-    ATMSEQ a numeracion real de PDB para alinear ``structure_emb``
-    correctamente (ver docstring de ``_emngly_runner.py``).
+    EMNGly (``Settings.EMNGLY_ENABLED``, decision 2026-08-06, reemplaza a
+    CoNglyPred -- ver STATUS.md) -- necesita traducir posiciones ATMSEQ a
+    numeracion real de PDB para alinear ``structure_emb`` correctamente
+    (ver docstring de ``_emngly_runner.py``).
 
     Devuelve ``(filtered, n_evaluados, report_path)`` -- expone tambien el
     DataFrame en memoria (no solo la ruta del CSV ya escrito) porque
@@ -307,7 +302,6 @@ def run_fase3_pdb_annotation(
     annotated = annotate_pdb_path(
         record.accession, record.sequence, deepmvp_results, deepptmpred_results,
         pdb_path=record.chain_pdb_path, chain_id=record.chain_id,
-        enable_stackglyembed=Settings.STACKGLYEMBED_ENABLED,
         position_mapping=record.position_mapping,
     )
     filtered = apply_workflow_filter(annotated)
@@ -317,7 +311,7 @@ def run_fase3_pdb_annotation(
     n_consenso = int(annotated["consenso"].sum())
     logger.info(
         "Fase 3 completa (Camino PDB): %d/%d sitio(s) PTM pasan el umbral (%d con consenso -- "
-        "DeepMVP+DeepPTMPred para la mayoria de tipos, DeepMVP+EMNGly+StackGlyEmbed para "
+        "DeepMVP+DeepPTMPred para la mayoria de tipos, DeepMVP+EMNGly para "
         "N-glicosilacion) -> '%s'.",
         len(filtered), len(annotated), n_consenso, report_path,
     )
@@ -499,7 +493,7 @@ def _run_batch(input_dir: Path, output_dir: Path) -> int:
     """Modo batch: corre ``run_single_input`` sobre cada archivo reconocido de ``input_dir``.
 
     Un archivo que falla se registra como error y NO detiene el resto del batch -- mismo
-    criterio de degradacion no fatal que StackGlyEmbed/MeToken aplican por-sitio (un
+    criterio de degradacion no fatal que MeToken aplica por-sitio (un
     fallo individual real no debe tumbar todo el barrido). Escribe
     ``batch_summary.csv`` (columnas: archivo, estado, reporte/error) en ``output_dir``.
     Codigo de salida: 0 solo si TODOS los archivos completaron sin error, 1 si al menos uno

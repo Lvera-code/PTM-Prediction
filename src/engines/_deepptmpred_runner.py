@@ -5,10 +5,8 @@ NUNCA se importa desde el paquete ``src`` -- requiere torch/tensorflow/
 tensorflow-addons/pyrosetta/fair-esm, dependencias SOLO presentes en el venv
 dedicado de DeepPTMPred (``Settings.DEEPPTMPRED_PYTHON_BIN``, distinto del
 venv de DeepMVP). Se invoca EXCLUSIVAMENTE via subprocess desde
-``src/engines/deepptmpred_engine.py``, mismo patron que
-``stackglyembed_predict_local.py`` en BCell-Epitope-Prediction (script de
-integracion propio que vive en ``src/engines/`` pero corre fuera del venv
-principal del pipeline).
+``src/engines/deepptmpred_engine.py``, un script de integracion propio que
+vive en ``src/engines/`` pero corre fuera del venv principal del pipeline.
 
 Por que existe este runner en vez de invocar los scripts del repo
 directamente (a diferencia de DeepMVP, que si tiene un CLI real): verificado

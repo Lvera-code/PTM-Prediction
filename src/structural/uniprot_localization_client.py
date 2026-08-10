@@ -6,9 +6,9 @@ La N-glicosilacion ocurre quimicamente en el lumen del reticulo
 endoplasmatico/aparato de Golgi -- una proteina puramente citoplasmatica o
 nuclear (sin senal de secrecion/membrana real) practicamente nunca se
 glicosila en un sequon N-X-[S/T], sin importar cuan fuerte sea el score de
-consenso del pipeline (DeepMVP/DeepPTMPred/EMNGly/StackGlyEmbed son todos
-predictores de secuencia/estructura, ninguno modela la via biosintetica real
-del sustrato). Hallazgo del analisis de coherencia biologica 2026-08-07: el
+consenso del pipeline (DeepMVP/DeepPTMPred/EMNGly son todos predictores de
+secuencia/estructura, ninguno modela la via biosintetica real del
+sustrato). Hallazgo del analisis de coherencia biologica 2026-08-07: el
 pipeline no comprobaba esto en ningun punto. Este cliente consulta la
 anotacion REAL de localizacion subcelular de UniProt (curada, con evidencia
 citada) para dar una senal informativa -- NUNCA decide ``pasa_umbral``/

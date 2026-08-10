@@ -10,16 +10,16 @@ sitios de fosforilacion que el consenso YA acepto, con la quinasa/familia
 mas probable segun las matrices de especificidad publicadas (Johnson et al.
 2023 Nature, Yaron-Barir et al. 2024 Nature).
 
-Igual que StackGlyEmbed, solo necesita la SECUENCIA COMPLETA de la proteina
-(``kl.Substrate`` hace su propio recorte+relleno de la ventana de 15-mer
-alrededor del sitio) -- aplica igual a Camino FASTA (``annotate_fasta_path``)
-y Camino PDB (``annotate_pdb_path``). Invoca
-``src/engines/_kinase_library_runner.py`` via subprocess, sobre el entorno
-conda DEDICADO ``Settings.KINASE_LIBRARY_PYTHON_BIN`` (``numpy``/``pandas``
-que fija el paquete ``kinase-library`` son incompatibles con las versiones
-fijadas del venv principal, ver requirements.txt).
+Solo necesita la SECUENCIA COMPLETA de la proteina (``kl.Substrate`` hace su
+propio recorte+relleno de la ventana de 15-mer alrededor del sitio) --
+aplica igual a Camino FASTA (``annotate_fasta_path``) y Camino PDB
+(``annotate_pdb_path``). Invoca ``src/engines/_kinase_library_runner.py``
+via subprocess, sobre el entorno conda DEDICADO
+``Settings.KINASE_LIBRARY_PYTHON_BIN`` (``numpy``/``pandas`` que fija el
+paquete ``kinase-library`` son incompatibles con las versiones fijadas del
+venv principal, ver requirements.txt).
 
-Mismo patron no-decisorio que MeToken/StackGlyEmbed: cualquier fallo
+Mismo patron no-decisorio que MeToken: cualquier fallo
 (entorno no instalado, subproceso que revienta, timeout, salida malformada)
 degrada a un aviso en el log y devuelve ``{}`` -- NUNCA propaga una excepcion
 que tumbe el pipeline principal. Quien llama
@@ -56,9 +56,8 @@ def get_kinase_corroboration(
 
     Args:
         sequence: Secuencia COMPLETA de la proteina (Fase 1 saneada o Fase
-            1.5 ATMSEQ) -- NUNCA un fragmento/peptido, mismo criterio que
-            ``stackglyembed_engine.get_nglyco_corroboration``: la posicion
-            1-based coincide exactamente sin conversion de offsets.
+            1.5 ATMSEQ) -- NUNCA un fragmento/peptido: la posicion 1-based
+            coincide exactamente sin conversion de offsets.
         positions: Posiciones 1-based de fosforilacion (S/T/Y) ya aceptadas
             por el consenso (``pasa_umbral=True``) a corroborar -- tipicamente
             filas con ``tipo_ptm`` en {``phosphorylation``,

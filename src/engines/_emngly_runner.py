@@ -5,7 +5,7 @@ NUNCA se importa desde el paquete ``src`` -- requiere fair-esm/torch/
 scikit-learn, dependencias del venv dedicado ``Settings.EMNGLY_PYTHON_BIN``
 (nunca compartido con DEEPMVP_PYTHON_BIN/DEEPPTMPRED_PYTHON_BIN/otros). Se
 invoca EXCLUSIVAMENTE via subprocess desde ``src/engines/emngly_engine.py``,
-mismo patron que ``_deepptmpred_runner.py``/``_stackglyembed_runner.py``.
+mismo patron que ``_deepptmpred_runner.py``.
 
 ## Por que existe (rol en el pipeline, decision 2026-08-06)
 

@@ -28,14 +28,13 @@ Fase 1 -> Fase 1.5 (PDB unicamente) -> Fase 2 (motores) -> Fase 3 (nucleo) -> Fa
   especifica (modelo de DeepPTMPred sin poder discriminativo real para este
   tipo, AUROC 0.51 -- ver STATUS.md), aunque ambos motores lo siguen
   reportando por separado -- en su lugar, Camino PDB tiene un consenso REAL
-  distinto para este tipo especifico: **DeepMVP + EMNGly + StackGlyEmbed**
-  (decision 2026-08-06, reemplaza al CoNglyPred original, sin pesos
-  publicados -- ver STATUS.md "Decision 2"), `pasa_umbral` = al menos 1 de
-  los motores disponibles pasa, `consenso` = al menos 2 de 3.
+  distinto para este tipo especifico: **DeepMVP + EMNGly** (decision
+  2026-08-06, reemplaza al CoNglyPred original, sin pesos publicados -- ver
+  STATUS.md "Decision 2"), `pasa_umbral` = al menos 1 de los motores
+  disponibles pasa, `consenso` = ambos pasan.
 - **Corroboracion opcional** (nunca deciden `pasa_umbral`/`consenso`, solo
   informan sobre sitios que el consenso YA acepto): **MeToken** (tipo, Camino
-  PDB), **StackGlyEmbed** (N-glicosilacion, Camino FASTA -- en Camino PDB es
-  motor de consenso, ver arriba), **evidencia de via secretora via UniProt**
+  PDB), **evidencia de via secretora via UniProt**
   (columna `via_secretora_evidencia`, N-glicosilacion, ambos caminos) y
   **aviso de competencia/crosstalk entre PTMs** (columna
   `ptm_crosstalk_aviso`, cuando 2+ tipos que compiten por el mismo grupo
@@ -50,7 +49,7 @@ proyecto, a las recomendaciones de Carmen Elena Gómez para
 huecos de comunicacion de alcance encontrados, ninguno un bug de codigo.
 
 - **Capacidad predicha, no ocurrencia observada.** Ningun motor de este
-  pipeline (DeepMVP/DeepPTMPred/EMNGly/StackGlyEmbed) modela la via
+  pipeline (DeepMVP/DeepPTMPred/EMNGly) modela la via
   biosintetica real del sustrato -- todos predicen desde secuencia/
   estructura si un sitio ES modificable en principio, nunca si esa PTM
   ocurre realmente en una celula/tejido/condicion especifica (eso depende
@@ -106,16 +105,17 @@ Pipeline completo end-to-end (Fase 1/1.5/2/3/3b) implementado, instalado y
 verificado con corridas REALES (no solo planeado) en esta maquina: DeepMVP
 (pesos + calibracion real), DeepPTMPred (PyRosetta + ESM-2 + calibracion real
 de los 17 tipos, 2 bugs de train/inferencia encontrados y corregidos --
-phi/psi y plDDT, ver STATUS.md), MeToken y StackGlyEmbed. Confirmado
-feature-complete y sin Fase A/3c (modelado estructural real via PyRosetta,
-eliminada del alcance) por feedback de Carlos -- ver STATUS.md.
+phi/psi y plDDT, ver STATUS.md) y MeToken. Confirmado feature-complete y sin
+Fase A/3c (modelado estructural real via PyRosetta, eliminada del alcance) ni
+StackGlyEmbed (dependia del venv de un proyecto hermano, friccion real de
+cara a la integracion a Scipion, tambien eliminada del alcance) por feedback
+de Carlos -- ver STATUS.md.
 
 **Decision 2 (segundo motor de consenso para N-glicosilacion) CERRADA**:
 CoNglyPred (candidato original) confirmado sin pesos publicados en ningun
 sitio -- reemplazado por **EMNGly** (pesos reales, verificados a nivel de
 bytes), implementado y wireado al consenso de `n_linked_glycosylation` junto
-con StackGlyEmbed (promovido de corroboracion informativa a motor de
-consenso en Camino PDB). Ver STATUS.md "Decision 2" para el detalle
+con DeepMVP. Ver STATUS.md "Decision 2" para el detalle
 completo, incluyendo los 2 go/no-go checks (ambos PASARON, 2026-08-07): el
 alineamiento de `structure_emb` se verifico contra sitios reales de GlyGen
 en un PDB con huecos (Alpha-1-antitrypsin, 1QLP), y el MCC publicado
@@ -172,31 +172,12 @@ curl -L -o /tmp/pretrained_model.zip https://github.com/A4Bio/MeToken/releases/d
 python -c "import zipfile; zipfile.ZipFile('/tmp/pretrained_model.zip').extractall('MeToken')"
 ```
 
-StackGlyEmbed (N-glicosilacion, AMBOS caminos -- FASTA y PDB). En Camino
-FASTA sigue siendo puramente informativa (`Settings.STACKGLYEMBED_ENABLED`
-degrada solo con un aviso si no esta disponible). En Camino PDB fue
-PROMOVIDA 2026-08-06 a motor real de consenso junto con EMNGly (ver abajo),
-reemplazando el rol que hubiera tenido DeepPTMPred si no estuviera
-confirmado muerto para `n_linked_glycosylation` -- sigue siendo opcional
-(el pipeline no se cae sin ella), pero deja de ser meramente informativa
-ahi. A diferencia de los demas motores, NO requiere instalacion propia
-aqui -- reusa el venv/pickles YA instalados en el proyecto hermano
-[BCell-Epitope-Prediction](https://github.com/Lvera-code/BCell-Epitope-Prediction)
-(decision 2026-07-26: nunca se importa codigo entre proyectos, pero SI se
-reusan recursos externos pesados ya instalados como venvs/pesos):
-
-```bash
-# Requiere que B-Cell-Epitope-Prediction/StackGlyEmbed/.venv-stackglyembed
-# ya exista (ver su propio README, Seccion 11). Si vive en otra ruta:
-export STACKGLYEMBED_PYTHON_BIN=/ruta/a/B-Cell-Epitope-Prediction/StackGlyEmbed/.venv-stackglyembed/bin/python
-export STACKGLYEMBED_MODELS_DIR=/ruta/a/B-Cell-Epitope-Prediction/StackGlyEmbed/prediction
-```
-
 EMNGly (motor real de consenso para `n_linked_glycosylation`, Camino PDB
 unicamente -- reemplaza a CoNglyPred, decision 2026-08-06, ver STATUS.md
 "Decision 2": CoNglyPred confirmado sin pesos publicados en ningun sitio).
 Opcional (`Settings.EMNGLY_ENABLED` degrada solo con un aviso, el consenso
-de N-glicosilacion cae a DeepMVP+StackGlyEmbed si no esta disponible):
+de N-glicosilacion cae a DeepMVP en solitario, sin consenso posible, si no
+esta disponible):
 
 ```bash
 git clone https://github.com/StellaHxy/EMNgly
@@ -255,9 +236,8 @@ export KINASE_LIBRARY_PYTHON_BIN=$(conda run -n kinase_library which python)
 > el `environment.yml` del repo.
 
 Ver `STATUS.md` para el detalle completo de que ya se verifico (todos los
-repos/envs clonados y probados en esta maquina, mas el recurso externo de
-StackGlyEmbed, mas los 2 go/no-go checks de EMNGly -- ambos PASARON
-2026-08-07) y que falta.
+repos/envs clonados y probados en esta maquina, mas los 2 go/no-go checks
+de EMNGly -- ambos PASARON 2026-08-07) y que falta.
 
 ## Licencias
 

@@ -4,11 +4,10 @@ Mockea ``subprocess.run`` (nunca invoca ``kinase_library`` real, que vive en
 el entorno conda dedicado ``kinase_library``, no en el venv principal --
 ``numpy``/``pandas`` que fija el paquete son incompatibles con las versiones
 fijadas de este venv). Corroboracion PURAMENTE informativa (mismo patron que
-MeToken/StackGlyEmbed): cualquier fallo debe degradar a un dict vacio, NUNCA
+MeToken): cualquier fallo debe degradar a un dict vacio, NUNCA
 lanzar -- estos tests verifican explicitamente esa propiedad para cada modo
 de fallo real (entorno ausente, runner ausente, exit code != 0, timeout,
-salida malformada, archivo de salida ausente), mismo criterio ya establecido
-en ``tests/test_stackglyembed_engine.py``.
+salida malformada, archivo de salida ausente).
 """
 
 import subprocess

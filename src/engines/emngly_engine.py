@@ -12,20 +12,20 @@ dedicado ``Settings.EMNGLY_PYTHON_BIN``.
 
 A diferencia de MeToken (puramente informativo, nunca decide
 ``pasa_umbral``/``consenso``), EMNGly SI es un motor de consenso real --
-junto con StackGlyEmbed (promovido del mismo rol informativo a este mismo
-papel, ver ``stackglyembed_engine.py``), es la segunda/tercera opinion real
-que reemplaza a DeepPTMPred para este tipo especifico (confirmado modelo
-muerto, AUROC~=0.51, ``CONSENSUS_EXCLUDED_TYPES`` en ``ptm_annotation.py``).
+junto con DeepMVP, es la segunda opinion real que reemplaza a DeepPTMPred
+para este tipo especifico (confirmado modelo muerto, AUROC~=0.51,
+``CONSENSUS_EXCLUDED_TYPES`` en ``ptm_annotation.py``). StackGlyEmbed
+corria aqui como tercer motor hasta 2026-08-10 (eliminado del proyecto,
+ver STATUS.md).
 
 Aun asi, SIGUE degradando de forma no-fatal (mismo patron que
-``stackglyembed_engine.py``/``metoken_engine.py``, NUNCA como
-``DeepPTMPredEngine``/``DeepMVPEngine`` que lanzan si la instalacion falta):
-si EMNGly no esta instalado en esta maquina, ``ptm_annotation.py`` cae a un
-consenso de 2 motores (DeepMVP+StackGlyEmbed) en vez de 3 -- no bloquea el
-resto del pipeline. Requiere ``pdb_path`` (Camino PDB unicamente, EMNGly
-exige estructura real via MIF) y la tabla de mapeo de posiciones de Fase 1.5
-(``position_mapping``, para alinear ``structure_emb`` correctamente -- ver
-docstring del runner).
+``metoken_engine.py``, NUNCA como ``DeepPTMPredEngine``/``DeepMVPEngine``
+que lanzan si la instalacion falta): si EMNGly no esta instalado en esta
+maquina, ``ptm_annotation.py`` cae a DeepMVP en solitario, sin consenso
+posible para este tipo -- no bloquea el resto del pipeline. Requiere
+``pdb_path`` (Camino PDB unicamente, EMNGly exige estructura real via MIF)
+y la tabla de mapeo de posiciones de Fase 1.5 (``position_mapping``, para
+alinear ``structure_emb`` correctamente -- ver docstring del runner).
 """
 
 import os
@@ -170,8 +170,8 @@ def _validate_installation() -> bool:
 
     NUNCA fatal (a diferencia de ``DeepPTMPredEngine``/``DeepMVPEngine``):
     EMNGly es un motor de consenso REAL pero opcional -- su ausencia degrada
-    el consenso de N-glicosilacion a los motores restantes (DeepMVP +
-    StackGlyEmbed), nunca tumba el pipeline principal.
+    el consenso de N-glicosilacion a DeepMVP en solitario, sin consenso
+    posible para este tipo, nunca tumba el pipeline principal.
     """
     python_bin = Path(Settings.EMNGLY_PYTHON_BIN)
     if not python_bin.is_file():

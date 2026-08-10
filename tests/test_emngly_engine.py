@@ -3,7 +3,7 @@
 Mockea ``subprocess.run`` (nunca invoca fair-esm/torch/MIF/scikit-learn
 reales, no instalados en el venv principal -- viven en el venv dedicado
 ``Settings.EMNGLY_PYTHON_BIN``). Motor REAL de consenso (a diferencia de
-StackGlyEmbed en Camino FASTA, ver ``ptm_annotation.py``), pero SIGUE
+MeToken, puramente informativo, ver ``ptm_annotation.py``), pero SIGUE
 degradando de forma no-fatal ante cualquier fallo -- estos tests verifican
 esa propiedad para cada modo de fallo real (venv ausente, runner ausente,
 clon/MIF ausente, pesos MIF/ESM-1b/SVM ausentes, exit code != 0, timeout,
