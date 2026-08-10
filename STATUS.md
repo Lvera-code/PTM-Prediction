@@ -2185,6 +2185,5 @@ AMBOS motores pasen, en vez de 2 de 3. Verificado leyendo
   Corroboracion opcional, Alcance e interpretacion, Estado actual, e
   Instalacion (el bloque completo de export de rutas del proyecto hermano).
 
-Commit pendiente (sesion en curso). Notebook probado localmente (sintaxis,
-338 tests pasando -- ver arriba), pendiente de confirmar en una corrida real
-de Colab.
+Commit `e9be138`. Notebook probado localmente (sintaxis, 338 tests pasando --
+ver arriba), pendiente de confirmar en una corrida real de Colab.
