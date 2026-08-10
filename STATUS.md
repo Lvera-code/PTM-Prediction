@@ -2074,3 +2074,62 @@ item de compliance real abierto en todo el proyecto -- correo REDACTADO
 en esta misma sesion, envio programado para el 2026-08-10 (lunes). No
 bloqueante (los pesos de EMNGly ya son descargables sin depender de esa
 respuesta).
+
+## Fase A / Fase 3c ELIMINADA del alcance -- integracion a Scipion confirmada (2026-08-10)
+
+Reunion de feedback con Carlos sobre este proyecto (demo del 2026-08-10 ya
+realizada). Veredicto: **Fase A/3c (modelado estructural real via PyRosetta
+-- ddG, glicosilacion, ubiquitinacion-sumoilacion, todas las secciones
+anteriores de este documento fechadas 2026-07-28/2026-08-03) queda
+eliminada por completo del alcance del proyecto**, no diferida. Nucleo
+(Fase 1 -> 1.5 -> 2 -> 3 -> 3b: DeepMVP+DeepPTMPred, consenso, via
+secretora, Kinase Library, MeToken, EMNGly+StackGlyEmbed para
+N-glicosilacion, competencia entre PTMs) **confirmado feature-complete** --
+"no hay que agregar nada mas". Carlos confirma ademas que **el proyecto se
+integrara en Scipion** (mismo patron que
+[[project_carlos_scope_decision_2026-07|la integracion del proyecto 1]]).
+Escritura completa de la decision, con lo que queda pendiente decidir sobre
+orden de trabajo:
+`01-Proyectos/PTM-Prediction/Decisiones/2026-08-10-carlos-elimina-fase3c-confirma-scipion.md`
+del vault.
+
+**Codigo eliminado la misma sesion** (todas las secciones de este documento
+sobre "Fase A"/clase 1/2/3/Extension 3 arriba quedan como registro
+historico de lo que existio y se verifico, no como estado actual):
+- `src/structural/fase_a_dispatch.py`, `ddg_estimate.py`,
+  `pyrosetta_ptm_patch.py`, `pyrosetta_glycan_patch.py`, `glygen_client.py`,
+  `ubiquitin_sumo.py` + sus datos de referencia (`sumo1_reference.pdb`,
+  `ubiquitin_reference.pdb`). `src/structural/uniprot_localization_client.py`
+  (Fase 3b, via secretora) es la UNICA pieza que sigue viva en ese paquete --
+  nunca fue parte de Fase A pese a vivir en el mismo directorio.
+- `src/engines/fase_a_engine.py`, `src/engines/_fase_a_runner.py`.
+- `src/engines/ptm_annotation.py::select_fase_a_candidates`.
+- Bloque `FASE_A_*` completo de `src/config/settings.py` (7 settings:
+  `ENABLED`, `TOP_N_PER_TYPE`, `SUPPORTED_PTM_TYPES`, `RESULT_TEMPLATE`,
+  `RUNNER_SCRIPT`, `PYTHON_BIN`, `TIMEOUT_SECONDS`).
+- `pipeline.py::run_fase_a_pdb_modeling` + el bloque "FASE 3c" del resumen
+  en pantalla (`_print_pdb_summary`) + `_FASE_A_RESULT_COLUMNS`.
+- Tests dedicados: `test_fase_a_engine.py`, `test_fase_a_dispatch.py`,
+  `test_ddg_estimate.py`, `test_pyrosetta_ptm_patch.py`,
+  `test_pyrosetta_glycan_patch.py`, `test_glygen_client.py`,
+  `test_ubiquitin_sumo.py`. Editados (quitando solo la parte de Fase A, el
+  resto del archivo se mantiene): `test_ptm_annotation.py`,
+  `test_biological_panel.py`, `test_pipeline_fase1.py`.
+- Notebook de Colab (`notebooks/colab_fases_1_3b.ipynb`): quitada la celda
+  "Fase 3c (local)" y `FASE_A_ENABLED` de las variables de entorno. El fix
+  del mirror de PyRosetta en la celda de DeepPTMPred (2026-08-10, commit
+  `23d2dae`) SIGUE siendo necesario -- `DeepPTMPred/predict.py` (Fase 2,
+  motor obligatorio) importa `pyrosetta` a nivel de modulo para SASA por
+  residuo, sin relacion con Fase A/3c.
+- `README.md`: seccion "Fase A" quitada de Arquitectura/Instalacion/
+  Licencias, disclaimer de tipo de cadena K48/K63 quitado de "Alcance e
+  interpretacion" (dependia de la columna `fase_a_cadena_tipo_aviso`, que ya
+  no existe).
+
+**Prioridad inmediata antes de la integracion a Scipion** (pedido explicito
+de Enzo, "dejar todo sin friccion"): cachear los 5 entornos conda del
+notebook de Colab con `conda-pack` en Drive (documentado como TODO en la
+celda de intro del notebook y en la decision del vault de 2026-08-09
+`notebook-colab-fases-1-3b-gpu.md`, no implementado todavia) y una
+auditoria de robustez end-to-end del pipeline actual antes de darlo por
+listo para portar a Scipion.

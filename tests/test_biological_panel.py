@@ -48,13 +48,6 @@ def test_sin_positivos_duplicados_en_posicion_y_tipo(entry):
     assert len(keys) == len(set(keys)), f"{entry.name} tiene sitios positivos duplicados"
 
 
-def test_panel_cubre_los_9_tipos_de_fase_a():
-    fase_a_types = set(Settings.FASE_A_SUPPORTED_PTM_TYPES)
-    covered = {site.ptm_type for entry in PANEL for site in entry.positives}
-    faltantes = fase_a_types - covered
-    assert not faltantes, f"el panel no cubre estos tipos de Fase A: {sorted(faltantes)}"
-
-
 def test_hay_al_menos_un_control_negativo_real():
     negativos = [site for entry in PANEL for site in entry.negatives]
     assert len(negativos) >= 1

@@ -25,10 +25,10 @@ contra ``AF-P10636-F1-model_v4.pdb`` (Tau): en posiciones SIN PTM real
 (prolinas, glicinas) predice tipos con alta confianza igualmente -- NO sirve
 para decidir si un sitio es o no PTM.
 
-Por eso el rol aqui es EXACTAMENTE el mismo patron no-decisorio que GlyGen
-(``src/structural/glygen_client.py`` + ``pyrosetta_glycan_patch.py::check_glygen_evidence``):
-corroboracion puramente informativa del TIPO en sitios que el consenso YA
-acepto (``pasa_umbral=true`` en ``ptm_annotation.py``), NUNCA cambia
+Por eso el rol aqui es el mismo patron no-decisorio que la corroboracion via
+secretora (``src/structural/uniprot_localization_client.py``): corroboracion
+puramente informativa del TIPO en sitios que el consenso YA acepto
+(``pasa_umbral=true`` en ``ptm_annotation.py``), NUNCA cambia
 ``pasa_umbral``/``consenso``. Ver ``src/engines/metoken_engine.py`` para el
 wiring (subprocess con manejo de error no fatal) y
 ``src/engines/ptm_annotation.py::annotate_pdb_path`` para el punto de

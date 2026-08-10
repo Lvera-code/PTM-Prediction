@@ -12,16 +12,16 @@ numpy==2.2.6
 # pipeline.
 gemmi==0.7.5
 
-# NOTA: DeepMVP y DeepPTMPred (Fase 2, motores de prediccion de PTMs) y
-# PyRosetta/Fase A NO se instalan aqui -- cada uno vive en su propio
-# venv/conda env dedicado (DeepMVP: conda env 'deepmvp', TensorFlow 2.4.x/
-# Python 3.7.10; DeepPTMPred + Fase A: conda env 'deepptmpred', TensorFlow
-# 2.15 + PyRosetta + checkpoint ESM-2; MeToken: conda env 'metoken'),
-# mismo patron que los motores de B-Cell-Epitope-Prediction. Los wrappers
-# (src/engines/deepmvp_engine.py, deepptmpred_engine.py, fase_a_engine.py,
-# metoken_engine.py) SI estan construidos e invocan esos entornos por
-# subprocess -- ver STATUS.md/README.md para el estado real de instalacion
-# y los pasos exactos de cada entorno (versiones sueltas alli mismo, no
-# fijadas aqui: no son dependencias de ESTE venv).
+# NOTA: DeepMVP y DeepPTMPred (Fase 2, motores de prediccion de PTMs) NO se
+# instalan aqui -- cada uno vive en su propio venv/conda env dedicado
+# (DeepMVP: conda env 'deepmvp', TensorFlow 2.4.x/Python 3.7.10; DeepPTMPred:
+# conda env 'deepptmpred', TensorFlow 2.15 + PyRosetta (SASA por residuo) +
+# checkpoint ESM-2; MeToken: conda env 'metoken'), mismo patron que los
+# motores de B-Cell-Epitope-Prediction. Los wrappers
+# (src/engines/deepmvp_engine.py, deepptmpred_engine.py, metoken_engine.py)
+# SI estan construidos e invocan esos entornos por subprocess -- ver
+# STATUS.md/README.md para el estado real de instalacion y los pasos exactos
+# de cada entorno (versiones sueltas alli mismo, no fijadas aqui: no son
+# dependencias de ESTE venv).
 
 pytest==9.1.1

@@ -4,10 +4,10 @@
 Analisis de coherencia biologica 2026-08-07, punto 5: ningun motor de este
 pipeline (DeepMVP/DeepPTMPred) distingue QUE familia de quinasa fosforila un
 sitio -- todos predicen "fosforilable en general", nunca por quien. A
-diferencia del punto 4 (tipo de cadena de poliubiquitina, ver
-``src/structural/ubiquitin_sumo.py::CHAIN_TYPE_DISCLAIMER``), la especificidad
-de quinasa SI es una propiedad local de secuencia alrededor del sitio (no
-depende de un evento celular posterior no observable) -- verificado 2026-08-07
+diferencia del tipo de cadena de poliubiquitina (evento celular posterior no
+observable a partir de secuencia -- razonamiento que vivia en Fase A/3c,
+eliminada del alcance 2026-08-10), la especificidad de quinasa SI es una
+propiedad local de secuencia alrededor del sitio -- verificado 2026-08-07
 que existe una fuente real, publicada y descargable: Johnson et al. 2023
 Nature ("An atlas of substrate specificities for the human serine/threonine
 kinome", 303 quinasas) + Yaron-Barir et al. 2024 Nature ("The intrinsic
@@ -28,12 +28,12 @@ Entorno DEDICADO (conda env ``kinase_library``, ver ``Settings.KINASE_LIBRARY_*`
 ``numpy~=1.26.4``/``pandas~=2.2.3`` que fija el propio paquete son
 incompatibles con las versiones fijadas del venv principal de este pipeline
 (``numpy==2.2.6``/``pandas==2.3.3``, ver requirements.txt) -- mismo motivo por
-el que DeepMVP/DeepPTMPred/MeToken/StackGlyEmbed/Fase A tampoco viven en el
-venv principal.
+el que DeepMVP/DeepPTMPred/MeToken/StackGlyEmbed tampoco viven en el venv
+principal.
 
 Un sitio individual que falla (residuo real no es S/T/Y en esa posicion,
 posicion fuera de rango, etc.) NUNCA tumba el resto del lote -- se omite y se
-continua, mismo criterio que ``fase_a_dispatch.py``/``_metoken_runner.py``.
+continua, mismo criterio que ``_metoken_runner.py``.
 """
 
 import argparse

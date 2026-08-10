@@ -13,7 +13,6 @@ import pandas as pd
 import pipeline
 from src.engines.deepmvp_engine import DeepMVPEngine, OUTPUT_COLUMNS as DEEPMVP_COLUMNS
 from src.engines.deepptmpred_engine import DeepPTMPredEngine, OUTPUT_COLUMNS as DEEPPTMPRED_COLUMNS
-from src.engines.fase_a_engine import FaseAEngine
 from src.utils.exceptions import DeepMVPExecutionError
 
 FASTA_CONTENT = ">ACC1 test protein\nMKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQAPILSRVGDGTQDNLSGAEKAVQVKV\n"
@@ -73,45 +72,6 @@ def test_camino_pdb_produce_reporte_con_consenso(tmp_path, monkeypatch):
     report = pd.read_csv(output_dir / "1abc_ptm_sites.csv")
     assert report.iloc[0]["motor"] == "DeepMVP+DeepPTMPred"
     assert bool(report.iloc[0]["consenso"]) is True
-
-
-def test_camino_pdb_reporte_incluye_columnas_de_fase_a(tmp_path, monkeypatch):
-    """Fase A conectada 2026-08-03: el sitio de consenso aceptado (acetylation, tipo con
-    modulo de Fase A real) debe quedar 'modelado' en el reporte final; FaseAEngine se
-    mockea (mismo criterio que DeepMVP/DeepPTMPred aqui: PyRosetta no esta instalado en
-    el venv que corre los tests, ver tests/test_fase_a_engine.py para el wiring aislado
-    de FaseAEngine en si)."""
-    input_path = _write(tmp_path, "1abc.pdb", PDB_CONTENT)
-    output_dir = tmp_path / "out"
-
-    fake_deepmvp = pd.DataFrame(
-        [["1abc", "M", 1, "xxx", 0.9, 0.01, "acetylation_k"]], columns=DEEPMVP_COLUMNS
-    )
-    fake_deepptmpred = pd.DataFrame(
-        [["1abc", 1, "M", 0.8, "acetylation"]], columns=DEEPPTMPRED_COLUMNS
-    )
-    monkeypatch.setattr(DeepMVPEngine, "run", lambda self, items, output_dir=None: [fake_deepmvp])
-    monkeypatch.setattr(DeepPTMPredEngine, "run", lambda self, items, output_dir=None: [fake_deepptmpred])
-
-    def _fake_fase_a_run(self, items, output_dir=None):
-        return [
-            {
-                "estado": "modelado", "clase": "class1_patch_ddg", "ddg": -1.5,
-                "wt_score": 10.0, "mut_score": 8.5, "glycan_tree": None,
-                "glygen_evidencia": None, "conjugation_metrics": None,
-                "output_pdb": "/tmp/fake.pdb", "error": None,
-            }
-            for _ in items
-        ]
-
-    monkeypatch.setattr(FaseAEngine, "run", _fake_fase_a_run)
-
-    exit_code = pipeline.main(["--input", str(input_path), "--output-dir", str(output_dir)])
-
-    assert exit_code == 0
-    report = pd.read_csv(output_dir / "1abc_ptm_sites.csv")
-    assert report.iloc[0]["fase_a_estado"] == "modelado"
-    assert report.iloc[0]["fase_a_ddg"] == -1.5
 
 
 def test_input_invalido_retorna_codigo_de_error(tmp_path):

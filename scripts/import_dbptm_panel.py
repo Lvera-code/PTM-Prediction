@@ -107,7 +107,7 @@ class LookupSite(NamedTuple):
 
 
 def _canonicalize_accession(accession: str) -> str:
-    """Quita sufijo de isoforma ('-2' etc), mismo criterio que glygen_client.py."""
+    """Quita sufijo de isoforma ('-2' etc), mismo criterio que uniprot_localization_client.py."""
     return accession.split("-")[0]
 
 

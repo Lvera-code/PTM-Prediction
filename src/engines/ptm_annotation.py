@@ -5,13 +5,11 @@ Diseno cerrado en la decision de arquitectura 2026-07-27 (ver
 en el vault): posicion de residuo como unidad primaria, ventana solo para
 tipos con motivo biologico definido, umbral propio por herramienta con
 score crudo siempre conservado, tipos sin corroboracion incluidos en el
-nucleo marcados como tal. La decision original de que D (``apply_workflow_filter``)
-no rutea a Extension 3/Fase A (porque esas fases no existian todavia) se
-revirtio 2026-08-03: ``select_fase_a_candidates`` (mas abajo) selecciona
-candidatos DESPUES de D, nunca dentro de D -- D sigue siendo un filtro de
-responsabilidad unica sobre ``pasa_umbral``, la seleccion de Fase A es un
-paso posterior explicito en ``pipeline.py``, no una responsabilidad nueva de
-D.
+nucleo marcados como tal. D (``apply_workflow_filter``) es un filtro de
+responsabilidad unica sobre ``pasa_umbral`` -- no ruteaba a Fase A/Extension 3
+mientras existio esa fase, y esa decision quedo cerrada del todo cuando Fase
+A/3c se elimino del alcance del proyecto (feedback de Carlos, 2026-08-10, ver
+STATUS.md).
 
 Correspondencia de tipos DeepMVP <-> DeepPTMPred (verificada leyendo ambos
 repos el 2026-07-27, no asumida): de los 6 tipos biologicos que cubre
@@ -43,9 +41,10 @@ reales -- excluye la clase null y la clase "rare" agrupada, ver el runner),
 coincide o no, ``None`` si no hay equivalente mapeado -- ver
 ``CANONICAL_TO_METOKEN_TYPE`` -- o si MeToken no pudo evaluar esa posicion).
 MeToken NUNCA cambia ``pasa_umbral``/``consenso`` -- mismo patron
-no-decisorio que GlyGen (``src/structural/glygen_client.py``): un fallo
-(repo no instalado, subproceso revienta, timeout) deja las 3 columnas en
-``None`` para toda la tabla, sin afectar el resto del reporte.
+no-decisorio que la via secretora
+(``src/structural/uniprot_localization_client.py``): un fallo (repo no
+instalado, subproceso revienta, timeout) deja las 3 columnas en ``None``
+para toda la tabla, sin afectar el resto del reporte.
 
 ## Corroboracion opcional de N-GLICOSILACION -- Camino FASTA (StackGlyEmbed, decision 2026-08-01)
 
@@ -153,11 +152,11 @@ corroboraciones, para ver el estado final de ``pasa_umbral`` de cada fila
    caminos (analisis de coherencia biologica 2026-08-07, punto 5)
 
 Ni DeepMVP ni DeepPTMPred distinguen QUE familia de quinasa fosforila un
-sitio -- ambos predicen "fosforilable en general". A diferencia del punto 4
-(tipo de cadena de poliubiquitina, ver
-``src/structural/ubiquitin_sumo.py::CHAIN_TYPE_DISCLAIMER``, un evento
-celular posterior no derivable de la estructura), la especificidad de
-quinasa SI es una propiedad local de secuencia alrededor del sitio -- existe
+sitio -- ambos predicen "fosforilable en general". A diferencia del tipo de
+cadena de poliubiquitina (un evento celular posterior, no derivable de la
+estructura -- razonamiento que vivia en Fase A/3c, eliminada del alcance
+2026-08-10), la especificidad de quinasa SI es una propiedad local de
+secuencia alrededor del sitio -- existe
 una fuente real, publicada y descargable (Johnson et al. 2023 Nature +
 Yaron-Barir et al. 2024 Nature, empaquetadas en ``kinase-library``, ver
 docstring de ``src/engines/_kinase_library_runner.py``). Para cada fila con
@@ -892,14 +891,11 @@ def _apply_nglyco_consensus(
         result.at[idx, "consenso"] = bool(n_pass >= Settings.NGLYCO_CONSENSUS_MIN_ENGINES)
         # Bug real encontrado en auditoria 2026-08-07: esta funcion nunca canonizaba
         # tipo_ptm de 'glycosylation_n' (nombre crudo de DeepMVP, unico origen posible
-        # aqui, ver nglyco_mask arriba) a 'n_linked_glycosylation'. Sin esto,
-        # select_fase_a_candidates (que filtra por Settings.FASE_A_SUPPORTED_PTM_TYPES,
-        # solo el nombre canonico) EXCLUIA silenciosamente de Fase A justo los sitios de
-        # mayor confianza -- los que este consenso de 3 motores confirma -- mientras
-        # dejaba pasar filas DeepPTMPred-solo (AUROC ~0.51 para este tipo, modelo muerto,
-        # ver docstring del modulo). _NGLYCO_TYPES/_PTM_COMPETITION_GROUPS ya trataban
-        # ambos nombres como equivalentes, asi que renombrar aqui no rompe ninguna otra
-        # verificacion de elegibilidad.
+        # aqui, ver nglyco_mask arriba) a 'n_linked_glycosylation'. _NGLYCO_TYPES/
+        # _PTM_COMPETITION_GROUPS ya trataban ambos nombres como equivalentes, asi que
+        # renombrar aqui no rompe ninguna otra verificacion de elegibilidad (el
+        # consumidor original del nombre canonico, la seleccion de candidatos de Fase
+        # A/3c, ya no existe -- eliminada del alcance 2026-08-10).
         result.at[idx, "tipo_ptm"] = "n_linked_glycosylation"
 
     return result
@@ -921,51 +917,3 @@ def apply_workflow_filter(annotated_df: pd.DataFrame) -> pd.DataFrame:
         orden preservado.
     """
     return annotated_df[annotated_df["pasa_umbral"]].reset_index(drop=True)
-
-
-def select_fase_a_candidates(
-    filtered_df: pd.DataFrame, top_n_per_type: int = Settings.FASE_A_TOP_N_PER_TYPE
-) -> pd.DataFrame:
-    """Selecciona candidatos a modelado estructural real (Fase A, Camino PDB unicamente).
-
-    Conectado al pipeline principal 2026-08-03 -- revierte la decision
-    2026-07-27 de que D no rutea a Fase A porque esa fase no existia todavia
-    (ver docstring de ``apply_workflow_filter`` en versiones anteriores y
-    ``src/structural/fase_a_dispatch.py`` para el detalle de que 9/17 tipos
-    tienen un modulo de Fase A real implementado).
-
-    Modelar TODOS los sitios que pasan el umbral es computacionalmente
-    inviable (un caso real como Tau acepta ~572 sitios; cada modelado
-    estructural tarda minutos, no segundos) -- esta funcion NUNCA selecciona
-    mas de ``top_n_per_type`` filas por ``tipo_ptm``, priorizando por score
-    (``score_deepptmpred`` si existe -- es el motor que realmente aporta
-    estructura real via PyRosetta a Fase 2 -- si no, ``score_deepmvp``).
-
-    Args:
-        filtered_df: Salida de :func:`apply_workflow_filter` (ya solo filas
-            con ``pasa_umbral=True``).
-        top_n_per_type: Cuantas filas por tipo seleccionar como maximo
-            (default ``Settings.FASE_A_TOP_N_PER_TYPE``).
-
-    Returns:
-        Subconjunto de ``filtered_df`` restringido a
-        ``Settings.FASE_A_SUPPORTED_PTM_TYPES`` (los otros 8 tipos no tienen
-        ningun modulo de Fase A, se excluyen aqui en vez de intentarlo y
-        fallar), con como maximo ``top_n_per_type`` filas por tipo, mismas
-        columnas que ``filtered_df``, ordenado por ``tipo_ptm``.
-    """
-    supported = filtered_df[filtered_df["tipo_ptm"].isin(Settings.FASE_A_SUPPORTED_PTM_TYPES)].copy()
-    if supported.empty:
-        return supported
-
-    supported["_score_fase_a"] = pd.to_numeric(supported["score_deepptmpred"], errors="coerce").combine_first(
-        pd.to_numeric(supported["score_deepmvp"], errors="coerce")
-    )
-    return (
-        supported.sort_values("_score_fase_a", ascending=False)
-        .groupby("tipo_ptm", group_keys=False)
-        .head(top_n_per_type)
-        .drop(columns="_score_fase_a")
-        .sort_values("tipo_ptm")
-        .reset_index(drop=True)
-    )

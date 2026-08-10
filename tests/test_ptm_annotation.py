@@ -12,7 +12,7 @@ que nunca cambia pasa_umbral/consenso, que un fallo no tumba la anotacion).
 una llamada de red REAL a UniProt en cada uno de ellos (accession='ACC1',
 inexistente mas alla del contexto del test, pero igual un round-trip de red
 real durante la suite principal -- viola la convencion de este proyecto de
-nunca golpear una API real en tests, ver docstring de test_glygen_client.py).
+nunca golpear una API real en tests).
 Mockea a ``None`` por defecto (mismo significado que "no se pudo verificar"
 -- nunca cambia pasa_umbral/consenso); los tests dedicados de esta funcion
 mas abajo sobreescriben el mock explicitamente para probar True/False/error.
@@ -37,7 +37,6 @@ from src.engines.ptm_annotation import (
     annotate_fasta_path,
     annotate_pdb_path,
     apply_workflow_filter,
-    select_fase_a_candidates,
 )
 
 DEEPMVP_COLUMNS = ["protein", "aa", "pos", "x", "y_pred", "fpr", "ptm"]
@@ -200,79 +199,6 @@ def test_apply_workflow_filter_mantiene_solo_pasa_umbral():
     )
     filtered = apply_workflow_filter(df)
     assert filtered["posicion"].tolist() == [1]
-
-
-def _fase_a_row(tipo_ptm, posicion, score_deepmvp=None, score_deepptmpred=None):
-    return {
-        "accession": "A", "posicion": posicion, "residuo_wt": "K", "tipo_ptm": tipo_ptm,
-        "motor": "DeepMVP+DeepPTMPred", "score_deepmvp": score_deepmvp,
-        "score_deepptmpred": score_deepptmpred, "consenso": True, "ventana": None,
-        "camino": "PDB", "pasa_umbral": True,
-    }
-
-
-def test_select_fase_a_candidates_vacio_si_filtered_vacio():
-    df = pd.DataFrame(columns=OUTPUT_COLUMNS)
-    result = select_fase_a_candidates(df)
-    assert result.empty
-
-
-def test_select_fase_a_candidates_excluye_tipos_sin_soporte_fase_a():
-    df = pd.DataFrame(
-        [_fase_a_row("crotonylation", 1, score_deepptmpred=0.9)],  # sin modulo de Fase A
-        columns=OUTPUT_COLUMNS,
-    )
-    result = select_fase_a_candidates(df)
-    assert result.empty
-
-
-def test_select_fase_a_candidates_top1_prioriza_score_deepptmpred():
-    df = pd.DataFrame(
-        [
-            _fase_a_row("acetylation", 10, score_deepmvp=0.99, score_deepptmpred=0.5),
-            _fase_a_row("acetylation", 20, score_deepmvp=0.1, score_deepptmpred=0.9),
-        ],
-        columns=OUTPUT_COLUMNS,
-    )
-    result = select_fase_a_candidates(df, top_n_per_type=1)
-    assert result["posicion"].tolist() == [20]
-
-
-def test_select_fase_a_candidates_usa_score_deepmvp_si_deepptmpred_ausente():
-    df = pd.DataFrame(
-        [
-            _fase_a_row("phosphorylation", 5, score_deepmvp=0.95, score_deepptmpred=None),
-            _fase_a_row("phosphorylation", 6, score_deepmvp=0.2, score_deepptmpred=None),
-        ],
-        columns=OUTPUT_COLUMNS,
-    )
-    result = select_fase_a_candidates(df, top_n_per_type=1)
-    assert result["posicion"].tolist() == [5]
-
-
-def test_select_fase_a_candidates_top_n_mayor_a_uno():
-    df = pd.DataFrame(
-        [
-            _fase_a_row("ubiquitination", 1, score_deepptmpred=0.9),
-            _fase_a_row("ubiquitination", 2, score_deepptmpred=0.8),
-            _fase_a_row("ubiquitination", 3, score_deepptmpred=0.1),
-        ],
-        columns=OUTPUT_COLUMNS,
-    )
-    result = select_fase_a_candidates(df, top_n_per_type=2)
-    assert sorted(result["posicion"].tolist()) == [1, 2]
-
-
-def test_select_fase_a_candidates_multiples_tipos_ordenado_por_tipo():
-    df = pd.DataFrame(
-        [
-            _fase_a_row("ubiquitination", 1, score_deepptmpred=0.9),
-            _fase_a_row("acetylation", 2, score_deepptmpred=0.9),
-        ],
-        columns=OUTPUT_COLUMNS,
-    )
-    result = select_fase_a_candidates(df, top_n_per_type=1)
-    assert result["tipo_ptm"].tolist() == ["acetylation", "ubiquitination"]
 
 
 def test_annotate_fasta_path_vacio_devuelve_dataframe_vacio_con_columnas(monkeypatch):
@@ -645,14 +571,12 @@ def test_annotate_pdb_path_nglyco_consenso_3_motores_todos_pasan(monkeypatch, tm
     assert bool(row["consenso"]) is True  # 3/3 pasan >= NGLYCO_CONSENSUS_MIN_ENGINES (2)
 
 
-def test_annotate_pdb_path_nglyco_consenso_canoniza_tipo_ptm_para_fase_a(monkeypatch, tmp_path):
+def test_annotate_pdb_path_nglyco_consenso_canoniza_tipo_ptm(monkeypatch, tmp_path):
     # Bug real encontrado en auditoria 2026-08-07: _apply_nglyco_consensus dejaba
     # tipo_ptm='glycosylation_n' (nombre crudo de DeepMVP, unico origen posible) sin
-    # canonizar a 'n_linked_glycosylation' -- select_fase_a_candidates filtra por
-    # Settings.FASE_A_SUPPORTED_PTM_TYPES, que solo contiene el nombre canonico, asi
-    # que los sitios de MAYOR confianza (confirmados por 3 motores) quedaban
-    # silenciosamente excluidos de Fase A. Este test verifica el fix end-to-end: desde
-    # el consenso hasta que select_fase_a_candidates realmente selecciona la fila.
+    # canonizar a 'n_linked_glycosylation', pese a que _NGLYCO_TYPES/
+    # _PTM_COMPETITION_GROUPS ya tratan ambos nombres como equivalentes en otras
+    # partes del modulo -- inconsistencia real de nombre de tipo en el reporte final.
     monkeypatch.setattr(
         ptm_annotation, "get_emngly_predictions",
         lambda *a, **k: {25: {"emngly_probability": 0.9}},
@@ -672,11 +596,6 @@ def test_annotate_pdb_path_nglyco_consenso_canoniza_tipo_ptm_para_fase_a(monkeyp
     )
 
     assert result.iloc[0]["tipo_ptm"] == "n_linked_glycosylation"
-
-    filtered = apply_workflow_filter(result)
-    candidates = select_fase_a_candidates(filtered)
-    assert len(candidates) == 1
-    assert candidates.iloc[0]["posicion"] == 25
 
 
 def test_annotate_pdb_path_nglyco_consenso_false_si_solo_1_de_3_pasa(monkeypatch, tmp_path):

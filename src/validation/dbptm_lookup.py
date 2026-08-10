@@ -8,7 +8,7 @@ Este modulo consulta la base GRANDE (`scripts/import_dbptm_panel.py`, miles de
 proteinas humanas reviewed) para poblar la columna "Literatura" del CLI en
 CUALQUIER proteina humana -- puramente informativo, nunca decide
 `pasa_umbral`/consenso, mismo patron ya establecido por
-`src/structural/glygen_client.py`/`uniprot_localization_client.py`.
+`src/structural/uniprot_localization_client.py`.
 """
 
 import json

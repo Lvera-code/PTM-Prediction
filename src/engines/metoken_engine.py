@@ -7,10 +7,10 @@ detalle completo de por que MeToken existe aqui, los 2 bugs reales
 parcheados, y la deteccion de la clase null/rare) via subprocess, sobre el
 venv dedicado ``Settings.METOKEN_PYTHON_BIN``.
 
-Mismo patron no-decisorio que ``src/structural/glygen_client.py`` +
-``pyrosetta_glycan_patch.py::check_glygen_evidence``: cualquier fallo (repo
-no instalado, checkpoint ausente, subproceso que revienta, timeout, salida
-malformada) degrada a un aviso en el log y devuelve ``{}`` -- NUNCA
+Mismo patron no-decisorio que ``src/structural/uniprot_localization_client.py``:
+cualquier fallo (repo no instalado, checkpoint ausente, subproceso que
+revienta, timeout, salida malformada) degrada a un aviso en el log y
+devuelve ``{}`` -- NUNCA
 propaga una excepcion que tumbe el pipeline principal. Quien llama
 (``src/engines/ptm_annotation.py::annotate_pdb_path``) decide que hacer con
 un resultado vacio (no anota corroboracion en ninguna fila, el resto del

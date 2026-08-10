@@ -6,13 +6,13 @@ sobre cada proteina de ``src/validation/biological_panel.py`` y compara los siti
 documentado en literatura, reportando recall por separado para tier A y tier B (ver
 docstring de ``biological_panel.py`` para el porque de esta separacion).
 
-Deliberadamente NO corre Fase A (modelado estructural, ``run_fase_a_pdb_modeling``) --
-esta validacion mide la CALIDAD DE LA ANOTACION/CONSENSO (Fase 2+3), no el modelado
-estructural de un top-N de sitios ya aceptados (ese es un problema distinto, ya validado
-por separado con corridas reales sobre Tau, ver STATUS.md). Evitar Fase A tambien mantiene
-el tiempo de corrida razonable -- DeepPTMPred (ESM-2 + features PyRosetta) ya domina el
-tiempo por si solo (~10+ min incluso para la proteina mas pequeña del panel, 103
-residuos -- confirmado real 2026-08-04, no es proporcional al tamaño de la proteina).
+Esta validacion mide la CALIDAD DE LA ANOTACION/CONSENSO (Fase 2+3) -- Fase A/3c
+(modelado estructural real via PyRosetta) fue eliminada del alcance del proyecto
+2026-08-10 (feedback de Carlos, ver STATUS.md), asi que ya no existe una fase
+posterior que excluir aqui. DeepPTMPred (ESM-2 + features PyRosetta) ya domina el
+tiempo de corrida por si solo (~10+ min incluso para la proteina mas pequeña del
+panel, 103 residuos -- confirmado real 2026-08-04, no es proporcional al tamaño
+de la proteina).
 
 Uso:
     conda run -n cnb_pipeline python scripts/validate_biological_panel.py [--only NOMBRE ...]

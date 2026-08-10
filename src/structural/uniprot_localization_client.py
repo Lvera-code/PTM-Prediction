@@ -12,9 +12,8 @@ del sustrato). Hallazgo del analisis de coherencia biologica 2026-08-07: el
 pipeline no comprobaba esto en ningun punto. Este cliente consulta la
 anotacion REAL de localizacion subcelular de UniProt (curada, con evidencia
 citada) para dar una senal informativa -- NUNCA decide ``pasa_umbral``/
-``consenso`` (mismo patron no-decisorio que ``glygen_client.py``), solo
-avisa cuando el consenso ya acepto un sitio N-glico sin evidencia conocida
-de via secretora.
+``consenso``, solo avisa cuando el consenso ya acepto un sitio N-glico sin
+evidencia conocida de via secretora.
 
 ## Endpoint real (verificado 2026-08-07 con una consulta real contra P01588/
    EPO, proteina secretada conocida -- no asumido de la documentacion)
@@ -74,10 +73,10 @@ def lookup_secretory_pathway_evidence(accession: str) -> Optional[bool]:
     """Evidencia real de UniProt de que ``accession`` transita la via secretora.
 
     Args:
-        accession: Accession UniProt (canonico, sin sufijo de isoforma --
-            mismo criterio que ``glygen_client.py``). Si no es un ID UniProt
-            real (comun en este proyecto, ver docstring del modulo), UniProt
-            devuelve HTTP 404 -- se traduce a ``None``, no a ``False``.
+        accession: Accession UniProt (canonico, sin sufijo de isoforma). Si
+            no es un ID UniProt real (comun en este proyecto, ver docstring
+            del modulo), UniProt devuelve HTTP 404 -- se traduce a ``None``,
+            no a ``False``.
 
     Returns:
         ``True`` si UniProt reporta evidencia de localizacion consistente

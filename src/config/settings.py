@@ -249,9 +249,9 @@ class Settings:
     # cuando with_null_ptm=0, como viene el checkpoint publicado -- y
     # verificado empiricamente: predice tipos con alta confianza tambien en
     # posiciones sin PTM real). Por eso NUNCA decide pasa_umbral/consenso --
-    # mismo patron puramente informativo que GlyGen
-    # (src/structural/glygen_client.py): solo corrobora el TIPO en sitios que
-    # el consenso YA acepto (pasa_umbral=true), ver
+    # mismo patron puramente informativo que la via secretora
+    # (src/structural/uniprot_localization_client.py): solo corrobora el TIPO
+    # en sitios que el consenso YA acepto (pasa_umbral=true), ver
     # src/engines/ptm_annotation.py::annotate_pdb_path y
     # src/engines/metoken_engine.py.
     METOKEN_ENABLED: bool = _env_bool("METOKEN_ENABLED", True)
@@ -379,9 +379,9 @@ class Settings:
     # 120s con el default original -- el timeout viejo garantizaba fallo
     # silencioso (degradacion a None) en cualquier proteina con mas de ~25
     # sitios aceptados, derrotando el proposito del motor. Generoso por
-    # defecto, mismo orden de magnitud que FASE_A_TIMEOUT_SECONDS/
-    # STACKGLYEMBED_TIMEOUT_SECONDS (900s) pero con mas margen porque el
-    # numero de sitios por proteina (no por corrida) es lo que escala aqui.
+    # defecto, mismo orden de magnitud que STACKGLYEMBED_TIMEOUT_SECONDS
+    # (900s) pero con mas margen porque el numero de sitios por proteina (no
+    # por corrida) es lo que escala aqui.
     KINASE_LIBRARY_TIMEOUT_SECONDS: int = _env_int("KINASE_LIBRARY_TIMEOUT_SECONDS", 1800)
 
     # --- EMNGly (motor real de consenso para 'n_linked_glycosylation', Camino PDB
@@ -521,64 +521,6 @@ class Settings:
     # deterministica/offline (tests, red no disponible).
     SECRETORY_PATHWAY_CHECK_ENABLED: bool = _env_bool("SECRETORY_PATHWAY_CHECK_ENABLED", True)
     PTM_CROSSTALK_CHECK_ENABLED: bool = _env_bool("PTM_CROSSTALK_CHECK_ENABLED", True)
-
-    # --- Fase A / Extension 3: modelado estructural real (PyRosetta), Camino PDB
-    # unicamente -- conectado al pipeline principal 2026-08-03 ---
-    # Revierte la decision 2026-07-27 de que D (apply_workflow_filter) no ruta a
-    # Extension 3/Fase A porque esas fases no existian todavia -- ya existen y
-    # estan verificadas con corridas reales (ver STATUS.md). Cubre solo 9/17
-    # tipos de PTM (ver src/structural/fase_a_dispatch.py::SUPPORTED_PTM_TYPES);
-    # los otros 8 no tienen modulo de Fase A (requeririan construir un residuo
-    # no-canonico propio, cheminformatica real, no implementado).
-    #
-    # Modelar TODOS los sitios que pasan el umbral es computacionalmente
-    # inviable (un caso real como Tau acepta ~572 sitios; cada modelado tarda de
-    # minutos, no segundos) -- FASE_A_TOP_N_PER_TYPE acota el barrido al sitio
-    # de mayor score por cada uno de los 9 tipos soportados (representativo,
-    # demostrable en una corrida real), no un recorte arbitrario.
-    FASE_A_ENABLED: bool = _env_bool("FASE_A_ENABLED", True)
-    FASE_A_TOP_N_PER_TYPE: int = _env_int("FASE_A_TOP_N_PER_TYPE", 1)
-    # Constante de datos pura (sin pyrosetta) para que src/engines/ptm_annotation.py
-    # (proceso principal, sin PyRosetta instalado) pueda seleccionar candidatos
-    # sin importar src/structural/*. Fuente de verdad real: la union de los 3
-    # SUPPORTED_PTM_TYPES de pyrosetta_ptm_patch/pyrosetta_glycan_patch/
-    # ubiquitin_sumo (ver src/structural/fase_a_dispatch.py, que valida en tiempo
-    # de import que esta lista coincide exactamente -- si alguna vez difieren,
-    # falla alto en vez de seleccionar candidatos para un tipo sin soporte real).
-    FASE_A_SUPPORTED_PTM_TYPES: tuple = (
-        "phosphorylation", "acetylation", "hydroxylation", "gamma_carboxyglutamic_acid",
-        "lys_methylation", "n_linked_glycosylation", "o_linked_glycosylation",
-        "ubiquitination", "sumoylation",
-    )
-    # Plantilla (sin pyrosetta) de todas las claves que puede tener un
-    # resultado de Fase A -- unica fuente de verdad compartida entre
-    # fase_a_engine.py (proceso principal), fase_a_dispatch.py y
-    # _fase_a_runner.py (subprocess con PyRosetta). Evita que las distintas
-    # rutas de salida (modelado/sin_soporte/error/no_disponible) queden
-    # desalineadas entre si -- el bug real 2026-08-03 de "ddg_std" calculado
-    # pero nunca incluido en el dict de resultado (se perdia antes de llegar
-    # al reporte final) fue exactamente este tipo de desalineacion.
-    FASE_A_RESULT_TEMPLATE: dict = {
-        "estado": None, "clase": None, "ddg": None, "ddg_std": None,
-        "wt_score": None, "wt_score_std": None, "mut_score": None, "mut_score_std": None,
-        "glycan_tree": None, "glygen_evidencia": None, "conjugation_metrics": None,
-        "cadena_tipo_aviso": None,
-        "output_pdb": None, "error": None,
-    }
-    FASE_A_RUNNER_SCRIPT: Path = Path(
-        _env_str(
-            "FASE_A_RUNNER_SCRIPT",
-            str(Path(__file__).resolve().parent.parent / "engines" / "_fase_a_runner.py"),
-        )
-    )
-    # Requiere PyRosetta -- reusa el MISMO conda env 'deepptmpred' ya instalado
-    # y verificado para DeepPTMPred (ver DEEPPTMPRED_PYTHON_BIN arriba), nunca
-    # un env separado: ambos necesitan exactamente el mismo PyRosetta real.
-    FASE_A_PYTHON_BIN: str = _env_str("FASE_A_PYTHON_BIN", sys.executable)
-    # Generoso por defecto: clase 1 (ddG) corre nstruct*2 relax independientes
-    # (~1 min cada uno sobre una proteina de tamano medio, ver STATUS.md) mas
-    # un relax final para el PDB de salida -- varios minutos en el peor caso.
-    FASE_A_TIMEOUT_SECONDS: int = _env_int("FASE_A_TIMEOUT_SECONDS", 900)
 
     @classmethod
     def ensure_dirs(cls) -> None:

@@ -1,9 +1,7 @@
 """Tests de src/structural/uniprot_localization_client.py.
 
-A diferencia del resto de src/structural/ (requiere pyrosetta), este modulo
-solo usa urllib/json de la stdlib -- se puede testear en la suite principal
-mockeando la red (nunca golpea rest.uniprot.org de verdad en CI/tests), mismo
-patron que test_glygen_client.py.
+Solo usa urllib/json de la stdlib -- se puede testear en la suite principal
+mockeando la red (nunca golpea rest.uniprot.org de verdad en CI/tests).
 """
 
 import json

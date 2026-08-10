@@ -4,29 +4,28 @@ Numeracion de fases alineada con `BCell-Epitope-Prediction` (proyecto 1):
 Fase 1 (saneamiento) -> Fase 1.5 (extraccion de estructura, Camino PDB
 unicamente) -> Fase 2 (motores: DeepMVP / DeepMVP+DeepPTMPred) -> Fase 3
 (nucleo: anotacion + filtro) -> Fase 3b (cruces informativos: via secretora,
-Kinase Library, MeToken, competencia entre PTMs) -> Fase 3c (modelado
-estructural real, Camino PDB unicamente). Renombrado 2026-08-08 -- Fase 3b/3c
-antes se llamaban "cruces informativos"/"Fase A" en la documentacion; sin
-cambio de comportamiento, ambas siguen calculandose exactamente igual
-(3b dentro de ``annotate_pdb_path``, 3c via ``run_fase_a_pdb_modeling``/
-``FaseAEngine``) -- el nombre nuevo es solo para el resumen en pantalla y la
-documentacion, los nombres de funciones/columnas/variables de entorno
-(``fase_a_*``, ``FASE_A_ENABLED``, etc.) no cambian.
+Kinase Library, MeToken, competencia entre PTMs).
 
 Camino FASTA: Fase 1 (saneamiento) -> Fase 2 (DeepMVP, unico motor) -> Fase 3
 (nucleo: anotacion + filtro).
 Camino PDB: Fase 1.5 (extraccion ATMSEQ + pdb de una cadena) -> Fase 2
 (DeepMVP + DeepPTMPred en consenso) -> Fase 3 (nucleo: anotacion + filtro,
 fusiona consenso donde ambos motores coinciden en tipo+posicion) -> Fase 3b
-(cruces informativos) -> Fase 3c (modelado estructural real).
+(cruces informativos).
 
 Diseno del nucleo de Fase 3 (B: anotacion/filtrado, D: logica de flujo) en
 ``01-Proyectos/PTM-Prediction/Decisiones/2026-07-27-diseno-nucleo-fase3-anotacion-flujo.md``
 del vault.
+
+Fase 3c (modelado estructural real via PyRosetta, antes "Fase A") fue
+eliminada del alcance del proyecto por decision de Carlos (feedback
+2026-08-10, ver
+``01-Proyectos/PTM-Prediction/Decisiones/2026-08-10-carlos-elimina-fase3c-confirma-scipion.md``
+del vault) -- nucleo (Fases 1-3b) confirmado feature-complete, el proyecto
+pasa a integrarse en Scipion.
 """
 
 import argparse
-import json
 import sys
 from pathlib import Path
 from typing import List
@@ -36,12 +35,10 @@ import pandas as pd
 from src.config.settings import Settings
 from src.engines.deepmvp_engine import DeepMVPEngine
 from src.engines.deepptmpred_engine import DeepPTMPredEngine
-from src.engines.fase_a_engine import FaseAEngine, FaseASiteRequest
 from src.engines.ptm_annotation import (
     annotate_fasta_path,
     annotate_pdb_path,
     apply_workflow_filter,
-    select_fase_a_candidates,
 )
 from src.utils.exceptions import PipelineError
 from src.utils.fasta_parser import load_and_sanitize, write_fasta
@@ -300,13 +297,12 @@ def run_fase3_pdb_annotation(
     ATMSEQ a numeracion real de PDB para alinear ``structure_emb``
     correctamente (ver docstring de ``_emngly_runner.py``).
 
-    Devuelve ``(filtered, n_evaluados, report_path)`` -- a diferencia de
-    antes de 2026-08-03, expone tambien el DataFrame en memoria (no solo la
-    ruta del CSV ya escrito) porque ``run_fase_a_pdb_modeling`` (paso
-    siguiente en ``main()``) necesita seleccionar candidatos de ``filtered``
-    sin tener que releerlo de disco; ``n_evaluados`` (``len(annotated)``,
-    antes del filtro de umbral) es lo que el resumen en pantalla necesita
-    para mostrar "X/Y pasan el umbral".
+    Devuelve ``(filtered, n_evaluados, report_path)`` -- expone tambien el
+    DataFrame en memoria (no solo la ruta del CSV ya escrito) porque
+    ``_print_pdb_summary`` lo lee directamente para el resumen en pantalla,
+    sin releerlo de disco; ``n_evaluados`` (``len(annotated)``, antes del
+    filtro de umbral) es lo que ese resumen necesita para mostrar "X/Y pasan
+    el umbral".
     """
     annotated = annotate_pdb_path(
         record.accession, record.sequence, deepmvp_results, deepptmpred_results,
@@ -326,87 +322,6 @@ def run_fase3_pdb_annotation(
         len(filtered), len(annotated), n_consenso, report_path,
     )
     return filtered, len(annotated), report_path
-
-
-_FASE_A_RESULT_COLUMNS = {
-    "estado": "fase_a_estado",
-    "clase": "fase_a_clase",
-    "ddg": "fase_a_ddg",
-    "ddg_std": "fase_a_ddg_std",
-    "glycan_tree": "fase_a_glycan_tree",
-    "glygen_evidencia": "fase_a_glygen_evidencia",
-    "conjugation_metrics": "fase_a_conjugation_metrics",
-    "cadena_tipo_aviso": "fase_a_cadena_tipo_aviso",
-    "output_pdb": "fase_a_output_pdb",
-}
-
-
-def run_fase_a_pdb_modeling(
-    record, filtered: pd.DataFrame, output_dir: Path, report_path: Path
-) -> pd.DataFrame:
-    """Camino PDB: Fase A, modelado estructural real de un top-N de sitios por tipo.
-
-    Conectado al pipeline principal 2026-08-03 (ver
-    ``src/engines/fase_a_engine.py`` y ``src/structural/fase_a_dispatch.py``
-    para el detalle completo): revierte la decision 2026-07-27 de que D no
-    rutea a Extension 3/Fase A porque esas fases no existian todavia.
-
-    Selecciona candidatos con ``select_fase_a_candidates`` (top-N por tipo
-    entre los 9/17 tipos con modulo de Fase A real, nunca todos los sitios
-    aceptados -- costo computacional real, ver docstring de la funcion),
-    modela cada uno via ``FaseAEngine`` (subprocess con PyRosetta, un sitio
-    por proceso) y reescribe ``report_path`` con las columnas
-    ``fase_a_estado``/``fase_a_clase``/``fase_a_ddg``/``fase_a_ddg_std``/
-    ``fase_a_glycan_tree``/``fase_a_glygen_evidencia``/``fase_a_conjugation_metrics``/
-    ``fase_a_cadena_tipo_aviso``/``fase_a_output_pdb``
-    anadidas para TODAS las filas de ``filtered`` (no solo las seleccionadas):
-    las no seleccionadas quedan con ``fase_a_estado="no_seleccionado"``, para
-    que el reporte final documente explicitamente por que un sitio aceptado
-    no tiene modelado estructural, en vez de dejar una columna vacia
-    ambigua.
-
-    Si ``Settings.FASE_A_ENABLED`` es ``False`` o no hay candidatos, escribe
-    igualmente las columnas (todas ``no_seleccionado``/``no_disponible``) para
-    que el esquema del reporte final sea estable independientemente de la
-    configuracion.
-    """
-    enriched = filtered.copy()
-    for column in _FASE_A_RESULT_COLUMNS.values():
-        enriched[column] = None
-    enriched["fase_a_estado"] = "no_seleccionado"
-
-    candidates = select_fase_a_candidates(filtered, Settings.FASE_A_TOP_N_PER_TYPE)
-    if candidates.empty:
-        logger.info("Fase 3c: ningun candidato seleccionable (0 sitios de los 9 tipos soportados).")
-        enriched.to_csv(report_path, index=False)
-        return enriched
-
-    requests = [
-        FaseASiteRequest(
-            accession=record.accession,
-            pdb_path=record.chain_pdb_path,
-            position=int(row["posicion"]),
-            ptm_type=row["tipo_ptm"],
-        )
-        for _, row in candidates.iterrows()
-    ]
-    results = FaseAEngine().run(requests, output_dir=output_dir)
-
-    for request, result in zip(requests, results):
-        mask = (enriched["posicion"] == request.position) & (enriched["tipo_ptm"] == request.ptm_type)
-        for result_key, column in _FASE_A_RESULT_COLUMNS.items():
-            value = result.get(result_key)
-            if value is not None and not isinstance(value, (str, int, float, bool)):
-                value = json.dumps(value)
-            enriched.loc[mask, column] = value
-
-    enriched.to_csv(report_path, index=False)
-    n_modelado = int((enriched["fase_a_estado"] == "modelado").sum())
-    logger.info(
-        "Fase 3c completa (Camino PDB): %d/%d sitio(s) candidato(s) modelados con exito -> '%s'.",
-        n_modelado, len(candidates), report_path,
-    )
-    return enriched
 
 
 def _discover_batch_inputs(directory: Path) -> List[Path]:
@@ -437,7 +352,7 @@ def _print_fasta_summary(filtered: pd.DataFrame, n_evaluados: int, report_path: 
 
 def _print_pdb_summary(
     record, deepmvp_results: pd.DataFrame, deepptmpred_results: pd.DataFrame,
-    filtered: pd.DataFrame, n_evaluados: int, enriched: pd.DataFrame, report_path: Path,
+    filtered: pd.DataFrame, n_evaluados: int, report_path: Path,
 ) -> None:
     """Resumen limpio del Camino PDB -- lo unico que se ve en pantalla tras una corrida.
 
@@ -542,31 +457,6 @@ def _print_pdb_summary(
     else:
         print("Sin sitios que evaluar.")
 
-    print(f"\n{_SEPARATOR}\nFASE 3c | Modelado estructural real\n{_SEPARATOR}")
-    candidatos = enriched[enriched["fase_a_estado"] != "no_seleccionado"]
-    if candidatos.empty:
-        print("Ningun candidato seleccionable (0 sitios de los 9 tipos con modulo real).")
-    elif (candidatos["fase_a_estado"] == "no_disponible").all():
-        print(f"Desactivada para esta corrida (FASE_A_ENABLED=false) -- {len(candidatos)} candidato(s) habrian sido seleccionados.")
-    else:
-        n_modelado = int((candidatos["fase_a_estado"] == "modelado").sum())
-        print(f"{n_modelado}/{len(candidatos)} candidato(s) modelados con exito.")
-        headers = ["Pos", "Tipo", "Estado", "Detalle"]
-        rows = []
-        for _, row in candidatos.sort_values("posicion").iterrows():
-            detalle = "-"
-            if row["fase_a_estado"] == "modelado":
-                if pd.notna(row.get("fase_a_ddg")):
-                    detalle = f"ddG={float(row['fase_a_ddg']):.2f}"
-                elif pd.notna(row.get("fase_a_glycan_tree")):
-                    detalle = "glicano adjuntado"
-                elif pd.notna(row.get("fase_a_conjugation_metrics")):
-                    detalle = "conjugacion modelada"
-            elif row["fase_a_estado"] == "error":
-                detalle = "fallo (ver log)"
-            rows.append([int(row["posicion"]), row["tipo_ptm"], row["fase_a_estado"], detalle])
-        _print_table(headers, rows)
-
     print(f"\nReporte completo: {report_path}")
 
 
@@ -597,9 +487,8 @@ def run_single_input(input_path: Path, output_dir: Path) -> Path:
         filtered, n_evaluados, report_path = run_fase3_pdb_annotation(
             record, deepmvp_results, deepptmpred_results, output_dir
         )
-        enriched = run_fase_a_pdb_modeling(record, filtered, output_dir, report_path)
         _print_pdb_summary(
-            record, deepmvp_results, deepptmpred_results, filtered, n_evaluados, enriched, report_path
+            record, deepmvp_results, deepptmpred_results, filtered, n_evaluados, report_path
         )
 
     print(f"\n{INTERPRETATION_DISCLAIMER}")
@@ -610,8 +499,8 @@ def _run_batch(input_dir: Path, output_dir: Path) -> int:
     """Modo batch: corre ``run_single_input`` sobre cada archivo reconocido de ``input_dir``.
 
     Un archivo que falla se registra como error y NO detiene el resto del batch -- mismo
-    criterio de degradacion no fatal que ``FaseAEngine``/StackGlyEmbed/MeToken aplican
-    por-sitio (un fallo individual real no debe tumbar todo el barrido). Escribe
+    criterio de degradacion no fatal que StackGlyEmbed/MeToken aplican por-sitio (un
+    fallo individual real no debe tumbar todo el barrido). Escribe
     ``batch_summary.csv`` (columnas: archivo, estado, reporte/error) en ``output_dir``.
     Codigo de salida: 0 solo si TODOS los archivos completaron sin error, 1 si al menos uno
     fallo (incluye el caso de un directorio sin ningun archivo reconocido -- ver docstring de
@@ -622,9 +511,7 @@ def _run_batch(input_dir: Path, output_dir: Path) -> int:
     ``AttributeError`` real de un motor/engine con una salida malformada, no necesariamente
     un ``PipelineError`` -- escapaba del bucle entero, tumbando TODO el batch antes de
     escribir ``batch_summary.csv`` y perdiendo el registro de los archivos previos ya
-    procesados con exito, pese a que sus reportes individuales SI quedaban en disco). Mismo
-    patron ``# noqa: BLE001`` ya usado en ``fase_a_dispatch.run_fase_a_for_site`` para el
-    mismo motivo (un item individual de un barrido no debe tumbar el resto).
+    procesados con exito, pese a que sus reportes individuales SI quedaban en disco).
     """
     inputs = _discover_batch_inputs(input_dir)
     if not inputs:

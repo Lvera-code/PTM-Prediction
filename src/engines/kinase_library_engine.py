@@ -2,8 +2,9 @@
 
 Analisis de coherencia biologica 2026-08-07, punto 5 (ver
 ``src/engines/_kinase_library_runner.py`` para el detalle completo de por
-que esta fuente SI puede orientar por-sitio, a diferencia del punto 4/
-``ubiquitin_sumo.CHAIN_TYPE_DISCLAIMER``). NUNCA es un motor de consenso --
+que esta fuente SI puede orientar por-sitio, a diferencia del tipo de cadena
+de poliubiquitina -- razonamiento que vivia en Fase A/3c, eliminada del
+alcance 2026-08-10). NUNCA es un motor de consenso --
 Kinase Library no decide ``pasa_umbral``/``consenso``, solo corrobora
 sitios de fosforilacion que el consenso YA acepto, con la quinasa/familia
 mas probable segun las matrices de especificidad publicadas (Johnson et al.

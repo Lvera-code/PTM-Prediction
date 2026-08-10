@@ -3,17 +3,16 @@
 [![tests](https://github.com/Lvera-code/PTM-Prediction/actions/workflows/tests.yml/badge.svg)](https://github.com/Lvera-code/PTM-Prediction/actions/workflows/tests.yml)
 
 Pipeline de prediccion de zonas de modificacion post-traduccional (PTM) a
-partir de FASTA o PDB/mmCIF, con modelado estructural real (PyRosetta) de un
-subconjunto de los sitios aceptados. Segundo proyecto del CNB (encargado por
-Carlos Oscar Sorzano), independiente de
+partir de FASTA o PDB/mmCIF. Segundo proyecto del CNB (encargado por Carlos
+Oscar Sorzano), independiente de
 [BCell-Epitope-Prediction](https://github.com/Lvera-code/BCell-Epitope-Prediction).
 
 ## Arquitectura
 
 Numeracion de fases alineada con el proyecto 1
 ([BCell-Epitope-Prediction](https://github.com/Lvera-code/BCell-Epitope-Prediction)):
-Fase 1 -> Fase 1.5 (PDB unicamente) -> Fase 2 (motores) -> Fase 3 (nucleo) -> Fase A
-(modelado estructural, PDB unicamente).
+Fase 1 -> Fase 1.5 (PDB unicamente) -> Fase 2 (motores) -> Fase 3 (nucleo) -> Fase 3b
+(cruces informativos, PDB unicamente).
 
 - **Camino FASTA**: Fase 1 (saneamiento) -> Fase 2: **DeepMVP** (motor unico,
   6 tipos de PTM: fosforilacion, acetilacion, metilacion, sumoilacion,
@@ -21,7 +20,7 @@ Fase 1 -> Fase 1.5 (PDB unicamente) -> Fase 2 (motores) -> Fase 3 (nucleo) -> Fa
 - **Camino PDB**: Fase 1.5 (extraccion de secuencia ATMSEQ + mapeo de
   posiciones via `gemmi`) -> Fase 2: consenso **DeepMVP + DeepPTMPred** (17
   tipos de PTM; DeepPTMPred exige `pdb_path` obligatorio, sin modo
-  solo-secuencia, de ahi la asimetria entre caminos) -> Fase 3 -> **Fase A**.
+  solo-secuencia, de ahi la asimetria entre caminos) -> Fase 3 -> **Fase 3b**.
 - **Fase 3 (nucleo)**: anotacion/filtrado + logica de decision de flujo sobre
   las predicciones crudas de Fase 2 (`src/engines/ptm_annotation.py`).
   Fusiona consenso donde DeepMVP y DeepPTMPred coinciden en tipo+posicion.
@@ -36,25 +35,12 @@ Fase 1 -> Fase 1.5 (PDB unicamente) -> Fase 2 (motores) -> Fase 3 (nucleo) -> Fa
 - **Corroboracion opcional** (nunca deciden `pasa_umbral`/`consenso`, solo
   informan sobre sitios que el consenso YA acepto): **MeToken** (tipo, Camino
   PDB), **StackGlyEmbed** (N-glicosilacion, Camino FASTA -- en Camino PDB es
-  motor de consenso, ver arriba), **GlyGen** (evidencia experimental externa
-  de glicosilacion, Fase A), **evidencia de via secretora via UniProt**
+  motor de consenso, ver arriba), **evidencia de via secretora via UniProt**
   (columna `via_secretora_evidencia`, N-glicosilacion, ambos caminos) y
   **aviso de competencia/crosstalk entre PTMs** (columna
   `ptm_crosstalk_aviso`, cuando 2+ tipos que compiten por el mismo grupo
   quimico de un residuo pasan en la misma posicion) -- ver "Alcance e
   interpretacion" abajo.
-- **Fase A (modelado estructural real via PyRosetta, Camino PDB unicamente)**:
-  para un top-N de sitios por tipo (default 1, `Settings.FASE_A_TOP_N_PER_TYPE`
-  -- modelar TODOS los sitios aceptados es computacionalmente inviable, un
-  caso real como Tau acepta ~572), modela la estructura real segun 3 clases:
-  parche quimico nativo + ddG (5 tipos: fosforilacion, acetilacion,
-  hidroxilacion, gamma-carboxiglutamacion, metilacion de Lys), adjuncion +
-  refinado de glicano (2 tipos: N/O-glicosilacion), o conjugacion isopeptidica
-  real via `UBQ_GTPaseMover` (2 tipos: ubiquitinacion, sumoilacion). Los otros
-  8/17 tipos no tienen modulo de Fase A (requeririan construir un residuo
-  no-canonico propio, cheminformatica real, no implementado) -- se marcan
-  `fase_a_estado="sin_soporte_fase_a"` en el reporte, nunca se omiten en
-  silencio.
 
 ## Alcance e interpretacion
 
@@ -95,24 +81,14 @@ huecos de comunicacion de alcance encontrados, ninguno un bug de codigo.
   "Yin-Yang"). La columna `ptm_crosstalk_aviso` avisa cuando 2+ tipos en
   competencia real pasan en la misma posicion -- ver
   `src/engines/ptm_annotation.py::_PTM_COMPETITION_GROUPS`.
-- **Sin distincion de tipo de cadena en Fase A de ubiquitinacion.**
-  `UBQ_GTPaseMover` modela una unica conjugacion isopeptidica (MONO-
-  ubiquitinacion real sobre una lisina) -- no distingue topologia de cadena
-  de poliubiquitina (K48 = degradacion proteasomal; K63 = senalizacion/
-  reparacion, NO degradativo), porque eso depende de que E2/E3 real conjuga
-  ubiquitinas adicionales dentro de la celula, no es derivable de esta
-  estructura. Verificado 2026-08-07 que tampoco existe una base de datos
-  publica con tipo de cadena anotado por sitio (UbiNet 2.0/iUUCD 2.0/UUCD
-  cubren pares E3-sustrato, no tipo de enlace por residuo) -- por eso la
-  columna `fase_a_cadena_tipo_aviso` (solo para `ubiquitination`, K48/K63 es
-  terminologia especifica de las lisinas de la propia ubiquitina, no aplica
-  a `sumoylation`) es puramente informativa, sin ningun numero orientativo.
-  "Sitio de ubiquitinacion" no implica que la proteina vaya a degradarse.
 - **Especificidad de quinasa para fosforilacion.** Ni DeepMVP ni DeepPTMPred
   distinguen QUE familia de quinasa fosforila un sitio -- ambos predicen
-  "fosforilable en general". A diferencia del punto anterior (K48/K63, un
-  evento celular posterior no observable en la estructura), esta SI es una
-  propiedad local de secuencia -- existe una fuente real y publicada:
+  "fosforilable en general". A diferencia del tipo de cadena de
+  poliubiquitina (K48 = degradacion proteasomal; K63 = senalizacion/
+  reparacion, NO degradativo -- depende de que E2/E3 real conjuga ubiquitinas
+  adicionales dentro de la celula, un evento celular posterior no observable
+  en secuencia/estructura), la especificidad de quinasa SI es una propiedad
+  local de secuencia -- existe una fuente real y publicada:
   [Kinase Library](https://kinase-library.phosphosite.org) (Johnson et al.
   2023 *Nature*, 303 quinasas Ser/Thr + Yaron-Barir et al. 2024 *Nature*,
   kinoma Tyr completo). Para cada sitio de fosforilacion que el consenso
@@ -124,14 +100,15 @@ huecos de comunicacion de alcance encontrados, ninguno un bug de codigo.
   sitio real (p53 S33): top hit ATM, coincide con la literatura real de
   respuesta a dano en el ADN.
 
-## Estado actual (2026-08-06)
+## Estado actual (2026-08-10)
 
-Pipeline completo end-to-end (Fase 1/1.5/2/3/A) implementado, instalado y
+Pipeline completo end-to-end (Fase 1/1.5/2/3/3b) implementado, instalado y
 verificado con corridas REALES (no solo planeado) en esta maquina: DeepMVP
 (pesos + calibracion real), DeepPTMPred (PyRosetta + ESM-2 + calibracion real
 de los 17 tipos, 2 bugs de train/inferencia encontrados y corregidos --
-phi/psi y plDDT, ver STATUS.md), MeToken, StackGlyEmbed y Fase A (ddG /
-glicano / conjugacion, todos con corridas reales documentadas).
+phi/psi y plDDT, ver STATUS.md), MeToken y StackGlyEmbed. Confirmado
+feature-complete y sin Fase A/3c (modelado estructural real via PyRosetta,
+eliminada del alcance) por feedback de Carlos -- ver STATUS.md.
 
 **Decision 2 (segundo motor de consenso para N-glicosilacion) CERRADA**:
 CoNglyPred (candidato original) confirmado sin pesos publicados en ningun
@@ -150,7 +127,7 @@ real sobre el set independiente de N-GlyDE. El umbral
 
 ```bash
 python pipeline.py --input inputs/mi_proteina.fasta
-python pipeline.py --input inputs/mi_estructura.pdb   # Camino PDB: motores + Fase A
+python pipeline.py --input inputs/mi_estructura.pdb   # Camino PDB: motores + consenso + cruces informativos
 ```
 
 ## Instalacion
@@ -160,8 +137,8 @@ pip install -r requirements.txt
 pytest tests/
 ```
 
-DeepMVP, DeepPTMPred y Fase A requieren venvs/conda envs dedicados aparte
-(stacks incompatibles entre si), nunca el venv principal del pipeline:
+DeepMVP y DeepPTMPred requieren venvs/conda envs dedicados aparte (stacks
+incompatibles entre si), nunca el venv principal del pipeline:
 
 ```bash
 git clone https://github.com/bzhanglab/DeepMVP
@@ -176,11 +153,6 @@ conda create -n deepptmpred python=3.10 -y
 # tensorflow-addons + torch + fair-esm) + pyrosetta-installer (ver README del
 # repo) + checkpoint ESM-2 (~2.5GB, mas su companero *-contact-regression.pt)
 export DEEPPTMPRED_PYTHON_BIN=$(conda run -n deepptmpred which python)
-
-# Fase A (ddG / glicosilacion / ubiquitinacion-sumoilacion, src/structural/)
-# REUSA el mismo conda env 'deepptmpred' -- ya tiene PyRosetta instalado, no
-# hace falta un env adicional.
-export FASE_A_PYTHON_BIN=$(conda run -n deepptmpred which python)
 ```
 
 MeToken (corroboracion OPCIONAL e informativa del tipo, Camino PDB, ver
@@ -319,8 +291,9 @@ comercial -- consistente con la dependencia real mas restrictiva (ver abajo).
   EMNgly, `model/MIF/`) es de Microsoft (`microsoft/protein-sequence-models`),
   licencia BSD-2 permisiva verificada en el repo oficial -- la copia de
   EMNgly perdio su LICENSE al vendorizarlo.
-- **PyRosetta** (Fase A): licencia academica/no-comercial de RosettaCommons,
-  ya cubierta por el uso de investigacion/TFG de este proyecto.
+- **PyRosetta** (feature de SASA por residuo dentro de DeepPTMPred): licencia
+  academica/no-comercial de RosettaCommons, ya cubierta por el uso de
+  investigacion/TFG de este proyecto.
 
 ## Decisiones de arquitectura
 
