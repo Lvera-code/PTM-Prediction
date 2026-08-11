@@ -98,6 +98,26 @@ huecos de comunicacion de alcance encontrados, ninguno un bug de codigo.
   las matrices de especificidad publicadas. Verificado 2026-08-07 contra un
   sitio real (p53 S33): top hit ATM, coincide con la literatura real de
   respuesta a dano en el ADN.
+- **Falso positivo conocido en el control negativo del panel (N-97 de
+  `kit_ligand_scf`/SCF, 2026-08-11).** UniProt (PMID 1381905) confirma que
+  este sequon N-Y-S valido NUNCA se glicosila en ninguna de las 2 isoformas
+  de SCF -- es el unico control negativo real del panel de validacion. Con
+  el consenso a 2 motores (DeepMVP+EMNGly, tras eliminar StackGlyEmbed el
+  2026-08-10) ambos motores lo aceptan con `consenso=True`
+  (DeepMVP 0.939, EMNGly 0.792) -- primera vez que este control negativo se
+  prueba contra la arquitectura actual (EMNGly no existia en el pipeline el
+  2026-08-04, cuando este mismo sitio se rechazo correctamente con una
+  version anterior sin EMNGly). Decision consciente: NO se ajusta el umbral
+  `Settings.EMNGLY_MIN_PROBABILITY=0.5` por este unico caso (movería un
+  umbral ya validado contra las 301 sitios reales de N-GlyDE, MCC 0.82,
+  sobreajuste a n=1) ni se revierte la eliminacion de StackGlyEmbed
+  (friccion real de Scipion ya resuelta por esa decision). Se documenta como
+  limitacion conocida del predictor (MCC 0.82 implica que ALGUN falso
+  positivo es esperable, y este es precisamente el tipo de sitio disenado
+  para ser dificil: quimicamente indistinguible de N-90/N-145 salvo por
+  algo que ni la secuencia ni la estructura estatica capturan) -- cubierto
+  ademas por el disclaimer general de "capacidad predicha, no ocurrencia
+  observada" de arriba. Detalle en STATUS.md.
 
 ## Estado actual (2026-08-10)
 
@@ -257,20 +277,19 @@ comercial -- consistente con la dependencia real mas restrictiva (ver abajo).
   plugin de Scipion por el CNB, institucion publica) encaja sin problema
   dentro de CC BY-NC. Detalle completo en `STATUS.md`.
 - **MeToken**: MIT (declarada en `MeToken/LICENSE` del repo original).
-- **EMNGly**: sin LICENSE declarado en ningun repo (`StellaHxy/EMNgly` ni su
-  duplicado `Xiaoyang878/EMNgly`) -- el paper SI es CC BY 4.0 real
-  (confirmado via el XML de PMC, PMC10627407, no solo asumido) pero eso NO
-  cubre el codigo. Correo redactado 2026-08-07 a los autores de
-  correspondencia reales (Yaojun Wang, `wangyaojun@cau.edu.cn`, China
-  Agricultural University; Shiwei Sun, `dwsun@ict.ac.cn`, ICT-CAS -- ambos
-  verificados via el mismo XML de PMC, no la pagina de Oxford Academic,
-  bloqueada por Cloudflare a fetch directo), envio programado para el
-  2026-08-10 (lunes). Mismo patron que funciono con DeepPTMPred -- NO
-  bloqueante (a diferencia de CoNglyPred, los pesos ya son publicos y
-  descargables sin depender de esa respuesta). MIF (vendorizado dentro de
-  EMNgly, `model/MIF/`) es de Microsoft (`microsoft/protein-sequence-models`),
-  licencia BSD-2 permisiva verificada en el repo oficial -- la copia de
-  EMNgly perdio su LICENSE al vendorizarlo.
+- **EMNGly**: **MIT** (resuelto 2026-08-11). El repo `StellaHxy/EMNgly` no
+  declaraba LICENSE; se contacto a los autores de correspondencia (Yaojun
+  Wang, `wangyaojun@cau.edu.cn`, China Agricultural University; Shiwei Sun,
+  `dwsun@ict.ac.cn`, ICT-CAS) el 2026-08-10. Respondieron confirmando que
+  anadieron la licencia MIT al repo de GitHub y autorizando explicitamente la
+  integracion en Scipion. LICENSE MIT verificado en el commit `824d6dc`
+  (copyright Xiaoyang Hou, Yu Wang) y sincronizado en el vendorizado local
+  (`EMNgly/`, fast-forward `0b3c84d..a719532`). El paper sigue siendo CC BY
+  4.0 (PMC10627407). MIF (vendorizado dentro de EMNgly, `model/MIF/`) es de
+  Microsoft (`microsoft/protein-sequence-models`), licencia BSD-2 permisiva
+  verificada en el repo oficial -- la copia de EMNgly perdio su LICENSE al
+  vendorizarlo, pero queda cubierta igualmente por el MIT recien anadido al
+  repo que lo contiene.
 - **PyRosetta** (feature de SASA por residuo dentro de DeepPTMPred): licencia
   academica/no-comercial de RosettaCommons, ya cubierta por el uso de
   investigacion/TFG de este proyecto.

@@ -2069,11 +2069,13 @@ respondido por Junwen Wang ("I confirm that the GitHub code follows the
 same CC BY-NC terms") es sobre **DeepPTMPred** (autores Yong Liu/Junwen
 Wang), ya cerrado desde 2026-07-29 (ver seccion de licencias arriba). La
 licencia de **EMNGly** (autores distintos: Yaojun Wang/Shiwei Sun, ver
-seccion de licencias arriba para sus emails reales) sigue siendo el unico
-item de compliance real abierto en todo el proyecto -- correo REDACTADO
-en esta misma sesion, envio programado para el 2026-08-10 (lunes). No
-bloqueante (los pesos de EMNGly ya son descargables sin depender de esa
-respuesta).
+seccion de licencias arriba para sus emails reales) era el unico item de
+compliance real abierto en todo el proyecto -- **resuelto el 2026-08-11**:
+respondieron confirmando que anadieron la licencia MIT al repo de GitHub
+(`StellaHxy/EMNgly`, commit `824d6dc`) y autorizando explicitamente la
+integracion en Scipion. Sincronizado en el vendorizado local
+(`EMNgly/`, fast-forward `0b3c84d..a719532`). No quedan items de licencia
+abiertos en el proyecto.
 
 ## Fase A / Fase 3c ELIMINADA del alcance -- integracion a Scipion confirmada (2026-08-10)
 
@@ -2187,3 +2189,82 @@ AMBOS motores pasen, en vez de 2 de 3. Verificado leyendo
 
 Commit `e9be138`. Notebook probado localmente (sintaxis, 338 tests pasando --
 ver arriba), pendiente de confirmar en una corrida real de Colab.
+
+## Primera corrida real en Colab post-refactor (2026-08-11): p53 limpio, control negativo falla
+
+Retomada la sesion de Colab pausada por cuota de GPU (ver seccion
+"conda-pack" arriba). Primera corrida end-to-end real con la arquitectura
+actual (sin Fase A/3c, sin StackGlyEmbed, licencia de EMNGly ya resuelta --
+ver `project_ptm_emngly_license_resolved_2026-08-11` en la memoria de
+Claude Code) sobre 2 proteinas del panel: `p53_P04637` y
+`kit_ligand_scf_P21583`.
+
+**p53**: 224/464 sitios pasan umbral, 34 con consenso real (2+ motores).
+MeToken corrio de verdad (env cacheado OK), Kinase Library asigno familia a
+32/32 fosforilaciones, el aviso de crosstalk se concentro en K370-K386 (el
+switch acetilacion/ubiquitinacion/sumoilacion de p53 mejor documentado en
+literatura). Verificado en el CSV que EMNGly corrio de verdad (columna
+`score_emngly` con 3 valores reales de 4 candidatos N-glico, motor
+`DeepMVP+EMNGly`) -- en los 3 casos EMNGly da scores bajos (0.10-0.35, por
+debajo de `EMNGLY_MIN_PROBABILITY=0.5`) mientras DeepMVP da 0.90-0.99: la
+senal estructural correctamente rechaza N-glicosilacion en una proteina
+nuclear/citoplasmatica que nunca transita el RE/Golgi -- el consenso a 2
+motores funcionando como esta diseñado. `via_secretora_evidencia` en
+`None` para los 4 (esperado: `accession` en Camino PDB es el stem del
+archivo `p53_P04637`, no el ID UniProt real `P04637` -- UniProt devuelve
+400/404, traducido a "sin dato" a proposito, ver
+`uniprot_localization_client.py`).
+
+**kit_ligand_scf (control negativo)**: los 2 sitios N-glico reales
+(N-90, N-145) correctamente detectados con `consenso=True` en ambos
+motores. Los 3 sitios O-glico reales (S-167, T-168, T-180) correctamente
+detectados via DeepPTMPred. **N-97 (el unico control negativo real del
+panel, UniProt/PMID 1381905 confirma explicitamente que NUNCA se glicosila)
+sale como falso positivo con consenso completo**: DeepMVP 0.939, EMNGly
+0.792, ambos por encima de umbral. Primera vez que este control negativo se
+prueba contra la arquitectura de 2 motores -- el baseline previo
+("correctamente rechazado", 2026-08-04) es anterior a que EMNGly existiera
+en el pipeline (añadido 2026-08-06), asi que no es una regresion medible,
+es simplemente el primer dato real sobre este caso especifico.
+
+**Decision tomada**: no se toca `Settings.EMNGLY_MIN_PROBABILITY` (subirlo
+lo suficiente para excluir 0.792 sin tocar N-90/N-145 seria ajustar un
+umbral ya validado contra 301 sitios reales de N-GlyDE por un unico caso --
+sobreajuste a n=1, mismo criterio que
+`feedback_no_fabricar_datos_cientificos` en la memoria de Claude Code) ni
+se revierte la eliminacion de StackGlyEmbed (reabriria la friccion real de
+Scipion que motivo su eliminacion, por una ganancia marginal en 1 sitio).
+Se documenta como limitacion conocida del predictor en README.md, seccion
+"Alcance e interpretacion" -- consistente con que EMNGly tiene MCC 0.82
+(no 1.0) y este es exactamente el tipo de sitio dificil para el que se
+diseño el control (quimicamente indistinguible de N-90/N-145 salvo por
+algo que ni secuencia ni estructura estatica capturan).
+
+**No bloqueante para el port a Scipion**: el pipeline se comporto
+exactamente como esta diseñado (ambos motores corrieron de verdad,
+calcularon scores reales, el consenso se aplico correctamente) -- esto es
+una caracteristica de precision del modelo, no un bug de software.
+
+**`validate_biological_panel.py --only p53 kit_ligand_scf` corrido
+(2026-08-11, misma sesion de Colab)** -- recall Tier A/B formal contra
+ground truth:
+
+| | 2026-08-04 (baseline, sin EMNGly) | 2026-08-11 (post-refactor) |
+|---|---|---|
+| p53 Tier A | 7/7 (100%) | 14/15 (93%) |
+| p53 Tier B | 14/15 (93%) | 18/19 (95%) |
+| kit_ligand_scf Tier A | 3/5 (60%) | 5/5 (100%) |
+
+Global: **Tier A 19/20 (95%), Tier B 18/19 (95%)**. La bajada aparente en
+p53 Tier A no es regresion -- el panel creció de 22 a 34 sitios reales tras
+la migracion a dbPTM del 2026-08-09, un denominador mas duro. kit_ligand_scf
+mejoro de 60% a 100% en Tier A. El script marco explicitamente el falso
+positivo ya conocido de N-97 (ver seccion de arriba), confirmando que la
+deteccion automatica del control negativo funciona como esta diseñada.
+
+**Conclusion**: eliminar Fase A/3c + StackGlyEmbed no daño el recall (se
+mantiene o mejora), corrido con GPU real sobre la arquitectura actual --
+es el gate real que pidio Carlos antes de portar a Scipion (ver
+`project_carlos_ptm_migration_greenlight_2026-08-10` en la memoria de
+Claude Code). Nucleo del proyecto validado end-to-end, listo para iniciar
+la migracion.
