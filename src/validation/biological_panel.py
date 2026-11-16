@@ -1,67 +1,67 @@
-"""Ground truth del panel de validacion biologica.
+"""Ground truth of the biological validation panel.
 
-**Origen y evolucion:**
-- 2026-08-04: panel inicial de 7 proteinas curadas a mano (punto 8 del plan de
-  robustez post-demo-prep, ver STATUS.md), reemplazando la unica proteina real
-  usada hasta entonces (Tau/MAPT, P10636).
-- 2026-08-09: migrado a una seleccion SISTEMATICA de proteinas derivada de
-  dbPTM (decision en el vault:
+**Origin and evolution:**
+- 2026-08-04: an initial panel of 7 hand-curated proteins (point 8 of the
+  post-demo-prep robustness plan, see STATUS.md), replacing the single real protein
+  used until then (Tau/MAPT, P10636).
+- 2026-08-09: migrated to a SYSTEMATIC selection of proteins derived from
+  dbPTM (the decision is in the vault:
   01-Proyectos/PTM-Prediction/Decisiones/2026-08-09-panel-validacion-dbptm-reemplaza-curacion-manual.md).
-  ``scripts/select_recall_subset.py`` elige ~25 proteinas humanas por greedy
-  set-cover sobre los 17 tipos canonicos + evidencia tier A en
-  ``data/dbptm/lookup.sqlite3`` (base grande derivada de dbPTM, ver
-  ``scripts/import_dbptm_panel.py``) -- reemplaza la curacion manual de QUE
-  proteinas entran, pero NO el rigor de verificacion de cada sitio (ver regla
-  dura abajo): dbPTM solo aporta candidatas, cada una se verifico PMID por PMID
-  contra NCBI eutils antes de entrar aqui, exactamente igual que las 7
-  originales (4 subagentes Opus en paralelo, un catalogo real de basura de
-  dbPTM encontrada y descartada: identificadores que no son PMIDs, PMIDs reales
-  pero de campos completamente ajenos, tipo de PTM equivocado -- el agregador
-  "arrastra" listas de un tipo de sitio a otro del mismo residuo -- y papers de
-  predictores computacionales citados como si fueran evidencia experimental).
-  p53 e histona H3 sobreviven de la seleccion original, fusionadas con sitios
-  nuevos verificados el 2026-08-09 (sitios viejos intactos, nunca re-verificados
-  sin motivo). ``kit_ligand_scf`` (unico control negativo real del panel) se
-  preserva intacta: dbPTM no tiene anotaciones de "confirmado como NO
-  modificado", asi que no puede salir de ahi.
+  ``scripts/select_recall_subset.py`` chooses ~25 human proteins by a greedy
+  set-cover over the 17 canonical types + tier A evidence in
+  ``data/dbptm/lookup.sqlite3`` (a large database derived from dbPTM, see
+  ``scripts/import_dbptm_panel.py``). It replaces the manual curation of WHICH
+  proteins go in, but NOT the verification rigour of each site (see the hard
+  rule below): dbPTM only contributes candidates, and each one was verified PMID by PMID
+  against NCBI eutils before entering here, exactly like the 7
+  originals (4 Opus subagents in parallel, with a real catalogue of dbPTM garbage
+  found and discarded: identifiers that are not PMIDs, PMIDs that are real
+  but from completely unrelated fields, the wrong PTM type (the aggregator
+  "drags" lists from one site type to another of the same residue), and papers about
+  computational predictors cited as if they were experimental evidence).
+  p53 and histone H3 survive from the original selection, merged with new
+  sites verified on 2026-08-09 (the old sites intact, never re-verified
+  without reason). ``kit_ligand_scf`` (the panel's only real negative control) is
+  preserved intact: dbPTM has no annotations of "confirmed as NOT
+  modified", so it cannot come from there.
 
-**Regla dura de este proyecto, no negociable** (ver feedback_no_fabricar_datos_cientificos
-en la memoria de sesion): cada triple (posicion, tipo, sitio) de aqui viene de una fuente
-primaria real y verificable -- una anotacion de UniProt con evidencia ``ECO:0000269``
-(experimental, no ``ECO:0000250``/"por similitud") y un PMID confirmado (via NCBI eutils)
-de que el titulo del paper corresponde a la modificacion reclamada.
+**This project's hard rule, non-negotiable** (see feedback_no_fabricar_datos_cientificos
+in the session memory): every triple (position, type, site) here comes from a real
+and verifiable primary source, a UniProt annotation with ``ECO:0000269`` evidence
+(experimental, not ``ECO:0000250``/"by similarity") and a confirmed PMID (via NCBI eutils)
+showing that the paper's title corresponds to the claimed modification.
 
-## Por que AlphaFold, no PDBs experimentales
+## Why AlphaFold, not experimental PDBs
 
-Verificado empiricamente (``inputs/*.pdb``, descargados de la API de AlphaFold DB): la
-numeracion de residuos de AlphaFold coincide 1:1 con la numeracion canonica de UniProt
-para las proteinas de este panel (confirmado corriendo
-``src.utils.structure_parser.parse_structure`` sobre cada archivo real: longitud de
-cadena = longitud UniProt exacta). Los PDBs experimentales NO tienen esta garantia -- 3
-casos reales confirmados via sus registros DBREF en la investigacion original: histonas
-(PDB = UniProt - 1, el Met inicial se recorta), protrombina (PDB = UniProt - 43,
-numeracion de cadena madura tras quitar peptido señal + propeptido), EPO (PDB = UniProt
-- 27, numeracion de cadena madura) -- documentados aqui como advertencia para quien
-agregue un PDB experimental en el futuro. Por eso el panel usa exclusivamente AlphaFold
-v6 (la v4 ya no existe en el servidor) y todas las posiciones de este modulo son
-numeracion UniProt = numeracion del PDB descargado, offset 0, sin traduccion necesaria.
+Verified empirically (``inputs/*.pdb``, downloaded from the AlphaFold DB API): AlphaFold's
+residue numbering matches 1:1 UniProt's canonical numbering
+for this panel's proteins (confirmed by running
+``src.utils.structure_parser.parse_structure`` over each real file: chain
+length = the exact UniProt length). Experimental PDBs have NO such guarantee: 3
+real cases confirmed via their DBREF records in the original research: histones
+(PDB = UniProt - 1, as the initial Met is trimmed), prothrombin (PDB = UniProt - 43,
+mature chain numbering after removing the signal peptide + propeptide), EPO (PDB = UniProt
+- 27, mature chain numbering), documented here as a warning for anyone who
+adds an experimental PDB in the future. That is why the panel uses exclusively AlphaFold
+v6 (v4 no longer exists on the server) and every position in this module is
+UniProt numbering = the downloaded PDB's numbering, offset 0, with no translation needed.
 
-## Dos niveles de confianza
+## Two confidence levels
 
-``tier="A"``: sitio confirmado por multiples PMIDs independientes, o por evidencia
-estructural directa (ej. registros MODRES de un cristal real), o por una caracterizacion
-quimica directa dedicada (no un screening de MS de alto rendimiento). Un fallo del
-pipeline aqui es una señal fuerte de problema real.
-``tier="B"``: sitio real y con PMID verificado, pero proveniente de un unico screening de
-MS a gran escala -- localizacion solida, pero estequiometria real desconocida/posiblemente
-baja. Un fallo aqui es evidencia mas debil que en tier A (reportar recall de A y B por
-separado, nunca mezclados en un solo numero).
+``tier="A"``: a site confirmed by multiple independent PMIDs, or by direct
+structural evidence (e.g. the MODRES records of a real crystal), or by a dedicated
+direct chemical characterization (not a high-throughput MS screening). A failure of
+the pipeline here is a strong signal of a real problem.
+``tier="B"``: a real site with a verified PMID, but coming from a single large-scale
+MS screening, so the localization is solid but the real stoichiometry is
+unknown/possibly low. A failure here is weaker evidence than in tier A
+(report the recall of A and B separately, never mixed into a single number).
 
-Excluidos deliberadamente: toda anotacion ``ECO:0000250`` (inferida por similitud, no
-experimental en humano); sitios con mecanismo distinto al tipo que aparentan (ej.
-N-terminal Ser/Ala/Met acetylation, que NO es el mismo mecanismo que la N6-acetil-lisina
-que los motores modelan -- encontrado repetidamente en el borrador de dbPTM); y PMIDs
-que dbPTM propaga pero no sustentan la afirmacion exacta de ese sitio.
+Deliberately excluded: every ``ECO:0000250`` annotation (inferred by similarity, not
+experimental in human); sites with a mechanism different from the type they appear to be (e.g.
+N-terminal Ser/Ala/Met acetylation, which is NOT the same mechanism as the N6-acetyl-lysine
+that the engines model, found repeatedly in the dbPTM draft); and PMIDs
+that dbPTM propagates but which do not support that site's exact claim.
 """
 
 from dataclasses import dataclass, field

@@ -1,154 +1,154 @@
-"""Fase 3 (nucleo): anotacion/filtrado (B) + logica de decision de flujo (D).
+"""Phase 3 (core): annotation/filtering (B) + flow decision logic (D).
 
-Diseno cerrado en la decision de arquitectura 2026-07-27 (ver
+The design was closed in the architecture decision of 2026-07-27 (see
 ``01-Proyectos/PTM-Prediction/Decisiones/2026-07-27-diseno-nucleo-fase3-anotacion-flujo.md``
-en el vault): posicion de residuo como unidad primaria, ventana solo para
-tipos con motivo biologico definido, umbral propio por herramienta con
-score crudo siempre conservado, tipos sin corroboracion incluidos en el
-nucleo marcados como tal. D (``apply_workflow_filter``) es un filtro de
-responsabilidad unica sobre ``pasa_umbral`` -- no ruteaba a Fase A/Extension 3
-mientras existio esa fase, y esa decision quedo cerrada del todo cuando Fase
-A/3c se elimino del alcance del proyecto (feedback de Carlos, 2026-08-10, ver
+in the vault): the residue position as the primary unit, a window only for
+types with a defined biological motif, a per-tool threshold with the raw
+score always preserved, and types without corroboration included in the
+core marked as such. D (``apply_workflow_filter``) is a single-responsibility
+filter over ``pasa_umbral``: it did not route to Phase A/Extension 3
+while that phase existed, and that decision was closed completely when Phase
+A/3c was removed from the project's scope (Carlos's feedback, 2026-08-10, see
 STATUS.md).
 
-Correspondencia de tipos DeepMVP <-> DeepPTMPred (verificada leyendo ambos
-repos el 2026-07-27, no asumida): de los 6 tipos biologicos que cubre
-DeepMVP (8 modelos especificos de residuo), 7 tienen equivalente directo en
-DeepPTMPred; ``phosphorylation_y`` (fosforilacion en tirosina) NO tiene
-ningun modelo equivalente en DeepPTMPred (su unico modelo de fosforilacion
-cubre S/T, no Y) -- por eso, incluso en Camino PDB, las predicciones de
-``phosphorylation_y`` de DeepMVP nunca tienen consenso posible, no es un
-descarte de alcance sino un hueco real de cobertura entre ambos motores.
-Los 10 tipos exclusivos de DeepPTMPred (hydroxylation,
+DeepMVP <-> DeepPTMPred type correspondence (verified by reading both
+repos on 2026-07-27, not assumed): of the 6 biological types that
+DeepMVP covers (8 residue-specific models), 7 have a direct equivalent in
+DeepPTMPred; ``phosphorylation_y`` (phosphorylation on tyrosine) has NO
+equivalent model in DeepPTMPred (its only phosphorylation model
+covers S/T, not Y), which is why, even on the PDB path, DeepMVP's
+``phosphorylation_y`` predictions never have a possible consensus. This is not a
+scope exclusion but a real coverage gap between the two engines.
+The 10 types exclusive to DeepPTMPred (hydroxylation,
 gamma_carboxyglutamic_acid, malonylation, crotonylation, succinylation,
 glutathionylation, s_nitrosylation, glutarylation, citrullination,
-o_linked_glycosylation) tampoco tienen consenso posible por el motivo
-inverso (DeepMVP no los cubre).
+o_linked_glycosylation) likewise have no possible consensus for the
+inverse reason (DeepMVP does not cover them).
 
-## Corroboracion opcional de TIPO (MeToken, decision 2026-08-01)
+## Optional corroboration of TYPE (MeToken, decision 2026-08-01)
 
-``annotate_pdb_path`` acepta opcionalmente ``pdb_path``/``chain_id`` (ambos
-``None``/default si no se pasan -- comportamiento identico al de antes de
-esta mejora): si se proveen y ``Settings.METOKEN_ENABLED`` es ``True``, para
-cada fila con ``pasa_umbral=True`` (sitios que el consenso YA acepto) se
-invoca MeToken (``src/engines/metoken_engine.py``, ver su docstring y el de
-``src/engines/_metoken_runner.py`` para el detalle completo de que es y por
-que) y se anaden 3 columnas puramente informativas: ``metoken_type`` (el
-tipo con mayor probabilidad segun MeToken en esa posicion, de las 24 clases
-reales -- excluye la clase null y la clase "rare" agrupada, ver el runner),
-``metoken_probability`` (su probabilidad cruda) y ``metoken_type_coincide``
-(``True``/``False`` si ``tipo_ptm`` tiene equivalente conocido en MeToken y
-coincide o no, ``None`` si no hay equivalente mapeado -- ver
-``CANONICAL_TO_METOKEN_TYPE`` -- o si MeToken no pudo evaluar esa posicion).
-MeToken NUNCA cambia ``pasa_umbral``/``consenso`` -- mismo patron
-no-decisorio que la via secretora
-(``src/structural/uniprot_localization_client.py``): un fallo (repo no
-instalado, subproceso revienta, timeout) deja las 3 columnas en ``None``
-para toda la tabla, sin afectar el resto del reporte.
+``annotate_pdb_path`` optionally accepts ``pdb_path``/``chain_id`` (both
+``None``/default if not passed, with behaviour identical to that before
+this improvement): if they are provided and ``Settings.METOKEN_ENABLED`` is ``True``, then for
+each row with ``pasa_umbral=True`` (sites that the consensus has ALREADY accepted)
+MeToken is invoked (``src/engines/metoken_engine.py``, see its docstring and that of
+``src/engines/_metoken_runner.py`` for the complete detail of what it is and
+why) and 3 purely informative columns are added: ``metoken_type`` (the
+type with the highest probability according to MeToken at that position, out of the 24
+real classes, excluding the null class and the grouped "rare" class, see the runner),
+``metoken_probability`` (its raw probability) and ``metoken_type_coincide``
+(``True``/``False`` according to whether ``tipo_ptm`` has a known equivalent in MeToken and
+matches or not, and ``None`` if there is no mapped equivalent, see
+``CANONICAL_TO_METOKEN_TYPE``, or if MeToken could not evaluate that position).
+MeToken NEVER changes ``pasa_umbral``/``consenso``, the same
+non-deciding pattern as the secretory pathway
+(``src/structural/uniprot_localization_client.py``): a failure (the repo not
+installed, the subprocess blowing up, a timeout) leaves the 3 columns as ``None``
+for the whole table, without affecting the rest of the report.
 
-## Consenso real de N-GLICOSILACION -- Camino PDB (EMNGly, decision 2026-08-06)
+## Real N-GLYCOSYLATION consensus, PDB path (EMNGly, decision 2026-08-06)
 
-``annotate_pdb_path`` promueve EMNGly (``src/engines/emngly_engine.py``,
-reemplazo de CoNglyPred -- confirmado sin pesos publicados en ningun sitio,
-ver STATUS.md "Decision 2") a MOTOR DE CONSENSO REAL junto con DeepMVP,
-especificamente para las filas con ``tipo_ptm`` en ``_NGLYCO_TYPES`` y
-``motor == 'DeepMVP'`` (candidatos propuestos por DeepMVP que DeepPTMPred
-nunca fusiona para este tipo, ver ``CONSENSUS_EXCLUDED_TYPES`` mas abajo --
-DeepPTMPred sigue reportandose por separado, sin cambios). Se activa
-automaticamente cuando ``pdb_path`` no es ``None`` y
-``Settings.EMNGLY_ENABLED`` (mismo patron de activacion que MeToken).
-StackGlyEmbed corria aqui como tercer motor de consenso desde el
-2026-08-06 -- eliminado del proyecto 2026-08-10 por decision de Carlos
-(dependia del venv de un proyecto hermano, friccion real de cara a la
-integracion a Scipion); el consenso degrada de forma natural a 2 motores,
-sin cambios de codigo mas alla de quitar su rama (ver
+``annotate_pdb_path`` promotes EMNGly (``src/engines/emngly_engine.py``,
+the replacement for CoNglyPred, confirmed as having no published weights anywhere,
+see STATUS.md "Decision 2") to a REAL CONSENSUS ENGINE alongside DeepMVP,
+specifically for the rows with ``tipo_ptm`` in ``_NGLYCO_TYPES`` and
+``motor == 'DeepMVP'`` (candidates proposed by DeepMVP that DeepPTMPred
+never merges for this type, see ``CONSENSUS_EXCLUDED_TYPES`` below;
+DeepPTMPred is still reported separately, unchanged). It is activated
+automatically when ``pdb_path`` is not ``None`` and
+``Settings.EMNGLY_ENABLED`` (the same activation pattern as MeToken).
+StackGlyEmbed ran here as a third consensus engine from
+2026-08-06 and was removed from the project on 2026-08-10 by Carlos's decision
+(it depended on a sibling project's venv, real friction for the Scipion
+integration); the consensus degrades naturally to 2 engines,
+without code changes beyond removing its branch (see
 ``_apply_nglyco_consensus``).
 
-Regla (provisional, ver ``Settings.NGLYCO_CONSENSUS_MIN_ENGINES``): de los
-motores que lograron evaluar la posicion (DeepMVP siempre disponible;
-EMNGly degrada a ausente sin lanzar si no esta instalado, ver
-``_validate_installation``), ``pasa_umbral`` = al menos 1 pasa su propio
-umbral (generaliza la regla OR de 2 motores ya usada para el resto de
-tipos), ``consenso`` = al menos ``Settings.NGLYCO_CONSENSUS_MIN_ENGINES``
-(default 2) pasan -- en la practica exige que AMBOS motores pasen.
-``motor`` se reescribe para reflejar exactamente que motores lograron
-evaluar la posicion (``'DeepMVP+EMNGly'``, o ``'DeepMVP'`` si EMNGly esta
-degradado, en cuyo caso ``consenso`` queda siempre ``False`` -- imposible
-alcanzar el minimo con un unico motor).
+The rule (provisional, see ``Settings.NGLYCO_CONSENSUS_MIN_ENGINES``): of the
+engines that managed to evaluate the position (DeepMVP always available;
+EMNGly degrades to absent without raising if it is not installed, see
+``_validate_installation``), ``pasa_umbral`` = at least 1 passes its own
+threshold (generalizing the 2-engine OR rule already used for the other
+types), and ``consenso`` = at least ``Settings.NGLYCO_CONSENSUS_MIN_ENGINES``
+(default 2) pass, which in practice requires BOTH engines to pass.
+``motor`` is rewritten to reflect exactly which engines managed to
+evaluate the position (``'DeepMVP+EMNGly'``, or ``'DeepMVP'`` if EMNGly is
+degraded, in which case ``consenso`` is always ``False``, as it is impossible
+to reach the minimum with a single engine).
 
-## Corroboracion opcional de VIA SECRETORA -- N-glicosilacion, ambos caminos
-   (analisis de coherencia biologica 2026-08-07)
+## Optional corroboration of the SECRETORY PATHWAY, N-glycosylation, both paths
+   (biological coherence analysis 2026-08-07)
 
-Ni DeepMVP ni DeepPTMPred ni EMNGly modelan la via biosintetica real del
-sustrato -- todos predicen desde secuencia/estructura si un sequon
-N-X-[S/T] ES glicosilable, nunca si la proteina realmente transita el
-RE/Golgi (requisito quimico real de la N-glicosilacion). Para
-cada fila con ``tipo_ptm`` en ``_NGLYCO_TYPES`` y ``pasa_umbral=True`` (un
-sitio que el consenso YA acepto), se consulta UniProt
-(``src/structural/uniprot_localization_client.py``) UNA VEZ por accession y
-se anade la columna PURAMENTE INFORMATIVA ``via_secretora_evidencia``:
-``True`` (UniProt reporta localizacion consistente con la via secretora),
-``False`` (UniProt SI tiene datos reales de localizacion pero NINGUNO es
-consistente -- evidencia real en contra, no solo ausencia), o ``None`` (sin
-datos de localizacion en UniProt, accession no reconocido -- el caso mas
-comun aqui, ya que ``accession`` normalmente viene del nombre del archivo de
-entrada, no de un ID UniProt real -- o fallo de red). NUNCA cambia
-``pasa_umbral``/``consenso`` -- mismo patron no-decisorio que MeToken.
-Deliberadamente NO aplica a
-``o_linked_glycosylation``: existen dos vias de O-glicosilacion
-biologicamente distintas (O-GlcNAc citoplasmatica/nuclear vs O-glicosilacion
-de tipo mucina en la via secretora) y este cliente no las distingue -- alcance
-limitado a N-glicosilacion para no arriesgar una afirmacion biologica
-incorrecta.
+Neither DeepMVP nor DeepPTMPred nor EMNGly models the substrate's real
+biosynthetic pathway. They all predict from sequence/structure whether an
+N-X-[S/T] sequon IS glycosylatable, never whether the protein actually transits the
+ER/Golgi (a real chemical requirement of N-glycosylation). For
+each row with ``tipo_ptm`` in ``_NGLYCO_TYPES`` and ``pasa_umbral=True`` (a
+site that the consensus has ALREADY accepted), UniProt is queried
+(``src/structural/uniprot_localization_client.py``) ONCE per accession and
+the PURELY INFORMATIVE column ``via_secretora_evidencia`` is added:
+``True`` (UniProt reports a localization consistent with the secretory pathway),
+``False`` (UniProt DOES have real localization data but NONE of it is
+consistent, so real evidence against, not merely absence), or ``None`` (no
+localization data in UniProt, an unrecognized accession, which is the most
+common case here since ``accession`` normally comes from the name of the input
+file rather than a real UniProt ID, or a network failure). It NEVER changes
+``pasa_umbral``/``consenso``, the same non-deciding pattern as MeToken.
+It deliberately does NOT apply to
+``o_linked_glycosylation``: there are two biologically distinct
+O-glycosylation pathways (cytoplasmic/nuclear O-GlcNAc vs mucin-type
+O-glycosylation in the secretory pathway) and this client does not distinguish them, so the
+scope is limited to N-glycosylation so as not to risk an incorrect biological
+claim.
 
-## Aviso de COMPETENCIA/CROSSTALK entre PTMs del mismo residuo (analisis de
-   coherencia biologica 2026-08-07)
+## COMPETITION/CROSSTALK warning between PTMs of the same residue (biological
+   coherence analysis 2026-08-07)
 
-Varios grupos de tipos de PTM de este proyecto modifican quimicamente el
-MISMO grupo funcional de un residuo y son mutuamente excluyentes en una
-misma molecula en un mismo instante -- no pueden coexistir literalmente
-sobre el mismo atomo. El nucleo puntua cada tipo/posicion de forma
-independiente, asi que si el consenso acepta 2+ tipos en competencia
-exactamente en la misma posicion, hoy se presentan como hallazgos
-igualmente validos sin ninguna senal de que son excluyentes. Grupos
-reales, conservadores (ver ``_PTM_COMPETITION_GROUPS`` -- basados en
-literatura establecida de PTM crosstalk, no exhaustivos a proposito, cada
-grupo ademas se verifica contra el ``residuo_wt`` real de la fila, nunca
-se asume solo por el tipo):
-- Lisina (acilo-lisina): acetilacion, ubiquitinacion, sumoilacion,
-  metilacion de Lys, malonilacion, glutarilacion, succinilacion,
-  crotonilacion -- todas ocupan el mismo grupo epsilon-amino.
-- Cisteina (tiol): S-nitrosilacion, glutationilacion.
-- Arginina (guanidino): metilacion de Arg, citrulinacion (la citrulinacion
-  ademas puede bloquear biologicamente la metilacion previa -- crosstalk
-  documentado en la literatura de PAD/PRMT).
-- Serina/Treonina (hidroxilo): fosforilacion, O-glicosilacion (la hipotesis
-  "Yin-Yang" fosfo/O-GlcNAc, ampliamente documentada).
+Several groups of this project's PTM types chemically modify the
+SAME functional group of a residue and are mutually exclusive in the
+same molecule at the same instant; they literally cannot coexist
+on the same atom. The core scores each type/position
+independently, so if the consensus accepts 2+ competing types
+at exactly the same position, today they are presented as equally
+valid findings without any signal that they are exclusive. The groups are
+real and conservative (see ``_PTM_COMPETITION_GROUPS``, based on
+established PTM crosstalk literature, deliberately not exhaustive, and each
+group is additionally verified against the row's real ``residuo_wt``, never
+assumed merely from the type):
+- Lysine (lysine acyl): acetylation, ubiquitination, sumoylation,
+  Lys methylation, malonylation, glutarylation, succinylation,
+  crotonylation, all occupying the same epsilon-amino group.
+- Cysteine (thiol): S-nitrosylation, glutathionylation.
+- Arginine (guanidino): Arg methylation, citrullination (citrullination
+  can additionally block prior methylation biologically, a crosstalk
+  documented in the PAD/PRMT literature).
+- Serine/Threonine (hydroxyl): phosphorylation, O-glycosylation (the
+  phospho/O-GlcNAc "Yin-Yang" hypothesis, widely documented).
 
-``_add_ptm_crosstalk_flag`` (ver mas abajo) anade la columna PURAMENTE
-INFORMATIVA ``ptm_crosstalk_aviso`` a CUALQUIER fila con ``pasa_umbral=True``
-que comparta grupo+posicion+accession con al menos otra fila tambien
-``pasa_umbral=True`` -- NUNCA cambia ``pasa_umbral``/``consenso``. Se
-ejecuta en ambos caminos (FASTA y PDB), tras todas las demas
-corroboraciones, para ver el estado final de ``pasa_umbral`` de cada fila
-(p. ej. tras el consenso de N-glicosilacion).
+``_add_ptm_crosstalk_flag`` (see below) adds the PURELY
+INFORMATIVE column ``ptm_crosstalk_aviso`` to ANY row with ``pasa_umbral=True``
+that shares group+position+accession with at least one other row also
+``pasa_umbral=True``. It NEVER changes ``pasa_umbral``/``consenso``. It
+runs on both paths (FASTA and PDB), after all the other
+corroborations, so as to see each row's final ``pasa_umbral`` state
+(for example after the N-glycosylation consensus).
 
-## Corroboracion opcional de ESPECIFICIDAD DE QUINASA -- fosforilacion, ambos
-   caminos (analisis de coherencia biologica 2026-08-07, punto 5)
+## Optional corroboration of KINASE SPECIFICITY, phosphorylation, both
+   paths (biological coherence analysis 2026-08-07, point 5)
 
-Ni DeepMVP ni DeepPTMPred distinguen QUE familia de quinasa fosforila un
-sitio -- ambos predicen "fosforilable en general". A diferencia del tipo de
-cadena de poliubiquitina (un evento celular posterior, no derivable de la
-estructura -- razonamiento que vivia en Fase A/3c, eliminada del alcance
-2026-08-10), la especificidad de quinasa SI es una propiedad local de
-secuencia alrededor del sitio -- existe
-una fuente real, publicada y descargable (Johnson et al. 2023 Nature +
-Yaron-Barir et al. 2024 Nature, empaquetadas en ``kinase-library``, ver
-docstring de ``src/engines/_kinase_library_runner.py``). Para cada fila con
-``tipo_ptm`` en ``_PHOSPHO_TYPES`` y ``pasa_umbral=True``, se anaden 4
-columnas PURAMENTE INFORMATIVAS: ``kinase_library_top_kinase``,
-``kinase_library_top_family``, ``kinase_library_percentile`` y
-``kinase_library_top3_kinases`` -- NUNCA cambian ``pasa_umbral``/``consenso``.
+Neither DeepMVP nor DeepPTMPred distinguishes WHICH kinase family phosphorylates a
+site; both predict "phosphorylatable in general". Unlike the
+polyubiquitin chain type (a later cellular event, not derivable from the
+structure, a line of reasoning that lived in Phase A/3c, removed from scope
+2026-08-10), kinase specificity IS a local sequence property
+around the site, and there is
+a real, published and downloadable source (Johnson et al. 2023 Nature +
+Yaron-Barir et al. 2024 Nature, packaged in ``kinase-library``, see the
+docstring of ``src/engines/_kinase_library_runner.py``). For each row with
+``tipo_ptm`` in ``_PHOSPHO_TYPES`` and ``pasa_umbral=True``, 4
+PURELY INFORMATIVE columns are added: ``kinase_library_top_kinase``,
+``kinase_library_top_family``, ``kinase_library_percentile`` and
+``kinase_library_top3_kinases``. They NEVER change ``pasa_umbral``/``consenso``.
 """
 
 from pathlib import Path
