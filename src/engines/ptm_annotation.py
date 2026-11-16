@@ -8,8 +8,9 @@ score always preserved, and types without corroboration included in the
 core marked as such. D (``apply_workflow_filter``) is a single-responsibility
 filter over ``pasa_umbral``: it did not route to Phase A/Extension 3
 while that phase existed, and that decision was closed completely when Phase
-A/3c was removed from the project's scope (Carlos's feedback, 2026-08-10, see
-STATUS.md).
+A/3c was removed from the project's scope (project supervision feedback,
+2026-08-10, see
+the project decision record).
 
 DeepMVP <-> DeepPTMPred type correspondence (verified by reading both
 repos on 2026-07-27, not assumed): of the 6 biological types that
@@ -43,14 +44,14 @@ matches or not, and ``None`` if there is no mapped equivalent, see
 MeToken NEVER changes ``pasa_umbral``/``consenso``, the same
 non-deciding pattern as the secretory pathway
 (``src/structural/uniprot_localization_client.py``): a failure (the repo not
-installed, the subprocess blowing up, a timeout) leaves the 3 columns as ``None``
+installed, the subprocess failing, a timeout) leaves the 3 columns as ``None``
 for the whole table, without affecting the rest of the report.
 
 ## Real N-GLYCOSYLATION consensus, PDB path (EMNGly, decision 2026-08-06)
 
 ``annotate_pdb_path`` promotes EMNGly (``src/engines/emngly_engine.py``,
 the replacement for CoNglyPred, confirmed as having no published weights anywhere,
-see STATUS.md "Decision 2") to a REAL CONSENSUS ENGINE alongside DeepMVP,
+see the project decision record, "Decision 2") to a REAL CONSENSUS ENGINE alongside DeepMVP,
 specifically for the rows with ``tipo_ptm`` in ``_NGLYCO_TYPES`` and
 ``motor == 'DeepMVP'`` (candidates proposed by DeepMVP that DeepPTMPred
 never merges for this type, see ``CONSENSUS_EXCLUDED_TYPES`` below;
@@ -58,7 +59,7 @@ DeepPTMPred is still reported separately, unchanged). It is activated
 automatically when ``pdb_path`` is not ``None`` and
 ``Settings.EMNGLY_ENABLED`` (the same activation pattern as MeToken).
 StackGlyEmbed ran here as a third consensus engine from
-2026-08-06 and was removed from the project on 2026-08-10 by Carlos's decision
+2026-08-06 and was removed from the project on 2026-08-10 by project decision
 (it depended on a sibling project's venv, real friction for the Scipion
 integration); the consensus degrades naturally to 2 engines,
 without code changes beyond removing its branch (see
@@ -270,7 +271,7 @@ _PTM_COMPETITION_GROUPS = {
 }
 
 # Tipos excluidos deliberadamente de la fusion DeepMVP+DeepPTMPred (decision
-# 2026-08-01, ver STATUS.md "investigacion de n_linked_glycosylation y los 4
+# 2026-08-01, ver el registro de decisiones del proyecto, "investigacion de n_linked_glycosylation y los 4
 # tipos mediocres"): DeepPTMPred no tiene poder discriminativo real para
 # estos tipos (verificado contra las metricas de entrenamiento del propio
 # repo, AUC 0.495 -- no es un problema de umbral). Ambos motores se siguen
@@ -724,7 +725,7 @@ def _apply_nglyco_consensus(
     posible para este tipo, ver ``CONSENSUS_EXCLUDED_TYPES``), no solo las
     que ya pasaban el umbral de DeepMVP en solitario. StackGlyEmbed corria
     aqui como tercer motor de consenso hasta 2026-08-10 (eliminado del
-    proyecto, ver STATUS.md) -- el consenso queda en DeepMVP+EMNGly.
+    proyecto, ver el registro de decisiones del proyecto) -- el consenso queda en DeepMVP+EMNGly.
 
     No-op (devuelve ``result`` sin tocar, sin agregar columnas) si no hay
     ninguna fila nglyco elegible -- evita ensuciar el esquema de reportes que

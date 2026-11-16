@@ -1,32 +1,32 @@
-"""Fase 1: Saneamiento de FASTA crudo (Camino FASTA, motor unico DeepMVP).
+"""Phase 1: raw FASTA sanitation (FASTA path, DeepMVP as the only engine).
 
-Responsabilidad exclusiva: leer un FASTA tal como llega del usuario,
-separarlo en registros (cabecera, secuencia) y producir una version saneada
--mayusculas, sin saltos de linea internos- lista para DeepMVP (unico motor
-del Camino FASTA; el Camino PDB usa ``src.utils.structure_parser`` en su
-lugar, no este modulo).
+Its exclusive responsibility: to read a FASTA exactly as it arrives from the user,
+split it into records (header, sequence) and produce a sanitized version
+(upper case, without internal line breaks) ready for DeepMVP (the only engine
+of the FASTA path; the PDB path uses ``src.utils.structure_parser``
+instead, not this module).
 
-Politica de residuos no canonicos (relajada 2026-07-27 para igualar la
-tolerancia real de DeepMVP, verificada leyendo directamente
-``lib/PeptideEncode.py::encodePeptideOneHot`` del repo
-github.com/bzhanglab/DeepMVP -- no una suposicion): DeepMVP NUNCA aborta
-ante un residuo fuera de su alfabeto (el ``exit(1)`` correspondiente esta
-comentado en el codigo real). 'X' se codifica como vector de ceros (sin
-señal, no es un error); cualquier otro caracter no reconocido (ambiguedades
-IUPAC Z/J, pirrolisina O, gaps '-', stops '*', digitos, etc.) se codifica
-como vector de 0.5 con un aviso impreso, y el resto de la prediccion sigue.
-El alfabeto que SI reconoce con codificacion propia (no degradada) son los
-20 estandar mas U (selenocisteina) y B (ambiguedad Asx), confirmado en
-``letterDict`` del repo.
+Policy on non-canonical residues (relaxed 2026-07-27 to match DeepMVP's
+real tolerance, verified by reading
+``lib/PeptideEncode.py::encodePeptideOneHot`` of the repo
+github.com/bzhanglab/DeepMVP directly, not an assumption): DeepMVP NEVER aborts
+on a residue outside its alphabet (the corresponding ``exit(1)`` is
+commented out in the real code). 'X' is encoded as a zero vector (no
+signal, not an error); any other unrecognized character (the IUPAC
+ambiguities Z/J, pyrrolysine O, gaps '-', stops '*', digits, etc.) is encoded
+as a vector of 0.5 with a printed warning, and the rest of the prediction continues.
+The alphabet it does recognize with its own (non-degraded) encoding is the
+20 standard residues plus U (selenocysteine) and B (Asx ambiguity), confirmed in
+the repo's ``letterDict``.
 
-En consecuencia, este modulo ya NO rechaza (fatal) ningun registro por
-residuos no canonicos -- solo lo reporta como warning, dejando pasar el
-registro sin modificar su secuencia (se mantiene el principio de nunca
-eliminar ni sustituir un residuo: eso desplazaria la numeracion de posicion
-y podria fusionar residuos que en la proteina real no son vecinos). Unico
-consumidor del Camino FASTA es DeepMVP (decision 2026-07-26, asimetria
-aceptada), asi que igualar exactamente su tolerancia real es correcto aqui
-y no una relajacion generica del pipeline.
+Consequently, this module NO longer fatally rejects any record for
+non-canonical residues; it only reports it as a warning, letting the
+record through without modifying its sequence (the principle of never
+removing or substituting a residue is maintained: doing so would shift the position
+numbering and could fuse residues that are not neighbours in the real protein).
+The only consumer of the FASTA path is DeepMVP (decision 2026-07-26, an
+accepted asymmetry), so matching its real tolerance exactly is correct here
+and not a generic relaxation of the pipeline.
 """
 
 from dataclasses import dataclass

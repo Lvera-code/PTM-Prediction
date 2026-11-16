@@ -1,31 +1,28 @@
-"""Fase 2: prediccion de zonas PTM via DeepPTMPred LOCAL (subprocess sobre runner propio).
+"""Phase 2: PTM zone prediction via LOCAL DeepPTMPred (subprocess over our own runner).
 
-Motor 2 de 2 del consenso, Camino PDB unicamente (DeepPTMPred exige
-``pdb_path`` obligatorio -- sin modo solo-secuencia, decision 2026-07-26).
+Engine 2 of 2 of the consensus, PDB path only (DeepPTMPred demands a
+mandatory ``pdb_path``, with no sequence-only mode, decision 2026-07-26).
 
-Verificado leyendo directamente github.com/kuikui-wang/DeepPTMPred
+Verified by reading github.com/kuikui-wang/DeepPTMPred directly
 (README.md, pred/train_PTM/predict.py, pred/train_PTM/e2_single_data.py,
-pred/train_PTM/environment.yml) el 2026-07-27 -- no por resumen de buscador.
-Repo real, pesos SI incluidos (.h5 por tipo, ~19MB c/u), pero SIN licencia
-declarada (a diferencia de DeepMVP, GPL-3.0) -- verificar con Carlos antes
-de cualquier uso mas alla de investigacion/TFG.
+pred/train_PTM/environment.yml) on 2026-07-27, not from a search engine summary.
+A real repo, with weights included (.h5 per type, ~19MB each), but WITHOUT a
+declared licence (unlike DeepMVP, GPL-3.0). The licence was subsequently
+confirmed as CC BY-NC 4.0, the same terms as the paper, directly by a
+corresponding author, so non-commercial research use is covered.
 
-A diferencia de DeepMVPEngine, este wrapper NO invoca ``predict.py``
-directamente por subprocess: ese script no tiene CLI real (``ptm_type``/
-``pdb_path`` hardcodeados en su bloque ``__main__``, confirmado leyendo el
-codigo). En su lugar invoca ``src/engines/_deepptmpred_runner.py`` (propio de
-este proyecto, ver su docstring para el detalle completo de por que existe y
-que bug evita de ``e2_single_data.py``).
+Unlike DeepMVPEngine, this wrapper does NOT invoke ``predict.py``
+directly by subprocess: that script has no real CLI (``ptm_type``/
+``pdb_path`` hardcoded in its ``__main__`` block, confirmed by reading the
+code). Instead it invokes ``src/engines/_deepptmpred_runner.py`` (our own,
+see its docstring for the complete detail of why it exists and
+which bug of ``e2_single_data.py`` it avoids).
 
-Diferencia estructural clave con DeepMVP: DeepPTMPred predice UN tipo de PTM
-por invocacion (no los 17 de una vez) -- este engine invoca el runner una
-vez POR TIPO, por accession, y concatena los resultados en un unico
-DataFrame por accession (mismo shape final que ``DeepMVPEngine.run()``, para
-que el nucleo de Fase 3 pueda tratarlos de forma simetrica).
-
-NO PROBADO TODAVIA contra el entorno real (PyRosetta/TensorFlow 2.15/
-checkpoint ESM-2 no instalados en esta maquina, ver STATUS.md) -- los tests
-mockean ``subprocess.run``.
+The key structural difference with DeepMVP: DeepPTMPred predicts ONE PTM type
+per invocation (not all 17 at once), so this engine invokes the runner once
+PER TYPE, per accession, and concatenates the results into a single
+DataFrame per accession (the same final shape as ``DeepMVPEngine.run()``, so
+that the Phase 3 core can treat them symmetrically).
 """
 
 import os
@@ -43,18 +40,18 @@ from src.utils.structure_parser import StructureRecord
 
 logger = setup_logger(__name__)
 
-# Confirmadas en src/engines/_deepptmpred_runner.py::OUTPUT_COLUMNS (la
-# columna 'prediction' del repo original, cutoff 0.5 hardcodeado sin
-# calibrar, se descarta deliberadamente -- ver docstring del runner).
+# Confirmed in src/engines/_deepptmpred_runner.py::OUTPUT_COLUMNS (the
+# 'prediction' column of the original repo, with a hardcoded uncalibrated
+# cutoff of 0.5, is deliberately discarded; see the runner's docstring).
 OUTPUT_COLUMNS = ["protein_id", "position", "residue", "probability", "ptm_type"]
 
 
 class DeepPTMPredEngine(BaseEngine[StructureRecord, pd.DataFrame]):
-    """Ejecuta DeepPTMPred LOCALMENTE (subprocess sobre el runner propio) por accession.
+    """Runs DeepPTMPred LOCALLY (subprocess over our own runner) per accession.
 
-    Cada :class:`StructureRecord` (salida de Fase 1.5) se predice una vez
-    POR TIPO de PTM (``Settings.DEEPPTMPRED_PTM_TYPES``, 17 invocaciones),
-    concatenando el resultado en un unico DataFrame por accession.
+    Each :class:`StructureRecord` (the output of Phase 1.5) is predicted once
+    PER PTM TYPE (``Settings.DEEPPTMPRED_PTM_TYPES``, 17 invocations),
+    concatenating the result into a single DataFrame per accession.
     """
 
     def __init__(
@@ -74,13 +71,13 @@ class DeepPTMPredEngine(BaseEngine[StructureRecord, pd.DataFrame]):
         self._ptm_types = list(ptm_types)
 
     def _validate_installation(self) -> None:
-        """Comprueba que el repo clonado y el checkpoint ESM-2 esten presentes.
+        """Checks that the cloned repo and the ESM-2 checkpoint are present.
 
         Raises:
-            DeepPTMPredExecutionError: Con un mensaje accionable si falta
-                ``predict.py`` del repo o el checkpoint ESM-2 (ambos pasos
-                de instalacion manual, ver README.md - Seccion de
-                Instalacion).
+            DeepPTMPredExecutionError: With an actionable message if the repo's
+                ``predict.py`` or the ESM-2 checkpoint is missing (both
+                manual installation steps, see README.md, the
+                Installation section).
         """
         if not (self._train_ptm_dir / "predict.py").is_file():
             raise DeepPTMPredExecutionError(
@@ -98,26 +95,26 @@ class DeepPTMPredEngine(BaseEngine[StructureRecord, pd.DataFrame]):
             )
 
     def run(self, items: Sequence[StructureRecord], output_dir: Path = None) -> List[pd.DataFrame]:
-        """Corre DeepPTMPred localmente (los 17 tipos de PTM) sobre cada estructura de ``items``.
+        """Runs DeepPTMPred locally (all 17 PTM types) over each structure of ``items``.
 
         Args:
-            items: :class:`StructureRecord` de Fase 1.5 (Camino PDB
-                unicamente -- este motor no tiene modo solo-secuencia).
-            output_dir: Carpeta base donde guardar los CSV crudos
-                (subcarpeta por accession). Si es ``None``, usa
+            items: :class:`StructureRecord` from Phase 1.5 (PDB path
+                only; this engine has no sequence-only mode).
+            output_dir: Base folder in which to save the raw CSVs
+                (one subfolder per accession). If ``None``, it uses
                 ``Settings.FASTA_OUTPUT_DIR``.
 
         Returns:
-            Lista de DataFrames con ``OUTPUT_COLUMNS`` (concatenado de los
-            17 tipos de PTM, una fila por sitio candidato, sin ningun
-            filtrado de umbral -- responsabilidad del nucleo de Fase 3), en
-            el mismo orden que ``items``.
+            A list of DataFrames with ``OUTPUT_COLUMNS`` (concatenated from the
+            17 PTM types, one row per candidate site, without any
+            threshold filtering, which is the responsibility of the Phase 3 core), in
+            the same order as ``items``.
 
         Raises:
-            DeepPTMPredExecutionError: Si la instalacion local (repo o
-                checkpoint ESM-2) no existe, algun subproceso falla o
-                excede el timeout, o alguna salida no tiene el formato
-                esperado.
+            DeepPTMPredExecutionError: If the local installation (repo or
+                ESM-2 checkpoint) does not exist, a subprocess fails or
+                exceeds the timeout, or an output does not have the
+                expected format.
         """
         self._validate_installation()
         base_output_dir = Path(output_dir) if output_dir else Settings.FASTA_OUTPUT_DIR
@@ -157,12 +154,12 @@ class DeepPTMPredEngine(BaseEngine[StructureRecord, pd.DataFrame]):
             "Ejecutando DeepPTMPred local (%s) para '%s': %s",
             ptm_type, record.accession, " ".join(cmd),
         )
-        # MPLBACKEND se hereda del proceso padre (Jupyter/Colab lo fija a
-        # 'module://matplotlib_inline.backend_inline' para graficos inline) y
-        # ese backend no existe en el conda env aislado de DeepPTMPred --
-        # predict.py importa matplotlib.pyplot y revienta con ValueError al
-        # intentar fijar ese backend invalido. 'Agg' es headless y siempre
-        # valido, sin importar el proceso que invoque.
+        # MPLBACKEND is inherited from the parent process (Jupyter/Colab sets it to
+        # 'module://matplotlib_inline.backend_inline' for inline plots) and
+        # that backend does not exist in DeepPTMPred's isolated conda env:
+        # predict.py imports matplotlib.pyplot and fails with a ValueError when
+        # trying to set that invalid backend. 'Agg' is headless and always
+        # valid, regardless of the invoking process.
         env = {**os.environ, "MPLBACKEND": "Agg"}
         try:
             subprocess.run(

@@ -1,37 +1,34 @@
 #!/usr/bin/env python
-"""Runner standalone para DeepPTMPred (Fase 2, motor 2/2 del consenso Camino PDB).
+"""Standalone runner for DeepPTMPred (Phase 2, engine 2/2 of the PDB path consensus).
 
-NUNCA se importa desde el paquete ``src`` -- requiere torch/tensorflow/
-tensorflow-addons/pyrosetta/fair-esm, dependencias SOLO presentes en el venv
-dedicado de DeepPTMPred (``Settings.DEEPPTMPRED_PYTHON_BIN``, distinto del
-venv de DeepMVP). Se invoca EXCLUSIVAMENTE via subprocess desde
-``src/engines/deepptmpred_engine.py``, un script de integracion propio que
-vive en ``src/engines/`` pero corre fuera del venv principal del pipeline.
+It is NEVER imported from the ``src`` package: it requires torch/tensorflow/
+tensorflow-addons/pyrosetta/fair-esm, dependencies present ONLY in DeepPTMPred's
+dedicated venv (``Settings.DEEPPTMPRED_PYTHON_BIN``, distinct from
+DeepMVP's venv). It is invoked EXCLUSIVELY via subprocess from
+``src/engines/deepptmpred_engine.py``; it is an integration script of our own that
+lives in ``src/engines/`` but runs outside the pipeline's main venv.
 
-Por que existe este runner en vez de invocar los scripts del repo
-directamente (a diferencia de DeepMVP, que si tiene un CLI real): verificado
-leyendo el codigo fuente de github.com/kuikui-wang/DeepPTMPred el
-2026-07-27, ni ``predict.py`` ni ``e2_single_data.py`` tienen CLI -- ambos
-hardcodean ``ptm_type``/``pdb_path``/``protein_id``/la ruta del checkpoint
-ESM dentro de su bloque ``if __name__ == "__main__":``. Este runner importa
-las dos clases SI parametrizadas correctamente de ``predict.py``
-(``PredictConfig``, ``PTMPredictor``, ambas reciben sus argumentos por
-constructor) y REIMPLEMENTA la extraccion de features ESM-2 en vez de
-llamar a ``e2_single_data.py::extract_full_sequence_esm``: esa funcion tiene
-un bug real confirmado -- redefine ``custom_checkpoint_path`` como variable
-LOCAL con una ruta absoluta hardcodeada de AutoDL (``/root/autodl-tmp/...``),
-ignorando cualquier valor pasado como parametro o de modulo.
+Why this runner exists instead of invoking the repo's scripts
+directly (unlike DeepMVP, which does have a real CLI): verified
+by reading the source code of github.com/kuikui-wang/DeepPTMPred on
+2026-07-27, neither ``predict.py`` nor ``e2_single_data.py`` has a CLI; both
+hardcode ``ptm_type``/``pdb_path``/``protein_id``/the ESM checkpoint path
+inside their ``if __name__ == "__main__":`` block. This runner imports
+the two classes of ``predict.py`` that ARE correctly parameterized
+(``PredictConfig``, ``PTMPredictor``, both of which receive their arguments by
+constructor) and REIMPLEMENTS the ESM-2 feature extraction instead of
+calling ``e2_single_data.py::extract_full_sequence_esm``: that function has
+a confirmed real bug, as it redefines ``custom_checkpoint_path`` as a LOCAL
+variable with a hardcoded absolute AutoDL path (``/root/autodl-tmp/...``),
+ignoring any value passed as a parameter or at module level.
 
-Tambien evita ``predict.py::extract_protein_id_from_pdb_path`` /
-``extract_sequence_from_pdb`` (que exigen un nombre de archivo estilo
-AlphaFold, p. ej. ``AF-P12345-F1-model_v4.pdb``, y hacen su propia
-extraccion ATMSEQ redundante con ``src.utils.structure_parser``): este
-runner recibe el accession y la secuencia YA saneados por Fase 1.5 como
-argumentos explicitos, garantizando que DeepMVP y DeepPTMPred reporten
-exactamente la misma numeracion de posicion para el mismo accession.
-
-NO PROBADO TODAVIA contra el entorno real (PyRosetta/TensorFlow 2.15/
-checkpoint ESM-2 no instalados en esta maquina) -- ver STATUS.md.
+It also avoids ``predict.py::extract_protein_id_from_pdb_path`` /
+``extract_sequence_from_pdb`` (which demand an AlphaFold-style file name,
+for example ``AF-P12345-F1-model_v4.pdb``, and perform their own ATMSEQ
+extraction, redundant with ``src.utils.structure_parser``): this
+runner receives the accession and the sequence ALREADY sanitized by Phase 1.5 as
+explicit arguments, guaranteeing that DeepMVP and DeepPTMPred report
+exactly the same position numbering for the same accession.
 """
 
 import argparse
@@ -59,7 +56,7 @@ def _esm_cache_path(custom_esm_dir: Path, protein_id: str, sequence: str) -> Pat
     DISTINTA bajo el mismo accession (p. ej. un PDB actualizado con el mismo
     nombre de archivo) reutilizaba en silencio el embedding ESM viejo,
     prediciendo sobre la secuencia equivocada sin ningun error ni warning
-    (STATUS.md - auditoria 2026-07-28, item 2). El hash (sha256, 12 hex
+    (el registro de decisiones del proyecto, auditoria 2026-07-28, item 2). El hash (sha256, 12 hex
     primeros caracteres, suficiente para evitar colisiones accidentales sin
     alargar demasiado el nombre) hace que una secuencia distinta sea SIEMPRE
     una cache distinta -- no hay que leer/comparar el .npz existente para
@@ -189,7 +186,7 @@ def _load_predict_module(train_ptm_dir: Path):
     _original_calculate_features = predict.PyRosettaCalculator.calculate_features
 
     # Parche real 3: bug real de indexado confirmado 2026-08-01 (via
-    # subagente Opus, ver STATUS.md "investigacion de n_linked_glycosylation
+    # subagente Opus, ver el registro de decisiones del proyecto, "investigacion de n_linked_glycosylation
     # y los 4 tipos mediocres"). ``PyRosettaCalculator.__init__`` construye
     # ``self.plDDT_values`` iterando POR ATOMO
     # (``[atom.get_bfactor() for atom in structure.get_atoms()]``, ~L260),

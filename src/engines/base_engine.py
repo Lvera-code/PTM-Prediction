@@ -1,4 +1,5 @@
-"""Interfaz abstracta comun para los motores de prediccion de PTMs (DeepMVP, DeepPTMPred)."""
+"""Common abstract interface for the PTM prediction engines (DeepMVP, DeepPTMPred).
+"""
 
 from abc import ABC, abstractmethod
 from pathlib import Path

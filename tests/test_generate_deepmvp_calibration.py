@@ -5,7 +5,7 @@ Solo cubre la logica pura (``trim_window``) y la orquestacion de descarga
 TensorFlow/el paquete ``lib`` de DeepMVP de forma diferida (dentro de la
 funcion) y requiere el conda env dedicado ``deepmvp``, fuera de alcance para
 la suite principal (mismo criterio que el resto de codigo dependiente de
-motores externos, ver STATUS.md).
+motores externos, ver el registro de decisiones del proyecto).
 """
 
 from pathlib import Path

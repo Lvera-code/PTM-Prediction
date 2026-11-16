@@ -1,13 +1,13 @@
-"""Lookup de ground truth PTM contra la base derivada de dbPTM (decision 2026-08-09).
+"""PTM ground truth lookup against the dbPTM-derived database (decision 2026-08-09).
 
-## Por que existe
+## Why it exists
 
-`biological_panel.py::PANEL` solo cubre las ~20-30 proteinas curadas que ademas
-corren el pipeline completo para medir recall (ver `scripts/select_recall_subset.py`).
-Este modulo consulta la base GRANDE (`scripts/import_dbptm_panel.py`, miles de
-proteinas humanas reviewed) para poblar la columna "Literatura" del CLI en
-CUALQUIER proteina humana -- puramente informativo, nunca decide
-`pasa_umbral`/consenso, mismo patron ya establecido por
+`biological_panel.py::PANEL` only covers the ~20-30 curated proteins that also
+run the complete pipeline to measure recall (see `scripts/select_recall_subset.py`).
+This module queries the LARGE database (`scripts/import_dbptm_panel.py`, thousands of
+reviewed human proteins) in order to populate the CLI's "Literatura" column for
+ANY human protein. It is purely informative and never decides
+`pasa_umbral`/consensus, the same pattern already established by
 `src/structural/uniprot_localization_client.py`.
 """
 

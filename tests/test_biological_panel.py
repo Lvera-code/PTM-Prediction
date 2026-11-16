@@ -3,7 +3,7 @@ post-demo-prep) contra las estructuras reales descargadas -- no solo consistenci
 de los datos en Python, sino que cada ``GroundTruthSite.residue`` coincide realmente con el
 residuo de esa posicion en el PDB real de AlphaFold correspondiente. Esto es exactamente el
 tipo de chequeo que habria detectado cualquiera de las 3 trampas de numeracion documentadas
-en STATUS.md (histonas/protrombina/EPO, PDB != UniProt) si el panel las hubiera heredado por
+en el registro de decisiones del proyecto (histonas/protrombina/EPO, PDB != UniProt) si el panel las hubiera heredado por
 error -- como usa AlphaFold (numeracion == UniProt, verificado), todas deben coincidir.
 """
 

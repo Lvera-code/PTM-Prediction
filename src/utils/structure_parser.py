@@ -1,32 +1,32 @@
-"""Fase 1.5: extraccion de secuencia (ATMSEQ) y mapeo de posiciones desde una estructura.
+"""Phase 1.5: sequence extraction (ATMSEQ) and position mapping from a structure.
 
-Se invoca UNICAMENTE para archivos que ``src.utils.input_router`` clasifico
-como ``"structure"`` (PDB o mmCIF) -- el Camino PDB del proyecto, unico que
-habilita el consenso DeepMVP + DeepPTMPred (DeepPTMPred exige ``pdb_path``
-obligatorio, sin modo solo-secuencia).
+It is invoked ONLY for files that ``src.utils.input_router`` classified
+as ``"structure"`` (PDB or mmCIF), that is, the project's PDB path, the only one that
+enables the DeepMVP + DeepPTMPred consensus (DeepPTMPred requires a mandatory
+``pdb_path``, with no sequence-only mode).
 
-Responsabilidad exclusiva: parsear la estructura con ``gemmi`` (100% local,
-sin llamadas de red), elegir UNA cadena de referencia, extraer su secuencia
-realmente resuelta en los registros ATOM/HETATM (ATMSEQ, NO SEQRES: es la
-secuencia sobre la que DeepMVP/DeepPTMPred van a predecir de verdad y la que
-debe coincidir con lo que se muestra en el reporte final de Fase 3) y
-construir la tabla de mapeo de posiciones PDB <-> FASTA derivado (necesaria
-para que las posiciones que reporta Fase 3 sean interpretables contra la
-estructura original).
+Its exclusive responsibility: to parse the structure with ``gemmi`` (100% local,
+without network calls), choose ONE reference chain, extract its sequence
+as actually resolved in the ATOM/HETATM records (ATMSEQ, NOT SEQRES: it is the
+sequence over which DeepMVP/DeepPTMPred will genuinely predict and the one that
+must match what is shown in the final Phase 3 report) and
+build the table of PDB <-> derived FASTA position mapping (necessary
+so that the positions Phase 3 reports are interpretable against the original
+structure).
 
-Resolucion de residuos via CCD (``gemmi.find_tabulated_residue``): esto
-resuelve automaticamente residuos modificados (MSE->M, SEP->S, TPO->T,
-PTR->Y, CSO->C, etc. -- ``one_letter_code`` viene en MINUSCULA para residuos
-no estandar con padre canonico, de ahi el ``.upper()``). Un residuo sin
-codigo de una sola letra resoluble usa 'X'.
+Residue resolution via the CCD (``gemmi.find_tabulated_residue``): this
+automatically resolves modified residues (MSE->M, SEP->S, TPO->T,
+PTR->Y, CSO->C, etc.; ``one_letter_code`` comes in LOWER CASE for
+non-standard residues with a canonical parent, hence the ``.upper()``). A residue without
+a resolvable single-letter code uses 'X'.
 
-Deliberadamente NO se usa ``ResidueSpan.make_one_letter_sequence()``: ante
-un nombre de residuo no reconocido por el CCD, esa funcion puede insertar
-caracteres extra (p. ej. un '-' de relleno) que desalinean el conteo de
-caracteres respecto al numero real de residuos del polimero -- inviable para
-construir un mapeo de posiciones 1:1. En su lugar se itera
-``Chain.get_polymer()`` residuo por residuo, resolviendo cada uno
-individualmente y garantizando exactamente 1 caracter por residuo.
+``ResidueSpan.make_one_letter_sequence()`` is deliberately NOT used: when faced with
+a residue name not recognized by the CCD, that function can insert
+extra characters (for example a '-' filler) that misalign the character
+count with respect to the real number of residues of the polymer, which makes it unusable for
+building a 1:1 position mapping. Instead
+``Chain.get_polymer()`` is iterated residue by residue, resolving each one
+individually and guaranteeing exactly 1 character per residue.
 """
 
 from dataclasses import dataclass
@@ -102,7 +102,7 @@ def _sanitize_accession(accession: str, source_name: str) -> str:
     ``Path("..pdb").stem == ".."``) -- si ese valor se usa despues para
     construir ``base_output_dir / record.accession`` (como hace
     ``DeepPTMPredEngine.run()``), el resultado escapa el directorio de salida
-    (riesgo real de path traversal, ver STATUS.md - auditoria 2026-07-28,
+    (riesgo real de path traversal, ver el registro de decisiones del proyecto, auditoria 2026-07-28,
     item 1). El accession de un registro FASTA ya sanea '/' y '\\'
     (``fasta_parser.py``); este helper aplica el mismo criterio aqui, mas el
     caso especifico de accession vacio/'.'/'..' que solo puede darse via

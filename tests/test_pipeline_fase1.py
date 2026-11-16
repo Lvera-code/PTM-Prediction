@@ -5,7 +5,7 @@ motores de Fase 3 (DeepMVP/DeepPTMPred) se mockean a nivel de
 ``Engine.run`` -- no de subprocess (eso ya lo cubren
 test_deepmvp_engine.py/test_deepptmpred_engine.py) -- para no depender de si
 estan realmente instalados en la maquina que corre los tests (DeepMVP lo
-esta desde 2026-07-28; ver STATUS.md) ni de su tiempo de ejecucion real.
+esta desde 2026-07-28; ver el registro de decisiones del proyecto) ni de su tiempo de ejecucion real.
 """
 
 import pandas as pd
@@ -85,7 +85,7 @@ def test_input_invalido_retorna_codigo_de_error(tmp_path):
 
 def test_motor_no_instalado_falla_con_error_accionable_no_en_silencio(tmp_path, monkeypatch):
     # DeepMVP esta realmente instalado en esta maquina desde 2026-07-28 (ver
-    # STATUS.md), asi que el fallo de "motor no instalado" se simula en el
+    # el registro de decisiones del proyecto), asi que el fallo de "motor no instalado" se simula en el
     # motor en vez de depender del estado real de instalacion de la maquina
     # que corre los tests. Lo que se verifica es el comportamiento del
     # pipeline ante un DeepMVPExecutionError: Fase 1 debe completarse igual

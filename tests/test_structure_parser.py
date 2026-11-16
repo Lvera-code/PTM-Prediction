@@ -147,10 +147,10 @@ def test_accession_dotdot_se_sanea_evita_path_traversal(tmp_path):
 
     Verificado empiricamente ('Path("...pdb").stem == ".."', 3 puntos --
     'Path("..pdb").stem' con 2 puntos en realidad da '.', no '..'; la nota
-    original en STATUS.md tenia el ejemplo con un punto de menos). Ambos
+    original en el registro de decisiones del proyecto tenia el ejemplo con un punto de menos). Ambos
     casos ('.' y '..') son igual de inseguros para construir
     ``base_output_dir / record.accession`` (DeepPTMPredEngine), asi que
-    ``_sanitize_accession`` los cubre a los dos. Ver STATUS.md - auditoria
+    ``_sanitize_accession`` los cubre a los dos. Ver el registro de decisiones del proyecto, auditoria
     2026-07-28, item 1.
     """
     pdb_path = _write(tmp_path, "...pdb", PDB_WITH_MODIFIED_RESIDUES)

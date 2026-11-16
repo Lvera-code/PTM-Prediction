@@ -163,7 +163,7 @@ def test_annotate_pdb_path_n_linked_glycosylation_nunca_hace_consenso():
 
     # Ambos motores reportan la misma posicion, pero NUNCA fusionados en
     # una fila de consenso (decision 2026-08-01, DeepPTMPred no tiene poder
-    # discriminativo real para este tipo -- ver STATUS.md).
+    # discriminativo real para este tipo -- ver el registro de decisiones del proyecto).
     assert len(result) == 2
     assert set(result["motor"]) == {"DeepMVP", "DeepPTMPred"}
     assert (result["consenso"] == False).all()

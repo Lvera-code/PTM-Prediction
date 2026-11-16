@@ -3,8 +3,7 @@
 [![tests](https://github.com/Lvera-code/PTM-Prediction/actions/workflows/tests.yml/badge.svg)](https://github.com/Lvera-code/PTM-Prediction/actions/workflows/tests.yml)
 
 Pipeline for predicting post-translational modification (PTM) zones from
-FASTA or PDB/mmCIF. Second CNB project (commissioned by Carlos
-Oscar Sorzano), independent of
+FASTA or PDB/mmCIF. Second CNB project, independent of
 [BCell-Epitope-Prediction](https://github.com/Lvera-code/BCell-Epitope-Prediction).
 
 ## Architecture
@@ -26,11 +25,11 @@ Phase 1 -> Phase 1.5 (PDB only) -> Phase 2 (engines) -> Phase 3 (core) -> Phase 
   It merges consensus where DeepMVP and DeepPTMPred agree on type+position.
   `n_linked_glycosylation` is deliberately EXCLUDED from THAT specific
   fusion (a DeepPTMPred model without real discriminative power for this
-  type, AUROC 0.51, see STATUS.md), although both engines still
+  type, AUROC 0.51, measured by this project's own calibration), although both engines still
   report it separately. Instead, the PDB path has a different REAL consensus
   for this specific type: **DeepMVP + EMNGly** (decision
   2026-08-06, replacing the original CoNglyPred, which has no published weights, see
-  STATUS.md "Decision 2"), `pasa_umbral` = at least 1 of the available
+  the project decision record, "Decision 2"), `pasa_umbral` = at least 1 of the available
   engines passes, `consenso` = both pass.
 - **Optional corroboration** (these never decide `pasa_umbral`/`consenso`, they only
   inform about sites that the consensus has ALREADY accepted): **MeToken** (type, PDB
@@ -44,7 +43,7 @@ Phase 1 -> Phase 1.5 (PDB only) -> Phase 2 (engines) -> Phase 3 (core) -> Phase 
 ## Scope and interpretation
 
 Biological coherence analysis 2026-08-07 (the equivalent, for this
-project, of Carmen Elena Gómez's recommendations for
+project, of the external biological review conducted for
 [BCell-Epitope-Prediction](https://github.com/Lvera-code/BCell-Epitope-Prediction)):
 scope communication gaps found, none of them a code bug.
 
@@ -65,8 +64,8 @@ scope communication gaps found, none of them a code bug.
   (via `src/structural/uniprot_localization_client.py`, REAL evidence
   from UniProt, never invented) warns when the consensus has accepted an
   N-glyco site without known evidence of secretory localization. It NEVER
-  rejects the candidate (the same criterion as Carmen
-  Elena's recommendation not to discard N-glyco candidates in project 1). Its scope is
+  rejects the candidate (the same criterion as the review recommendation
+  not to discard N-glyco candidates in project 1). Its scope is
   limited to `n_linked_glycosylation`; `o_linked_glycosylation` has two
   distinct biological pathways (cytoplasmic/nuclear O-GlcNAc vs mucin in
   the secretory pathway) that this client does not distinguish.
@@ -117,7 +116,7 @@ scope communication gaps found, none of them a code bug.
   to be difficult: chemically indistinguishable from N-90/N-145 except by
   something that neither the sequence nor the static structure captures),
   and additionally covered by the general disclaimer of "predicted
-  capability, not observed occurrence" above. Detail in STATUS.md.
+  capability, not observed occurrence" above. Detail in the project decision record.
 
 ## Current state (2026-08-10)
 
@@ -125,17 +124,17 @@ The complete end-to-end pipeline (Phase 1/1.5/2/3/3b) is implemented, installed 
 verified with REAL runs (not merely planned) on this machine: DeepMVP
 (weights + real calibration), DeepPTMPred (PyRosetta + ESM-2 + real calibration
 of the 17 types, 2 train/inference bugs found and fixed,
-phi/psi and plDDT, see STATUS.md) and MeToken. Confirmed feature-complete and without
+phi/psi and plDDT) and MeToken. Confirmed feature-complete and without
 Phase A/3c (real structural modelling via PyRosetta, removed from scope) or
 StackGlyEmbed (it depended on a sibling project's venv, real friction
 for the Scipion integration, also removed from scope) following
-feedback from Carlos, see STATUS.md.
+project supervision feedback.
 
 **Decision 2 (second consensus engine for N-glycosylation) CLOSED**:
 CoNglyPred (the original candidate) confirmed as having no published weights anywhere,
 replaced by **EMNGly** (real weights, verified at byte level),
 implemented and wired into the `n_linked_glycosylation` consensus together
-with DeepMVP. See STATUS.md "Decision 2" for the complete
+with DeepMVP. See the project decision record, "Decision 2", for the complete
 detail, including the 2 go/no-go checks (both PASSED, 2026-08-07): the
 alignment of `structure_emb` was verified against real GlyGen sites
 in a PDB with gaps (Alpha-1-antitrypsin, 1QLP), and the published MCC
@@ -176,7 +175,7 @@ export DEEPPTMPRED_PYTHON_BIN=$(conda run -n deepptmpred which python)
 ```
 
 MeToken (OPTIONAL and informative corroboration of the type, PDB path, see
-STATUS.md 2026-08-01, NEVER a consensus engine, it can be omitted without
+the project decision record for 2026-08-01, NEVER a consensus engine, it can be omitted without
 losing functionality of the main pipeline; `Settings.METOKEN_ENABLED`
 degrades with only a warning if it is not installed):
 
@@ -193,8 +192,8 @@ python -c "import zipfile; zipfile.ZipFile('/tmp/pretrained_model.zip').extracta
 ```
 
 EMNGly (the real consensus engine for `n_linked_glycosylation`, PDB path
-only, replacing CoNglyPred, decision 2026-08-06, see STATUS.md
-"Decision 2": CoNglyPred confirmed as having no published weights anywhere).
+only, replacing CoNglyPred, decision 2026-08-06, see the project decision
+record, "Decision 2": CoNglyPred confirmed as having no published weights anywhere).
 Optional (`Settings.EMNGLY_ENABLED` degrades with only a warning; the
 N-glycosylation consensus falls back to DeepMVP alone, with no consensus possible, if it
 is not available):
@@ -225,7 +224,7 @@ curl -L -o EMNgly/esm/checkpoints/esm1b_t33_650M_UR50S.pt \
 curl -L -o EMNgly/esm/checkpoints/esm1b_t33_650M_UR50S-contact-regression.pt \
   https://dl.fbaipublicfiles.com/fair-esm/regression/esm1b_t33_650M_UR50S-contact-regression.pt
 
-# SVM (verified 2026-08-06 with a real HTTP Range, see STATUS.md): chose
+# SVM (verified 2026-08-06 with a real HTTP Range): chose
 # N-GlyDE.pickle (negatives restricted to the sequon, the correct regime),
 # not N-GlyAltas_classifier.pkl (same folder, trained on the other
 # benchmark).
@@ -255,7 +254,7 @@ export KINASE_LIBRARY_PYTHON_BIN=$(conda run -n kinase_library which python)
 > (not guaranteed). Pin `scikit-learn==1.1.1` in the venv, not what
 > the repo's `environment.yml` asks for.
 
-See `STATUS.md` for the complete detail of what has already been verified (all the
+See the project decision record for the complete detail of what has already been verified (all the
 repos/envs cloned and tested on this machine, plus EMNGly's 2 go/no-go
 checks, both PASSED 2026-08-07) and what is still missing.
 
@@ -270,20 +269,19 @@ use, consistent with the most restrictive real dependency (see below).
 - **DeepPTMPred**: the repo (`github.com/kuikui-wang/DeepPTMPred`, vendored
   in `DeepPTMPred/`) does not declare its own licence, but the associated paper is
   CC BY-NC 4.0 (Oxford University Press). The corresponding authors
-  (Yong Liu, Junwen Wang) were contacted directly to confirm that the
-  code follows the same terms. **Junwen Wang confirmed by email on
+  were contacted directly to confirm that the
+  code follows the same terms. **A corresponding author confirmed by email on
   2026-07-29**: *"I confirm that the GitHub code follows the same CC BY-NC
   terms."* Non-commercial use (research/TFG + future integration as a
   Scipion plugin by the CNB, a public institution) fits without problem
-  within CC BY-NC. Complete detail in `STATUS.md`.
+  within CC BY-NC. Complete detail in the project decision record.
 - **MeToken**: MIT (declared in the original repo's `MeToken/LICENSE`).
 - **EMNGly**: **MIT** (resolved 2026-08-11). The `StellaHxy/EMNgly` repo did not
-  declare a LICENSE; the corresponding authors (Yaojun
-  Wang, `wangyaojun@cau.edu.cn`, China Agricultural University; Shiwei Sun,
-  `dwsun@ict.ac.cn`, ICT-CAS) were contacted on 2026-08-10. They replied confirming that
+  declare a LICENSE; the corresponding authors (China Agricultural
+  University and ICT-CAS) were contacted on 2026-08-10. They replied confirming that
   they had added the MIT licence to the GitHub repo and explicitly authorizing
   integration into Scipion. The MIT LICENSE was verified in commit `824d6dc`
-  (copyright Xiaoyang Hou, Yu Wang) and synchronized in the local vendored copy
+  (copyright held by the upstream authors) and synchronized in the local vendored copy
   (`EMNgly/`, fast-forward `0b3c84d..a719532`). The paper remains CC BY
   4.0 (PMC10627407). MIF (vendored inside EMNgly, `model/MIF/`) is from
   Microsoft (`microsoft/protein-sequence-models`), a permissive BSD-2 licence

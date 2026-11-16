@@ -1,8 +1,8 @@
-"""Configuracion centralizada del pipeline: rutas, umbrales y credenciales externas.
+"""Centralized pipeline configuration: paths, thresholds and external credentials.
 
-Todos los parametros ajustables se resuelven desde variables de entorno con
-valores por defecto conservadores, para permitir reconfiguracion sin tocar
-codigo fuente ni comprometer credenciales al subir el repositorio a GitHub.
+Every adjustable parameter is resolved from environment variables with
+conservative defaults, so as to allow reconfiguration without touching
+source code and without exposing credentials when publishing the repository.
 """
 
 import os
@@ -42,84 +42,84 @@ def _env_bool(key: str, default: bool) -> bool:
 
 
 class Settings:
-    """Punto unico de verdad para toda configuracion del pipeline."""
+    """The single source of truth for all pipeline configuration."""
 
-    # --- Fase 1 / Orquestador: carpetas de entrada y salida del pipeline ---
+    # --- Phase 1 / Orchestrator: the pipeline's input and output folders ---
     FASTA_INPUT_DIR: Path = Path(_env_str("FASTA_INPUT_DIR", "inputs"))
     FASTA_OUTPUT_DIR: Path = Path(_env_str("FASTA_OUTPUT_DIR", "outputs"))
 
-    # --- Panel de validacion biologica: cache local derivada de dbPTM ---
-    # Ver decision 2026-08-09 (vault). Cache regenerable via
-    # scripts/import_dbptm_panel.py, nunca fuente -- no se versiona (.gitignore).
+    # --- Biological validation panel: local cache derived from dbPTM ---
+    # See the decision of 2026-08-09 (vault). A regenerable cache via
+    # scripts/import_dbptm_panel.py, never a source, so it is not versioned (.gitignore).
     DBPTM_DATA_DIR: Path = Path(_env_str("DBPTM_DATA_DIR", "data/dbptm"))
 
-    # --- Fase 1.5: Extraccion de estructura (PDB/mmCIF via gemmi, LOCAL) ---
-    # Estrategia de seleccion de cadena cuando el archivo de entrada tiene mas
-    # de una cadena proteica (ver `src/utils/structure_parser.py`). Nunca
-    # implicita: la cadena elegida siempre se loggea con su motivo.
-    #   'longest'  -> se elige la cadena con mas residuos en su polimero.
-    #   'explicit' -> se usa PDB_EXPLICIT_CHAIN_ID (obligatorio en ese caso).
+    # --- Phase 1.5: structure extraction (PDB/mmCIF via gemmi, LOCAL) ---
+    # Chain selection strategy when the input file has more
+    # than one protein chain (see `src/utils/structure_parser.py`). Never
+    # implicit: the chosen chain is always logged together with the reason.
+    #   'longest'  -> the chain with the most residues in its polymer is chosen.
+    #   'explicit' -> PDB_EXPLICIT_CHAIN_ID is used (mandatory in that case).
     PDB_CHAIN_SELECTION_STRATEGY: str = _env_str("PDB_CHAIN_SELECTION_STRATEGY", "longest")
     PDB_EXPLICIT_CHAIN_ID: str = _env_str("PDB_EXPLICIT_CHAIN_ID", "")
 
-    # --- Fase 2: DeepMVP (motor unico Camino FASTA, motor 1/2 Camino PDB) ---
-    # Verificado leyendo github.com/bzhanglab/DeepMVP directamente (README.md,
-    # DeepMVP.py, lib/PTModels.py, lib/Metrics.py) el 2026-07-27. Repo real,
-    # empaquetado (requirements.txt + environment.yml), GPL-3.0.
+    # --- Phase 2: DeepMVP (the only FASTA path engine, engine 1/2 of the PDB path) ---
+    # Verified by reading github.com/bzhanglab/DeepMVP directly (README.md,
+    # DeepMVP.py, lib/PTModels.py, lib/Metrics.py) on 2026-07-27. A real,
+    # packaged repo (requirements.txt + environment.yml), GPL-3.0.
     DEEPMVP_HOME: Path = Path(_env_str("DEEPMVP_HOME", "DeepMVP"))
     DEEPMVP_SCRIPT_NAME: str = _env_str("DEEPMVP_SCRIPT_NAME", "DeepMVP.py")
-    # Python 3.7.10 + TensorFlow==2.4.2 (ver environment.yml del repo): stack
-    # antiguo, se recomienda venv dedicado (mismo patron que BepiPred-3.0 en
-    # BCell-Epitope-Prediction). Por defecto usa el mismo interprete que
-    # corre pipeline.py; apunta esto a un venv dedicado en produccion.
+    # Python 3.7.10 + TensorFlow==2.4.2 (see the repo's environment.yml): an
+    # old stack, for which a dedicated venv is recommended (the same pattern as BepiPred-3.0 in
+    # BCell-Epitope-Prediction). By default it uses the same interpreter that
+    # runs pipeline.py; point this at a dedicated venv in production.
     DEEPMVP_PYTHON_BIN: str = _env_str("DEEPMVP_PYTHON_BIN", sys.executable)
-    # Pesos pre-entrenados NO incluidos en el repo (confirmado en README):
-    # descarga manual desde DEEPMVP_DOWNLOAD_URL (un .tar.gz por version),
-    # descomprimir dentro de esta carpeta. Contiene un subdirectorio por tipo
-    # de PTM (acetylation_k/, glycosylation_n/, methylation_k/, methylation_r/,
+    # Pre-trained weights NOT included in the repo (confirmed in the README):
+    # a manual download from DEEPMVP_DOWNLOAD_URL (one .tar.gz per version),
+    # to be unpacked inside this folder. It contains one subdirectory per PTM
+    # type (acetylation_k/, glycosylation_n/, methylation_k/, methylation_r/,
     # phosphorylation_st/, phosphorylation_y/, sumoylation_k/, ubiquitination_k/),
-    # cada uno con su propio model.json + ensemble de modelos .h5 -- confirmado
-    # leyendo lib/PTModels.py::ptm_prediction_for_multiple_ptms.
+    # each with its own model.json + an ensemble of .h5 models, confirmed by
+    # reading lib/PTModels.py::ptm_prediction_for_multiple_ptms.
     DEEPMVP_MODEL_DIR: Path = Path(_env_str("DEEPMVP_MODEL_DIR", "DeepMVP/models"))
     DEEPMVP_DOWNLOAD_URL: str = "https://deepmvp.ptmax.org/"
     DEEPMVP_TIMEOUT_SECONDS: int = _env_int("DEEPMVP_TIMEOUT_SECONDS", 1800)
-    # Tarea 2 = "PTM site prediction" en el CLI de DeepMVP (tarea 1 es
-    # prediccion de impacto de mutacion, no usada aqui). Confirmado leyendo
-    # DeepMVP.py directamente, no configurable por Settings: es un valor fijo
-    # del contrato con el CLI real, no un parametro ajustable del pipeline.
+    # Task 2 = "PTM site prediction" in DeepMVP's CLI (task 1 is
+    # mutation impact prediction, not used here). Confirmed by reading
+    # DeepMVP.py directly, and not configurable via Settings: it is a fixed value
+    # of the contract with the real CLI, not an adjustable pipeline parameter.
     DEEPMVP_TASK_PTM_SITE_PREDICTION: str = "2"
-    # Filtro de confianza (Fase 3, nucleo -- decision 2026-07-27): DeepMVP no
-    # publica un cutoff de probabilidad fijo por tipo de PTM. En su lugar,
-    # cada carpeta de pesos trae su propio 'site_prediction.tsv' de
-    # validacion, y la columna 'fpr' que devuelve por fila es el FPR real que
-    # tendria ese modelo especifico si se usara esa probabilidad como corte
-    # (confirmado leyendo lib/Metrics.py::add_confidence_metrics/calc_FPR).
-    # Es un umbral MEJOR calibrado que un score de probabilidad fijo: el
-    # filtro de Fase 3 usa 'fpr <= DEEPMVP_MAX_FPR', no un umbral de
-    # 'y_pred'. El score crudo (y_pred) se conserva siempre igual.
+    # Confidence filter (Phase 3, the core, decision 2026-07-27): DeepMVP does
+    # not publish a fixed probability cutoff per PTM type. Instead,
+    # each weights folder ships its own validation 'site_prediction.tsv',
+    # and the 'fpr' column it returns per row is the real FPR that
+    # that specific model would have if that probability were used as the cutoff
+    # (confirmed by reading lib/Metrics.py::add_confidence_metrics/calc_FPR).
+    # It is a BETTER calibrated threshold than a fixed probability score: the
+    # Phase 3 filter uses 'fpr <= DEEPMVP_MAX_FPR', not a threshold on
+    # 'y_pred'. The raw score (y_pred) is always preserved unchanged.
     DEEPMVP_MAX_FPR: float = _env_float("DEEPMVP_MAX_FPR", 0.05)
 
-    # --- Fase 2: DeepPTMPred (motor 2/2 del consenso, Camino PDB unicamente) ---
-    # Verificado leyendo github.com/kuikui-wang/DeepPTMPred directamente
+    # --- Phase 2: DeepPTMPred (engine 2/2 of the consensus, PDB path only) ---
+    # Verified by reading github.com/kuikui-wang/DeepPTMPred directly
     # (README.md, pred/train_PTM/predict.py, pred/train_PTM/e2_single_data.py,
-    # pred/train_PTM/environment.yml) el 2026-07-27. Repo real, pesos SI
-    # incluidos en el repo (.h5 por tipo, ~19MB c/u). Licencia RESUELTA
-    # 2026-07-29: el repo no tiene LICENSE declarado, pero Junwen Wang
-    # (autor de correspondencia del paper, CC BY-NC 4.0) confirmo
-    # directamente por email que el codigo del repo sigue esos mismos
-    # terminos -- uso no comercial (investigacion/TFG, Scipion/CNB) cubierto.
+    # pred/train_PTM/environment.yml) on 2026-07-27. A real repo, with weights
+    # included (.h5 per type, ~19MB each). Licence RESOLVED
+    # 2026-07-29: the repo has no declared LICENSE, but the paper's
+    # corresponding author (CC BY-NC 4.0) confirmed
+    # directly by email that the repo's code follows those same
+    # terms, so non-commercial use (research/TFG, Scipion/CNB) is covered.
     #
-    # HALLAZGO IMPORTANTE: a diferencia de DeepMVP, ni predict.py ni
-    # e2_single_data.py tienen CLI real -- ptm_type/pdb_path/protein_id/ruta
-    # del checkpoint ESM estan hardcodeados dentro de su bloque
-    # `if __name__ == "__main__":`. Por eso este proyecto NO invoca esos
-    # scripts directamente por subprocess (a diferencia de DeepMVP): usa un
-    # runner propio (`src/engines/_deepptmpred_runner.py`) que importa sus
-    # clases parametrizables (PredictConfig, PTMPredictor) y REIMPLEMENTA la
-    # extraccion de features ESM-2 -- e2_single_data.py::extract_full_sequence_esm
-    # tiene un bug real confirmado: redefine 'custom_checkpoint_path' como
-    # variable LOCAL con una ruta absoluta hardcodeada de AutoDL
-    # (/root/autodl-tmp/...), ignorando cualquier valor pasado o de modulo.
+    # AN IMPORTANT FINDING: unlike DeepMVP, neither predict.py nor
+    # e2_single_data.py has a real CLI; ptm_type/pdb_path/protein_id/the ESM
+    # checkpoint path are hardcoded inside their
+    # `if __name__ == "__main__":` block. That is why this project does NOT invoke those
+    # scripts directly by subprocess (unlike DeepMVP): it uses its own
+    # runner (`src/engines/_deepptmpred_runner.py`) which imports their
+    # parameterizable classes (PredictConfig, PTMPredictor) and REIMPLEMENTS the
+    # ESM-2 feature extraction, because e2_single_data.py::extract_full_sequence_esm
+    # has a confirmed real bug: it redefines 'custom_checkpoint_path' as a
+    # LOCAL variable with a hardcoded absolute AutoDL path
+    # (/root/autodl-tmp/...), ignoring any value passed or set at module level.
     DEEPPTMPRED_HOME: Path = Path(_env_str("DEEPPTMPRED_HOME", "DeepPTMPred"))
     DEEPPTMPRED_TRAIN_PTM_DIR: Path = Path(
         _env_str("DEEPPTMPRED_TRAIN_PTM_DIR", "DeepPTMPred/pred/train_PTM")
@@ -130,78 +130,76 @@ class Settings:
             str(Path(__file__).resolve().parent.parent / "engines" / "_deepptmpred_runner.py"),
         )
     )
-    # Python 3.10 + TensorFlow==2.15 + PyTorch 2.0 + PyRosetta + fair-esm (ver
-    # environment.yml del repo): stack pesado y DISTINTO del de DeepMVP
-    # (Python 3.7 + TF 2.4), requiere su propio venv/conda dedicado, nunca
-    # compartido con DEEPMVP_PYTHON_BIN. tensorflow-addons (usado por
-    # predict.py para su loss function) esta archivado/deprecado por Google
-    # desde 2024 -- RIESGO DESCARTADO 2026-07-27: instalado e importado de
-    # verdad en un venv aislado contra TF 2.15, sin error (solo un
-    # UserWarning de deprecacion esperado). Ver STATUS.md.
+    # Python 3.10 + TensorFlow==2.15 + PyTorch 2.0 + PyRosetta + fair-esm (see
+    # the repo's environment.yml): a heavy stack, DIFFERENT from DeepMVP's
+    # (Python 3.7 + TF 2.4), which requires its own dedicated venv/conda, never
+    # shared with DEEPMVP_PYTHON_BIN. tensorflow-addons (used by
+    # predict.py for its loss function) has been archived/deprecated upstream
+    # since 2024. RISK DISCARDED 2026-07-27: genuinely installed and imported
+    # in an isolated venv against TF 2.15, without error (only an
+    # expected deprecation UserWarning).
     DEEPPTMPRED_PYTHON_BIN: str = _env_str("DEEPPTMPRED_PYTHON_BIN", sys.executable)
-    # Checkpoint ESM-2 (fair-esm, ~2.5GB), descarga separada (no incluido en
-    # el repo, a diferencia de los pesos .h5 de PTM que si vienen incluidos).
-    # IMPORTANTE (verificado 2026-07-27 leyendo esm/pretrained.py directamente):
-    # fair-esm exige un archivo COMPANERO junto al checkpoint principal,
-    # '<checkpoint>-contact-regression.pt' (mismo directorio, mismo nombre
-    # base) -- su heuristica interna (_has_regression_weights) no excluye
-    # los modelos esm2_*, asi que SIEMPRE lo busca salvo variantes esm1v/
-    # esm_if/270K/500K. Si falta, torch.load() falla con FileNotFoundError
-    # LOCAL (no es un intento de red -- ver docstring de
-    # _deepptmpred_runner.py::_extract_esm_features para el detalle
-    # completo de por que esto SI es 100% local pese a este archivo extra).
-    # Verificar al descargar el checkpoint que este archivo compañero
-    # tambien este disponible (mismo origen que el checkpoint principal).
+    # ESM-2 checkpoint (fair-esm, ~2.5GB), a separate download (not included in
+    # the repo, unlike the PTM .h5 weights, which are included).
+    # IMPORTANT (verified 2026-07-27 by reading esm/pretrained.py directly):
+    # fair-esm requires a COMPANION file next to the main checkpoint,
+    # '<checkpoint>-contact-regression.pt' (same directory, same base
+    # name). Its internal heuristic (_has_regression_weights) does not exclude
+    # the esm2_* models, so it ALWAYS looks for it except for the esm1v/
+    # esm_if/270K/500K variants. If it is missing, torch.load() fails with a
+    # LOCAL FileNotFoundError (it is not a network attempt; see the docstring of
+    # _deepptmpred_runner.py::_extract_esm_features for the complete
+    # detail of why this IS 100% local despite this extra file).
+    # When downloading the checkpoint, verify that this companion file
+    # is also available (the same origin as the main checkpoint).
     DEEPPTMPRED_ESM_CHECKPOINT: Path = Path(
         _env_str("DEEPPTMPRED_ESM_CHECKPOINT", "DeepPTMPred/esm/checkpoints/esm2_t33_650M_UR50D.pt")
     )
-    # Cache de features ESM por accession (.npz), reutilizado entre corridas
-    # y entre tipos de PTM del mismo accession (evita recalcular el embedding
-    # completo 17 veces, una por tipo de PTM).
+    # Per-accession cache of ESM features (.npz), reused between runs
+    # and between PTM types of the same accession (it avoids recomputing the
+    # complete embedding 17 times, once per PTM type).
     DEEPPTMPRED_CUSTOM_ESM_DIR: Path = Path(
         _env_str("DEEPPTMPRED_CUSTOM_ESM_DIR", "DeepPTMPred/pred/custom_esm")
     )
     DEEPPTMPRED_TIMEOUT_SECONDS: int = _env_int("DEEPPTMPRED_TIMEOUT_SECONDS", 3600)
-    # Los 17 tipos de PTM soportados, confirmado leyendo
-    # predict.py::PredictConfig.ptm_aa_map (nombres exactos del repo, no
-    # traducidos): a diferencia de DeepMVP (task=2 predice todos los tipos en
-    # una sola invocacion), DeepPTMPred predice UN tipo por invocacion -- el
-    # engine debe invocar el runner una vez POR TIPO, por accession.
-    # Filtro de confianza (Fase 3, nucleo): a diferencia de DeepMVP,
-    # DeepPTMPred no expone ningun mecanismo de calibracion tipo 'fpr' (ni en
-    # predict.py ni en su README) -- solo una probabilidad cruda 0-1. Su
-    # propio script usa un cutoff de 0.5 hardcodeado sin documentar de donde
-    # sale (no calibrado contra ningun validation set publicado, a
-    # diferencia del 'fpr' de DeepMVP).
+    # The 17 supported PTM types, confirmed by reading
+    # predict.py::PredictConfig.ptm_aa_map (the repo's exact names, not
+    # translated): unlike DeepMVP (task=2 predicts all the types in
+    # a single invocation), DeepPTMPred predicts ONE type per invocation, so the
+    # engine must invoke the runner once PER TYPE, per accession.
+    # Confidence filter (Phase 3, the core): unlike DeepMVP,
+    # DeepPTMPred exposes no 'fpr'-style calibration mechanism (neither in
+    # predict.py nor in its README), only a raw 0-1 probability. Its
+    # own script uses a hardcoded cutoff of 0.5 without documenting where it
+    # comes from (not calibrated against any published validation set, unlike
+    # DeepMVP's 'fpr').
     #
-    # CALIBRADO 2026-08-01 (reemplaza la calibracion 2026-07-31, invalidada
-    # por el bug de plDDT -- ver abajo): umbrales reales por tipo, calculados
-    # por `scripts/generate_deepptmpred_calibration.py` +
-    # `_rebuild_calibration_summary.py` sobre
+    # CALIBRATED 2026-08-01 (replacing the 2026-07-31 calibration, invalidated
+    # by the plDDT bug, see below): real per-type thresholds, computed
+    # by `scripts/generate_deepptmpred_calibration.py` +
+    # `_rebuild_calibration_summary.py` over
     # `github.com/meilerlab/PTMPrediction/data/ptm_data.csv.gz`
-    # (n=75 proteinas/clase), CON dos fixes de train/inferencia ya aplicados
-    # en `_deepptmpred_runner.py::_load_predict_module`: (1) phi/psi=0.0
-    # forzado en inferencia (2026-07-31, igualaba la distribucion de
-    # entrenamiento) y (2) local_plDDT recalculado desde el B-factor CA real
-    # del pose de PyRosetta en vez del array `plDDT_values` de `predict.py`
-    # (mal indexado por atomo en vez de por residuo, 2026-08-01) -- ver
-    # STATUS.md, secciones "Calibracion real de DeepPTMPred + bug de
-    # distribucion phi/psi" e "investigacion de n_linked_glycosylation y los
-    # 4 tipos mediocres". Regla real (bug-fixed respecto al paper, no
-    # literal): FPR<=0.18 TPR-max para phosphorylation, FPR<=0.20 TPR-max
-    # para el resto; fallback a 0.5 si ningun punto de operacion cumple el
-    # FPR maximo en la muestra.
-    # Fuente exacta: `DeepPTMPred/data/calibration/summary.tsv` (gitignored,
-    # regenerable con los dos scripts de arriba). Con el fix de plDDT, 16/17
-    # tipos quedan en rango solido-a-excelente (AUROC 0.77-0.99) -- incluye
-    # los 4 tipos que antes eran "mediocres" (crotonylation 0.61->0.82,
+    # (n=75 proteins/class), WITH two train/inference fixes already applied
+    # in `_deepptmpred_runner.py::_load_predict_module`: (1) phi/psi=0.0
+    # forced at inference (2026-07-31, matching the training
+    # distribution) and (2) local_plDDT recomputed from the real CA B-factor
+    # of the PyRosetta pose instead of `predict.py`'s `plDDT_values` array
+    # (badly indexed per atom rather than per residue, 2026-08-01). The real
+    # rule (bug-fixed with respect to the paper, not literal):
+    # FPR<=0.18 TPR-max for phosphorylation, FPR<=0.20 TPR-max
+    # for the rest; falling back to 0.5 if no operating point meets the
+    # maximum FPR in the sample.
+    # Exact source: `DeepPTMPred/data/calibration/summary.tsv` (gitignored,
+    # regenerable with the two scripts above). With the plDDT fix, 16/17
+    # types land in the solid-to-excellent range (AUROC 0.77-0.99), including
+    # the 4 types that were previously "mediocre" (crotonylation 0.61->0.82,
     # citrullination 0.66->0.78, glutarylation 0.67->0.77, s_nitrosylation
-    # 0.68->0.77), confirmando que el bug de plDDT (no un techo del modelo)
-    # era la causa real. `n_linked_glycosylation` sigue AUROC 0.51 (peor que
-    # azar, limite real de los pesos publicados -- ver STATUS.md) -- por eso
-    # esta EXCLUIDO del consenso en `ptm_annotation.py` pese a tener un
-    # umbral calibrado aqui (el umbral no es el problema, es el poder
-    # discriminativo del modelo).
+    # 0.68->0.77), which confirms that the plDDT bug (not a model ceiling)
+    # was the real cause. `n_linked_glycosylation` remains at AUROC 0.51 (worse than
+    # chance, a real limit of the published weights), which is why
+    # it is EXCLUDED from the consensus in `ptm_annotation.py` despite having a
+    # calibrated threshold here (the threshold is not the problem, the model's
+    # discriminative power is).
     DEEPPTMPRED_CALIBRATED_THRESHOLDS: dict = {
         "acetylation": 0.6350621,
         "arg_methylation": 0.34068727,
@@ -221,16 +219,16 @@ class Settings:
         "sumoylation": 0.37326753,
         "ubiquitination": 0.5321394,
     }
-    # Fallback si DEEPPTMPRED_CALIBRATED_THRESHOLDS no tiene el tipo (no
-    # deberia ocurrir con los 17 tipos de DEEPPTMPRED_PTM_TYPES, pero
-    # mantiene el pipeline funcional si se agrega un tipo nuevo sin
-    # recalibrar). Tambien override manual via env var para experimentacion
-    # puntual sin editar codigo.
+    # Fallback if DEEPPTMPRED_CALIBRATED_THRESHOLDS does not have the type (which
+    # should not happen with the 17 types of DEEPPTMPRED_PTM_TYPES, but it
+    # keeps the pipeline functional if a new type is added without
+    # recalibrating). It is also a manual override via env var for occasional
+    # experimentation without editing code.
     DEEPPTMPRED_MIN_PROBABILITY: float = _env_float("DEEPPTMPRED_MIN_PROBABILITY", 0.5)
 
     @classmethod
     def deepptmpred_threshold_for(cls, ptm_type: str) -> float:
-        """Umbral calibrado para ``ptm_type``, o el fallback generico si no existe."""
+        """The calibrated threshold for ``ptm_type``, or the generic fallback if absent."""
         return cls.DEEPPTMPRED_CALIBRATED_THRESHOLDS.get(ptm_type, cls.DEEPPTMPRED_MIN_PROBABILITY)
 
     DEEPPTMPRED_PTM_TYPES: tuple = (
@@ -241,18 +239,18 @@ class Settings:
         "o_linked_glycosylation", "n_linked_glycosylation",
     )
 
-    # --- Corroboracion opcional: MeToken (Camino PDB unicamente, NUNCA un motor
-    # de consenso -- Decision 2 sigue pausada) ---
-    # Verificado leyendo github.com/A4Bio/MeToken (ICLR 2025) el 2026-08-01: el
-    # checkpoint publicado es un CLASIFICADOR DE TIPO en sitios YA CONOCIDOS
-    # (confirmado en model_interface.py:40, la clase "no-PTM" queda enmascarada
-    # cuando with_null_ptm=0, como viene el checkpoint publicado -- y
-    # verificado empiricamente: predice tipos con alta confianza tambien en
-    # posiciones sin PTM real). Por eso NUNCA decide pasa_umbral/consenso --
-    # mismo patron puramente informativo que la via secretora
-    # (src/structural/uniprot_localization_client.py): solo corrobora el TIPO
-    # en sitios que el consenso YA acepto (pasa_umbral=true), ver
-    # src/engines/ptm_annotation.py::annotate_pdb_path y
+    # --- Optional corroboration: MeToken (PDB path only, NEVER a consensus
+    # engine; Decision 2 remains paused) ---
+    # Verified by reading github.com/A4Bio/MeToken (ICLR 2025) on 2026-08-01: the
+    # published checkpoint is a TYPE CLASSIFIER on ALREADY KNOWN sites
+    # (confirmed in model_interface.py:40, where the "no-PTM" class is masked
+    # when with_null_ptm=0, as the published checkpoint comes, and
+    # verified empirically: it predicts types with high confidence also at
+    # positions without a real PTM). That is why it NEVER decides pasa_umbral/consenso,
+    # the same purely informative pattern as the secretory pathway
+    # (src/structural/uniprot_localization_client.py): it only corroborates the TYPE
+    # at sites that the consensus has ALREADY accepted (pasa_umbral=true); see
+    # src/engines/ptm_annotation.py::annotate_pdb_path and
     # src/engines/metoken_engine.py.
     METOKEN_ENABLED: bool = _env_bool("METOKEN_ENABLED", True)
     METOKEN_HOME: Path = Path(_env_str("METOKEN_HOME", "MeToken"))
@@ -262,36 +260,36 @@ class Settings:
             str(Path(__file__).resolve().parent.parent / "engines" / "_metoken_runner.py"),
         )
     )
-    # Python 3.10 + torch (CPU) + torch_scatter (compilado desde fuente, sin
-    # wheel prebuilt para esta combinacion torch/CPU) + transformers +
-    # biopython>=1.80 (ver bug 1 parcheado en _metoken_runner.py) -- venv
-    # dedicado, nunca compartido con DEEPMVP_PYTHON_BIN/DEEPPTMPRED_PYTHON_BIN.
+    # Python 3.10 + torch (CPU) + torch_scatter (compiled from source, as there is no
+    # prebuilt wheel for this torch/CPU combination) + transformers +
+    # biopython>=1.80 (see bug 1 patched in _metoken_runner.py): a dedicated
+    # venv, never shared with DEEPMVP_PYTHON_BIN/DEEPPTMPRED_PYTHON_BIN.
     METOKEN_PYTHON_BIN: str = _env_str("METOKEN_PYTHON_BIN", sys.executable)
-    # Pesos reales (release 1.0, pretrained_model.zip, ~88MB, verificado
-    # descargable el 2026-08-01): checkpoint.ckpt es un state_dict plano
-    # (confirmado con torch.load + model.load_state_dict -> "<All keys
-    # matched successfully>"), no un checkpoint completo de pytorch-lightning
-    # (ese es lightning_checkpoint.ckpt, sin usar aqui).
+    # Real weights (release 1.0, pretrained_model.zip, ~88MB, verified as
+    # downloadable on 2026-08-01): checkpoint.ckpt is a flat state_dict
+    # (confirmed with torch.load + model.load_state_dict -> "<All keys
+    # matched successfully>"), not a complete pytorch-lightning checkpoint
+    # (that is lightning_checkpoint.ckpt, not used here).
     METOKEN_CHECKPOINT: Path = Path(
         _env_str("METOKEN_CHECKPOINT", "MeToken/pretrained_model/checkpoint.ckpt")
     )
     METOKEN_TIMEOUT_SECONDS: int = _env_int("METOKEN_TIMEOUT_SECONDS", 600)
 
-    # --- Kinase Library (corroboracion informativa de especificidad de quinasa,
-    # ambos caminos -- analisis de coherencia biologica 2026-08-07 punto 5) ---
-    # Johnson et al. 2023 Nature (303 quinasas Ser/Thr) + Yaron-Barir et al. 2024
-    # Nature (kinoma Tyr completo), empaquetados en 'kinase-library' (PyPI,
-    # TheKinaseLibrary/kinase-library, licencia CC-BY-NC-SA-3.0 -- misma familia
-    # no comercial ya aceptada para EMNGly). Solo necesita la secuencia
-    # completa + posicion 1-based del fosfoaceptor -- aplica a ambos caminos.
-    # NUNCA decide pasa_umbral/consenso -- mismo patron no-decisorio que
+    # --- Kinase Library (informative corroboration of kinase specificity,
+    # both paths; biological coherence analysis 2026-08-07, point 5) ---
+    # Johnson et al. 2023 Nature (303 Ser/Thr kinases) + Yaron-Barir et al. 2024
+    # Nature (the complete Tyr kinome), packaged in 'kinase-library' (PyPI,
+    # TheKinaseLibrary/kinase-library, licence CC-BY-NC-SA-3.0, the same
+    # non-commercial family already accepted for EMNGly). It only needs the complete
+    # sequence plus the 1-based position of the phosphoacceptor, so it applies to both paths.
+    # It NEVER decides pasa_umbral/consenso, the same non-deciding pattern as
     # MeToken.
     KINASE_LIBRARY_ENABLED: bool = _env_bool("KINASE_LIBRARY_ENABLED", True)
-    # Entorno conda DEDICADO (numpy~=1.26.4/pandas~=2.2.3 fijados por el propio
-    # paquete, incompatibles con las versiones fijadas de ESTE venv -- ver
-    # requirements.txt), nunca el venv principal. Verificado 2026-08-07 con una
-    # corrida real (kl.Substrate('PSVEPPLsQETFSDL').predict() sobre p53 S33 --
-    # top hit ATM, coincide con la literatura real de DNA damage response).
+    # A DEDICATED conda environment (numpy~=1.26.4/pandas~=2.2.3 pinned by the
+    # package itself, incompatible with the versions pinned by THIS venv, see
+    # requirements.txt), never the main venv. Verified 2026-08-07 with a
+    # real run (kl.Substrate('PSVEPPLsQETFSDL').predict() over p53 S33,
+    # top hit ATM, matching the real literature on the DNA damage response).
     KINASE_LIBRARY_PYTHON_BIN: str = _env_str(
         "KINASE_LIBRARY_PYTHON_BIN",
         "/home/enzo/miniconda3/envs/kinase_library/bin/python",
@@ -302,73 +300,72 @@ class Settings:
             str(Path(__file__).resolve().parent.parent / "engines" / "_kinase_library_runner.py"),
         )
     )
-    # CORREGIDO 2026-08-07 (auditoria de robustez post-implementacion): la
-    # suposicion original de "mucho mas rapido que MeToken, sin GPU" era
-    # CORRECTA por sitio pero IRRELEVANTE -- el costo real es
-    # por LOTE, no por sitio individual, y el lote no es pequeno. Medido real
-    # 2026-08-07 contra la secuencia completa de Tau (758 aa): ~5s/sitio: un
-    # lote de 30 sitios ya tardo ~150s, MAS que el timeout original de 120s.
-    # Proteinas reales del propio panel de validacion aceptan muchos mas
-    # sitios de fosforilacion que eso -- Tau completo tiene 115 sitios
-    # aceptados por el consenso (ver outputs/AF-P10636-F1-model_v4_ptm_sites.csv),
-    # que a ese ritmo tardarian ~10 min. Confirmado en vivo el mismo dia:
-    # una corrida real del panel de validacion (p53, 33 sitios) tardo mas de
-    # 120s con el default original -- el timeout viejo garantizaba fallo
-    # silencioso (degradacion a None) en cualquier proteina con mas de ~25
-    # sitios aceptados, derrotando el proposito del motor. Generoso por
-    # defecto, 900s de margen mas alla del pico ya visto en produccion,
-    # porque el numero de sitios por proteina (no por corrida) es lo que
-    # escala aqui.
+    # CORRECTED 2026-08-07 (post-implementation robustness audit): the
+    # original assumption of "much faster than MeToken, without a GPU" was
+    # CORRECT per site but IRRELEVANT, because the real cost is
+    # per BATCH, not per individual site, and the batch is not small. Measured
+    # 2026-08-07 against Tau's complete sequence (758 aa): ~5s/site, so a
+    # batch of 30 sites already took ~150s, MORE than the original timeout of 120s.
+    # Real proteins of the validation panel itself accept far more
+    # phosphorylation sites than that: the complete Tau has 115 sites
+    # accepted by the consensus (see outputs/AF-P10636-F1-model_v4_ptm_sites.csv),
+    # which at that rate would take ~10 min. Confirmed live the same day:
+    # a real run of the validation panel (p53, 33 sites) took more than
+    # 120s with the original default, so the old timeout guaranteed silent
+    # failure (degradation to None) on any protein with more than ~25
+    # accepted sites, defeating the engine's purpose. Generous by
+    # default, with 900s of margin beyond the peak already seen in production,
+    # because it is the number of sites per protein (not per run) that
+    # scales here.
     KINASE_LIBRARY_TIMEOUT_SECONDS: int = _env_int("KINASE_LIBRARY_TIMEOUT_SECONDS", 1800)
 
-    # --- EMNGly (motor real de consenso para 'n_linked_glycosylation', Camino PDB
-    # unicamente -- reemplaza a CoNglyPred, decision 2026-08-06) ---
-    # CoNglyPred (github.com/whm242446/CoNglyPred, candidato original de
-    # Decision 2) quedo confirmado
-    # DEFINITIVAMENTE muerto 2026-08-06 (re-verificado via API de GitHub: 0
-    # releases/tags/issues, ultimo push 2024-08-15, CERO archivos .pth/.pt/.pkl
-    # en todo el arbol pese a que su propio README instruye cargar
-    # 'best.pth') -- el correo del 2026-08-01 a Shaoping Shi nunca goteo una
-    # respuesta con los pesos.
+    # --- EMNGly (the real consensus engine for 'n_linked_glycosylation', PDB path
+    # only; it replaces CoNglyPred, decision 2026-08-06) ---
+    # CoNglyPred (github.com/whm242446/CoNglyPred, the original Decision 2
+    # candidate) was confirmed
+    # DEFINITIVELY unavailable 2026-08-06 (re-verified via the GitHub API: 0
+    # releases/tags/issues, last push 2024-08-15, ZERO .pth/.pt/.pkl files
+    # in the whole tree despite its own README instructing one to load
+    # 'best.pth'), and the email of 2026-08-01 to the corresponding author
+    # never produced a reply with the weights.
     #
     # EMNGly (github.com/StellaHxy/EMNgly, Hou et al., Bioinformatics
-    # 39(11):btad650, 2023) es el reemplazo: verificado exhaustivamente
-    # 2026-08-06 (subagente Opus + reverificacion propia clonando el repo
-    # real) que SI tiene pesos reales y descargables, a diferencia de
-    # CoNglyPred. Arquitectura: ESM-1b (site_emb 1280 + local_emb 1280,
-    # ``model/get_esm_embedding.py``) + MIF -- Masked Inverse Folding de
-    # Microsoft, ``model/MIF/``, embedding ESTRUCTURAL real (256-dim) sobre
-    # coordenadas de backbone N/CA/C del PDB -- concatenados (2816-dim) y
-    # clasificados con un SVM (``sklearn.svm.SVC``, kernel rbf,
-    # probability=True). Preserva la propiedad de diseno ya decidida al
-    # descartar MTPrompt-PTM como reemplazo de DeepPTMPred: el segundo motor
-    # de este tipo debe consumir estructura 3D real, no solo secuencia.
+    # 39(11):btad650, 2023) is the replacement: verified exhaustively
+    # 2026-08-06 (Opus subagent + our own re-verification by cloning the real
+    # repo) that it DOES have real, downloadable weights, unlike
+    # CoNglyPred. Architecture: ESM-1b (site_emb 1280 + local_emb 1280,
+    # ``model/get_esm_embedding.py``) + MIF (Microsoft's Masked Inverse
+    # Folding, ``model/MIF/``, a real STRUCTURAL embedding (256-dim) over
+    # the PDB's N/CA/C backbone coordinates), concatenated (2816-dim) and
+    # classified with an SVM (``sklearn.svm.SVC``, rbf kernel,
+    # probability=True). It preserves the design property already decided when
+    # discarding MTPrompt-PTM as a replacement for DeepPTMPred: the second engine
+    # of this type must consume real 3D structure, not sequence alone.
     #
-    # Pesos verificados a nivel de BYTES, no de README (2026-08-06):
-    # - MIF (``mif.pt``, 13.8MB): bundled directamente en el repo, sin
-    #   descarga aparte (fuente alternativa oficial: Zenodo
-    #   10.5281/zenodo.6573779 de Microsoft).
-    # - SVM (``N-GlyDE.pickle``, 36MB): carpeta publica de Google Drive
-    #   (id ``1hbnEtHHXTGnQAFm-cCHMj3pWQiAYAUsw``), descargada con una
-    #   peticion HTTP Range real sin autenticacion -- primeros bytes
-    #   confirman pickle protocolo 4, primer objeto
-    #   ``sklearn.svm._classes.SVC``, ``n_features_in_=2816`` (coincide
-    #   EXACTO con 1280+1280+256), ``_sklearn_version=1.1.1``. Se eligio
-    #   ``N-GlyDE.pickle`` (no ``N-GlyAltas_classifier.pkl``, tambien
-    #   disponible en la misma carpeta) porque esta entrenado sobre el
-    #   benchmark con NEGATIVOS RESTRINGIDOS AL SEQUON N-X-[S/T] -- el
-    #   regimen de benchmark correcto para este rol (ver STATUS.md, "punto
-    #   metodologico" de la investigacion 2026-08-06): un modelo entrenado
-    #   contra negativos sin restringir (dbPTM/MusiteDeep) puede acertar
-    #   solo aprendiendo el motivo N-X-[S/T], que este pipeline YA aplica
-    #   via ``_nglyco_window`` -- no aportaria una segunda opinion real.
+    # Weights verified at BYTE level, not from the README (2026-08-06):
+    # - MIF (``mif.pt``, 13.8MB): bundled directly in the repo, with no
+    #   separate download (official alternative source: Microsoft's Zenodo
+    #   10.5281/zenodo.6573779).
+    # - SVM (``N-GlyDE.pickle``, 36MB): a public Google Drive folder
+    #   (id ``1hbnEtHHXTGnQAFm-cCHMj3pWQiAYAUsw``), downloaded with a
+    #   real HTTP Range request without authentication; the first bytes
+    #   confirm pickle protocol 4, first object
+    #   ``sklearn.svm._classes.SVC``, ``n_features_in_=2816`` (matching
+    #   EXACTLY 1280+1280+256), ``_sklearn_version=1.1.1``.
+    #   ``N-GlyDE.pickle`` was chosen (not ``N-GlyAltas_classifier.pkl``, also
+    #   available in the same folder) because it is trained over the
+    #   benchmark with NEGATIVES RESTRICTED TO THE N-X-[S/T] SEQUON, the
+    #   correct benchmark regime for this role: a model trained
+    #   against unrestricted negatives (dbPTM/MusiteDeep) can be right
+    #   merely by learning the N-X-[S/T] motif, which this pipeline ALREADY applies
+    #   via ``_nglyco_window``, so it would not contribute a real second opinion.
     #
-    # NO tiene LICENSE declarado en ningun repo (el paper es CC-BY pero eso
-    # NO cubre el codigo) -- a diferencia de CoNglyPred, esto NO es
-    # bloqueante: los pesos ya estan descargables, el correo pendiente a
-    # Xiaoyang Hou/Shiwei Sun/Yaojun Wang (ICT-CAS) es solo para dejar
-    # limpio el expediente de licencias (mismo patron que funciono con
-    # DeepPTMPred), no una dependencia critica.
+    # It has NO declared LICENSE in any repo (the paper is CC-BY but that
+    # does NOT cover the code). Unlike CoNglyPred, this is NOT
+    # blocking: the weights are already downloadable, and the email pending to
+    # the corresponding authors (ICT-CAS) is only to leave the licence
+    # record clean (the same pattern that worked with
+    # DeepPTMPred), not a critical dependency.
     EMNGLY_ENABLED: bool = _env_bool("EMNGLY_ENABLED", True)
     EMNGLY_HOME: Path = Path(_env_str("EMNGLY_HOME", "EMNgly"))
     EMNGLY_RUNNER_SCRIPT: Path = Path(
@@ -377,92 +374,92 @@ class Settings:
             str(Path(__file__).resolve().parent.parent / "engines" / "_emngly_runner.py"),
         )
     )
-    # Python 3.x + fair-esm + torch + scikit-learn (venv dedicado
-    # recomendado, 'emngly', nunca compartido con otros motores). HALLAZGO
-    # REAL 2026-08-06: los pickles del SVM se generaron con
-    # scikit-learn==1.1.1, pero el 'environment.yml' del repo pinnea 1.5.1
-    # -- cargar con una version distinta a la de entrenamiento dispara
-    # 'InconsistentVersionWarning' (probablemente funciona, SVC es estable,
-    # pero no esta garantizado) -- pinnear scikit-learn==1.1.1 en el venv,
-    # no lo que pide el environment.yml del repo.
+    # Python 3.x + fair-esm + torch + scikit-learn (a dedicated venv is
+    # recommended, 'emngly', never shared with other engines). A REAL
+    # FINDING 2026-08-06: the SVM pickles were generated with
+    # scikit-learn==1.1.1, but the repo's 'environment.yml' pins 1.5.1,
+    # and loading with a version different from the training one triggers
+    # 'InconsistentVersionWarning' (it probably works, as SVC is stable,
+    # but it is not guaranteed), so pin scikit-learn==1.1.1 in the venv,
+    # not what the repo's environment.yml asks for.
     EMNGLY_PYTHON_BIN: str = _env_str("EMNGLY_PYTHON_BIN", sys.executable)
-    # ESM-1b (esm1b_t33_650M_UR50S, ~7.4GB + companero de regresion de
-    # contactos, mismo patron que Settings.DEEPPTMPRED_ESM_CHECKPOINT
-    # arriba) -- descarga separada, NO incluida en el repo. A diferencia
-    # del script original (``model/get_esm_embedding.py``, usa
-    # ``torch.hub.load`` contra ``dl.fbaipublicfiles.com`` en cada corrida,
-    # viola la politica local-only de este proyecto), el runner de este
-    # proyecto exige SIEMPRE una ruta ``.pt`` local -- mismo mecanismo ya
-    # verificado en ``_deepptmpred_runner.py`` (fair-esm entra por la rama
-    # local de ``pretrained.load_model_and_alphabet`` en cuanto el nombre
-    # termina en '.pt', nunca llama a la rama de red).
+    # ESM-1b (esm1b_t33_650M_UR50S, ~7.4GB plus the contact regression
+    # companion, the same pattern as Settings.DEEPPTMPRED_ESM_CHECKPOINT
+    # above): a separate download, NOT included in the repo. Unlike
+    # the original script (``model/get_esm_embedding.py``, which uses
+    # ``torch.hub.load`` against ``dl.fbaipublicfiles.com`` on every run,
+    # violating this project's local-only policy), this project's
+    # runner ALWAYS requires a local ``.pt`` path, the same mechanism already
+    # verified in ``_deepptmpred_runner.py`` (fair-esm enters the
+    # local branch of ``pretrained.load_model_and_alphabet`` as soon as the name
+    # ends in '.pt', and never calls the network branch).
     EMNGLY_ESM_CHECKPOINT: Path = Path(
         _env_str("EMNGLY_ESM_CHECKPOINT", "EMNgly/esm/checkpoints/esm1b_t33_650M_UR50S.pt")
     )
-    # Pesos MIF, bundled en el repo (ver arriba) -- sin descarga aparte.
+    # MIF weights, bundled in the repo (see above), with no separate download.
     EMNGLY_MIF_WEIGHTS: Path = Path(_env_str("EMNGLY_MIF_WEIGHTS", "EMNgly/model/MIF/weights/mif.pt"))
-    # SVM entrenado sobre N-GlyDE (negativos restringidos al sequon, ver
-    # arriba) -- descarga manual desde Google Drive, ver README.md Seccion
-    # de instalacion.
+    # An SVM trained on N-GlyDE (negatives restricted to the sequon, see
+    # above): a manual download from Google Drive, see the README.md
+    # Installation section.
     EMNGLY_SVM_CHECKPOINT: Path = Path(
         _env_str("EMNGLY_SVM_CHECKPOINT", "EMNgly/checkpoints/N-GlyDE.pickle")
     )
-    # Cache de embeddings ESM-1b/MIF por accession, mismo patron que
-    # DEEPPTMPRED_CUSTOM_ESM_DIR (evita recalcular el embedding de
-    # secuencia/estructura completa en cada corrida).
+    # Per-accession cache of ESM-1b/MIF embeddings, the same pattern as
+    # DEEPPTMPRED_CUSTOM_ESM_DIR (it avoids recomputing the complete
+    # sequence/structure embedding on every run).
     EMNGLY_CACHE_DIR: Path = Path(_env_str("EMNGLY_CACHE_DIR", "EMNgly/cache"))
     EMNGLY_TIMEOUT_SECONDS: int = _env_int("EMNGLY_TIMEOUT_SECONDS", 1800)
-    # Umbral 0.5 (decision 2026-08-06): el paper de EMNGly no publica un
-    # cutoff de probabilidad fijo, solo AUC/MCC a nivel de dataset completo
-    # -- 0.5 es el limite de decision nativo de un SVC(probability=True) sin
-    # calibrar contra un umbral operativo especifico. Ya NO es provisional:
-    # los 2 go/no-go checks (STATUS.md, seccion "Decision 2") PASARON
-    # 2026-08-07 -- alineamiento de structure_emb verificado contra sitios
-    # GlyGen reales en un PDB con huecos, y MCC=0.8197 reproducido (y
-    # superado) contra el 0.736 publicado, en este mismo umbral.
+    # Threshold 0.5 (decision 2026-08-06): the EMNGly paper does not publish a
+    # fixed probability cutoff, only AUC/MCC at whole-dataset level,
+    # and 0.5 is the native decision boundary of an SVC(probability=True) without
+    # calibration against a specific operating threshold. It is NO longer provisional:
+    # the 2 go/no-go checks PASSED
+    # 2026-08-07, with the structure_emb alignment verified against real
+    # GlyGen sites in a PDB with gaps, and MCC=0.8197 reproduced (and
+    # exceeded) against the published 0.736, at this very threshold.
     EMNGLY_MIN_PROBABILITY: float = _env_float("EMNGLY_MIN_PROBABILITY", 0.5)
 
-    # --- Consenso de N-glicosilacion (Camino PDB): regla de fusion de 2 motores ---
-    # Decision 2026-08-06: promueve a EMNGly (junto con StackGlyEmbed en su
-    # momento, eliminado del proyecto 2026-08-10 por decision de Carlos --
-    # dependia del venv de un proyecto hermano, friccion real de cara a la
-    # integracion a Scipion) a motor de consenso real para
-    # 'n_linked_glycosylation'/'glycosylation_n' en Camino PDB (unico lugar
-    # donde EMNGly puede correr -- exige un PDB real). Motivo: DeepPTMPred
-    # esta confirmado muerto para este tipo exacto (AUROC~=0.51,
-    # CONSENSUS_EXCLUDED_TYPES en ptm_annotation.py) -- sin un segundo motor
-    # real, este tipo se quedaba con DeepMVP en solitario, sin ningun
-    # consenso posible.
+    # --- N-glycosylation consensus (PDB path): the 2-engine fusion rule ---
+    # Decision 2026-08-06: it promotes EMNGly (together with StackGlyEmbed at the
+    # time, removed from the project 2026-08-10 by project decision, as it
+    # depended on a sibling project's venv, real friction for the
+    # Scipion integration) to a real consensus engine for
+    # 'n_linked_glycosylation'/'glycosylation_n' on the PDB path (the only place
+    # where EMNGly can run, as it demands a real PDB). The reason: DeepPTMPred
+    # is confirmed dead for this exact type (AUROC~=0.51,
+    # CONSENSUS_EXCLUDED_TYPES in ptm_annotation.py), so without a second real
+    # engine this type was left with DeepMVP alone, with no
+    # consensus possible.
     #
-    # Regla (provisional, decision de Enzo si se ajusta tras el uso real):
-    # de los motores que SI lograron evaluar la posicion (DeepMVP siempre;
-    # EMNGly degrada a ausente sin lanzar si no esta instalado o el
-    # subproceso falla, ver emngly_engine.py) -- 'pasa_umbral' = al menos 1
-    # motor pasa su propio umbral (generaliza la regla OR de 2 motores ya
-    # usada en el resto de tipos); 'consenso' = al menos
-    # NGLYCO_CONSENSUS_MIN_ENGINES (default 2) pasan, lo que en la practica
-    # exige que AMBOS motores (DeepMVP y EMNGly) pasen. Si solo DeepMVP
-    # logro evaluar la posicion (EMNGly degradado), 'consenso' queda SIEMPRE
-    # False -- no hay forma de alcanzar 2 con un solo motor disponible,
-    # mismo comportamiento (motor unico, sin consenso) que existia antes de
-    # esta mejora.
+    # The rule (provisional, a project decision if it is adjusted after real use):
+    # of the engines that DID manage to evaluate the position (DeepMVP always;
+    # EMNGly degrades to absent without raising if it is not installed or the
+    # subprocess fails, see emngly_engine.py), 'pasa_umbral' = at least 1
+    # engine passes its own threshold (generalizing the 2-engine OR rule already
+    # used for the other types); 'consenso' = at least
+    # NGLYCO_CONSENSUS_MIN_ENGINES (default 2) pass, which in practice
+    # requires BOTH engines (DeepMVP and EMNGly) to pass. If only DeepMVP
+    # managed to evaluate the position (EMNGly degraded), 'consenso' is ALWAYS
+    # False, as there is no way to reach 2 with a single available engine,
+    # the same behaviour (single engine, no consensus) that existed before
+    # this improvement.
     NGLYCO_CONSENSUS_MIN_ENGINES: int = _env_int("NGLYCO_CONSENSUS_MIN_ENGINES", 2)
 
-    # --- Avisos informativos de coherencia biologica (analisis 2026-08-07,
-    # ver README.md "Alcance e interpretacion") -- ambos NUNCA deciden
-    # pasa_umbral/consenso, mismo patron que MeToken.
-    # A diferencia de ese, no dependen de pdb_path --
-    # se ejecutan en ambos caminos siempre que esten habilitados (son
-    # chequeos ligeros: una consulta HTTP a UniProt por accession, o logica
-    # pura de pandas -- sin instalacion externa que degradar). Ambos
-    # default True, toggleable por si se necesita una corrida
-    # deterministica/offline (tests, red no disponible).
+    # --- Informative biological coherence warnings (analysis 2026-08-07,
+    # see README.md "Scope and interpretation"): both NEVER decide
+    # pasa_umbral/consenso, the same pattern as MeToken.
+    # Unlike it, they do not depend on pdb_path:
+    # they run on both paths whenever they are enabled (they are
+    # lightweight checks, one HTTP query to UniProt per accession, or pure
+    # pandas logic, with no external installation to degrade). Both
+    # default to True, and are toggleable in case a
+    # deterministic/offline run is needed (tests, network unavailable).
     SECRETORY_PATHWAY_CHECK_ENABLED: bool = _env_bool("SECRETORY_PATHWAY_CHECK_ENABLED", True)
     PTM_CROSSTALK_CHECK_ENABLED: bool = _env_bool("PTM_CROSSTALK_CHECK_ENABLED", True)
 
     @classmethod
     def ensure_dirs(cls) -> None:
-        """Crea todas las carpetas de entrada/salida configuradas si no existen."""
+        """Creates all the configured input/output folders if they do not exist."""
         cls.FASTA_INPUT_DIR.mkdir(parents=True, exist_ok=True)
         cls.FASTA_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         cls.DBPTM_DATA_DIR.mkdir(parents=True, exist_ok=True)

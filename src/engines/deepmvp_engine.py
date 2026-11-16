@@ -1,41 +1,41 @@
-"""Fase 2: prediccion de zonas PTM via DeepMVP LOCAL (subprocess puro).
+"""Phase 2: PTM zone prediction via LOCAL DeepMVP (pure subprocess).
 
-Motor unico del Camino FASTA; motor 1 de 2 (junto a DeepPTMPred, no
-implementado todavia) del consenso en Camino PDB.
+The only engine of the FASTA path; engine 1 of 2 (alongside DeepPTMPred) of
+the consensus on the PDB path.
 
-Verificado leyendo directamente github.com/bzhanglab/DeepMVP (README.md,
-DeepMVP.py, lib/PTModels.py, lib/Metrics.py) el 2026-07-27 -- no por resumen
-de buscador. Repo real y empaquetado (``requirements.txt`` + ``environment.yml``,
-GPL-3.0), pesos NO incluidos (descarga manual separada, ver
+Verified by reading github.com/bzhanglab/DeepMVP directly (README.md,
+DeepMVP.py, lib/PTModels.py, lib/Metrics.py) on 2026-07-27, not from a search
+engine summary. A real, packaged repo (``requirements.txt`` + ``environment.yml``,
+GPL-3.0), with weights NOT included (a separate manual download, see
 ``Settings.DEEPMVP_DOWNLOAD_URL``).
 
-CLI real (confirmado en ``DeepMVP.py``, coincide con el ejemplo del README):
+The real CLI (confirmed in ``DeepMVP.py``, matching the README example):
 ``python DeepMVP.py predict -m <model_dir> -d <fasta> -t 2 -o <out_dir>``.
-Sin ``-i``: en modo tarea 2 (PTM site prediction) sin ``-i``, DeepMVP extrae
-por si mismo TODOS los sitios candidatos de cada tipo de PTM soportado
-directamente del FASTA (-d), uno por cada residuo del alfabeto de cada
-modelo (K para acetilacion, S/T para fosforilacion_st, etc.) -- exactamente
-el caso de uso de este wrapper (anotar todo el proteoma de entrada, no un
-sitio puntual).
+Without ``-i``: in task mode 2 (PTM site prediction) without ``-i``, DeepMVP extracts
+by itself ALL the candidate sites of each supported PTM type
+directly from the FASTA (-d), one for each residue of each model's
+alphabet (K for acetylation, S/T for phosphorylation_st, etc.), which is exactly
+this wrapper's use case (annotating the whole input proteome, not a
+single site).
 
-Salida fija (no configurable via flags de DeepMVP, confirmado en
-``lib/PTModels.py::ptm_prediction_for_multiple_ptms``, prefix hardcodeado a
-``"site_prediction"``): ``<out_dir>/site_prediction.tsv`` con columnas
-``protein | aa | pos | x | y_pred | fpr | ptm`` (concatenado de las 8
-subcarpetas de modelo por tipo de PTM: acetylation_k, glycosylation_n,
+Fixed output (not configurable via DeepMVP flags, confirmed in
+``lib/PTModels.py::ptm_prediction_for_multiple_ptms``, with the prefix hardcoded to
+``"site_prediction"``): ``<out_dir>/site_prediction.tsv`` with the columns
+``protein | aa | pos | x | y_pred | fpr | ptm`` (concatenated from the 8
+model subfolders per PTM type: acetylation_k, glycosylation_n,
 methylation_k, methylation_r, phosphorylation_st, phosphorylation_y,
-sumoylation_k, ubiquitination_k -- 8 modelos especificos de residuo que
-cubren las 6 categorias biologicas de PTM del proyecto).
+sumoylation_k, ubiquitination_k, that is, 8 residue-specific models that
+cover the project's 6 biological PTM categories).
 
-Tolerancia a residuos no canonicos (confirmado leyendo
-``lib/PeptideEncode.py::encodePeptideOneHot``): DeepMVP NO aborta ante un
-residuo fuera del alfabeto estandar -- 'X' se codifica como vector de ceros,
-cualquier otro caracter no reconocido como vector de 0.5 con un aviso
-impreso (el ``exit(1)`` correspondiente esta comentado en el codigo real).
-Esto es MAS PERMISIVO que la politica de rechazo fatal por defecto de
-``src.utils.fasta_parser`` (documentada ahi como conservadora, pendiente de
-verificar) -- decision pendiente de discutir con el usuario, no se relaja
-la politica de Fase 1 unilateralmente aqui.
+Tolerance to non-canonical residues (confirmed by reading
+``lib/PeptideEncode.py::encodePeptideOneHot``): DeepMVP does NOT abort on a
+residue outside the standard alphabet; 'X' is encoded as a zero vector, and
+any other unrecognized character as a vector of 0.5 with a printed
+warning (the corresponding ``exit(1)`` is commented out in the real code).
+This is MORE PERMISSIVE than the default fatal-rejection policy of
+``src.utils.fasta_parser`` (documented there as conservative, pending
+verification), a decision still to be discussed, so the Phase 1 policy is not
+relaxed unilaterally here.
 """
 
 import os

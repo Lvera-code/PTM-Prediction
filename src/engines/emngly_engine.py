@@ -1,31 +1,31 @@
-"""Motor real de consenso para 'n_linked_glycosylation' (EMNGly), Camino PDB unicamente.
+"""The real consensus engine for 'n_linked_glycosylation' (EMNGly), PDB path only.
 
-Reemplaza a CoNglyPred (candidato original de Decision 2, confirmado
-DEFINITIVAMENTE sin pesos publicados en ningun sitio -- ver STATUS.md,
-seccion Decision 2). Este modulo invoca
-``src/engines/_emngly_runner.py`` (vendorizado, ver su docstring para el
-detalle completo de la arquitectura, la reimplementacion local-only de ESM-1b
-y el fix de alineamiento de ``structure_emb``) via subprocess, sobre el venv
-dedicado ``Settings.EMNGLY_PYTHON_BIN``.
+It replaces CoNglyPred (the original Decision 2 candidate, confirmed
+DEFINITIVELY to have no published weights anywhere, see the project decision
+record, the Decision 2 section). This module invokes
+``src/engines/_emngly_runner.py`` (vendored, see its docstring for the
+complete detail of the architecture, the local-only reimplementation of ESM-1b
+and the ``structure_emb`` alignment fix) via subprocess, on the dedicated venv
+``Settings.EMNGLY_PYTHON_BIN``.
 
-## Rol en el consenso (decision 2026-08-06, ver ``src/engines/ptm_annotation.py``)
+## Role in the consensus (decision 2026-08-06, see ``src/engines/ptm_annotation.py``)
 
-A diferencia de MeToken (puramente informativo, nunca decide
-``pasa_umbral``/``consenso``), EMNGly SI es un motor de consenso real --
-junto con DeepMVP, es la segunda opinion real que reemplaza a DeepPTMPred
-para este tipo especifico (confirmado modelo muerto, AUROC~=0.51,
-``CONSENSUS_EXCLUDED_TYPES`` en ``ptm_annotation.py``). StackGlyEmbed
-corria aqui como tercer motor hasta 2026-08-10 (eliminado del proyecto,
-ver STATUS.md).
+Unlike MeToken (purely informative, it never decides
+``pasa_umbral``/``consenso``), EMNGly IS a real consensus engine:
+together with DeepMVP, it is the real second opinion that replaces DeepPTMPred
+for this specific type (confirmed as a dead model, AUROC~=0.51,
+``CONSENSUS_EXCLUDED_TYPES`` in ``ptm_annotation.py``). StackGlyEmbed
+ran here as a third engine until 2026-08-10 (removed from the project,
+see the project decision record).
 
-Aun asi, SIGUE degradando de forma no-fatal (mismo patron que
-``metoken_engine.py``, NUNCA como ``DeepPTMPredEngine``/``DeepMVPEngine``
-que lanzan si la instalacion falta): si EMNGly no esta instalado en esta
-maquina, ``ptm_annotation.py`` cae a DeepMVP en solitario, sin consenso
-posible para este tipo -- no bloquea el resto del pipeline. Requiere
-``pdb_path`` (Camino PDB unicamente, EMNGly exige estructura real via MIF)
-y la tabla de mapeo de posiciones de Fase 1.5 (``position_mapping``, para
-alinear ``structure_emb`` correctamente -- ver docstring del runner).
+Even so, it STILL degrades non-fatally (the same pattern as
+``metoken_engine.py``, NEVER like ``DeepPTMPredEngine``/``DeepMVPEngine``
+which raise if the installation is missing): if EMNGly is not installed on this
+machine, ``ptm_annotation.py`` falls back to DeepMVP alone, with no consensus
+possible for this type, and it does not block the rest of the pipeline. It requires
+``pdb_path`` (PDB path only, as EMNGly demands a real structure via MIF)
+and the Phase 1.5 position mapping table (``position_mapping``, in order to
+align ``structure_emb`` correctly, see the runner's docstring).
 """
 
 import os

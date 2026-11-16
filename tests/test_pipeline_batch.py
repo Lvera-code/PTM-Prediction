@@ -1,5 +1,5 @@
 """Tests del modo batch (--input apunta a un directorio), punto 5 del plan de robustez
-post-demo-prep (STATUS.md, diario del vault 2026-08-03). Mismo criterio de mocking que
+post-demo-prep (el registro de decisiones del proyecto, diario del vault 2026-08-03). Mismo criterio de mocking que
 test_pipeline_fase1.py: Fase 1/1.5 corren con logica real, los motores se mockean a nivel
 de ``Engine.run``.
 """

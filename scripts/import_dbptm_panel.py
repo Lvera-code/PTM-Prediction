@@ -1,48 +1,48 @@
-"""Importa el panel de validacion biologica desde dbPTM (decision 2026-08-09, vault).
+"""Imports the biological validation panel from dbPTM (decision 2026-08-09, vault).
 
-## Por que existe
+## Why it exists
 
-`src/validation/biological_panel.py` era un panel de 7 proteinas curadas a mano,
-cada sitio con su PMID verificado uno por uno -- representativo del rigor del
-proyecto (nunca fabricar datos cientificos), pero chico. Este script construye
-una base de datos GRANDE de sitios PTM humanos reales derivada de dbPTM
-(Academia Sinica/CUHK), que alimenta la columna "Literatura" del CLI
-(`pipeline.py::_ground_truth_lookup`, via `src/validation/dbptm_lookup.py`) para
-CUALQUIER proteina humana, no solo las 7-31 curadas a mano que ademas corren el
-pipeline completo para medir recall (ver `scripts/select_recall_subset.py`).
+`src/validation/biological_panel.py` was a panel of 7 manually curated proteins,
+each site with its PMID verified one by one, representative of the project's
+rigour (never fabricate scientific data) but small. This script builds
+a LARGE database of real human PTM sites derived from dbPTM
+(Academia Sinica/CUHK), which feeds the CLI's "Literatura" column
+(`pipeline.py::_ground_truth_lookup`, via `src/validation/dbptm_lookup.py`) for
+ANY human protein, not only the 7-31 manually curated ones that also run the
+complete pipeline to measure recall (see `scripts/select_recall_subset.py`).
 
-## Hechos verificados en vivo, no asumidos de la documentacion (2026-08-09)
+## Facts verified live, not assumed from the documentation (2026-08-09)
 
-- Descarga real: `https://biomics.lab.nycu.edu.tw/dbPTM/download/experiment/{type}.gz`
-  (el mirror `awi.cuhk.edu.cn` devolvio HTTP 403 a fetch automatizado -- descartado).
-- Cada `.gz` es un tar de UN SOLO miembro (`tarfile.open(mode="r:gz")`, no
-  `gzip.open` directo), sin cabecera, 6 columnas tab-delimited:
-  `nombre_proteina, accession, posicion(1-based), tipo_dbptm, pmids(';'-separados),
-  ventana_secuencia(21 chars, centro=indice 10 0-based, '-'=relleno de extremo)`.
-  Formato confirmado identico en los 16 archivos relevantes (los 16, no una
-  muestra -- ver verificacion real hecha durante la implementacion).
-- dbPTM solo tiene "Methylation" generico (no separa Lys/Arg) -- se resuelve
-  mirando el residuo en el centro de la ventana (K -> lys_methylation,
-  R -> arg_methylation), sin necesitar el PDB.
-- Filtrado a humano *reviewed*: ~29% de las filas sobreviven (verificado real
-  contra Phosphorylation: 462965/1615054), via
+- Real download: `https://biomics.lab.nycu.edu.tw/dbPTM/download/experiment/{type}.gz`
+  (the `awi.cuhk.edu.cn` mirror returned HTTP 403 to an automated fetch, and was discarded).
+- Each `.gz` is a tar with a SINGLE member (`tarfile.open(mode="r:gz")`, not
+  `gzip.open` directly), without a header, with 6 tab-delimited columns:
+  `protein_name, accession, position(1-based), dbptm_type, pmids(';'-separated),
+  sequence_window(21 chars, centre=index 10 0-based, '-'=end padding)`.
+  The format was confirmed identical in all 16 relevant files (all 16, not a
+  sample).
+- dbPTM only has a generic "Methylation" (it does not separate Lys/Arg), which is resolved
+  by looking at the residue at the centre of the window (K -> lys_methylation,
+  R -> arg_methylation), without needing the PDB.
+- Filtering to human *reviewed*: ~29% of the rows survive (verified real
+  against Phosphorylation: 462965/1615054), via
   `src/validation/uniprot_human_accessions.py`.
-- **Hallazgo real durante la primera corrida completa (2026-08-09)**: la
-  columna de PMIDs no siempre son solo enteros separados por ';'. Tokens no
-  numericos reales encontrados: `"UniProtKB CARBOHYD"` (23330 apariciones,
-  sobre todo en N/O-linked Glycosylation -- una referencia a la propia
-  anotacion curada de UniProt, no un PMID), `"-"` (sin referencia), `"N.N."`,
-  `"doi:..."` (DOI en vez de PMID), `"<numero>PubMed"` (122 casos, PMID real
-  con el sufijo "PubMed" pegado -- se recupera quitando el sufijo) y
-  `"<numero>?"` (3 casos, el propio dbPTM marca la cita como incierta -- se
-  descarta el token, no se recupera, para no tratar una cita dudosa como
-  confirmada). Una fila puede mezclar PMIDs reales con tokens no numericos en
-  la misma lista -- se filtra token por token, la fila solo se descarta si
-  NINGUN token sobrevive (antes se descartaba la fila entera si CUALQUIER
-  token no era numerico, perdiendo PMIDs reales -- bug real, corregido).
+- **A real finding during the first complete run (2026-08-09)**: the
+  PMID column is not always only integers separated by ';'. Real non-numeric
+  tokens found: `"UniProtKB CARBOHYD"` (23330 occurrences,
+  mostly in N/O-linked Glycosylation, a reference to UniProt's own curated
+  annotation, not a PMID), `"-"` (no reference), `"N.N."`,
+  `"doi:..."` (a DOI instead of a PMID), `"<number>PubMed"` (122 cases, a real PMID
+  with the "PubMed" suffix attached, recovered by removing the suffix) and
+  `"<number>?"` (3 cases, where dbPTM itself marks the citation as uncertain, so
+  the token is discarded rather than recovered, so as not to treat a doubtful citation as
+  confirmed). A row can mix real PMIDs with non-numeric tokens in
+  the same list, so it is filtered token by token, and the row is only discarded if
+  NO token survives (previously the whole row was discarded if ANY
+  token was non-numeric, losing real PMIDs, a real bug, now corrected).
 
-Corre en el venv principal del pipeline (`cnb_pipeline`, stdlib urllib/sqlite3,
-sin dependencia nueva).
+It runs in the pipeline's main venv (`cnb_pipeline`, stdlib urllib/sqlite3,
+with no new dependency).
 """
 
 import io

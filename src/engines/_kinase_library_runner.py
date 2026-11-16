@@ -1,38 +1,38 @@
 #!/usr/bin/env python
-"""Runner standalone de Kinase Library (corroboracion informativa de especificidad de quinasa).
+"""Standalone runner for Kinase Library (informative corroboration of kinase specificity).
 
-Analisis de coherencia biologica 2026-08-07, punto 5: ningun motor de este
-pipeline (DeepMVP/DeepPTMPred) distingue QUE familia de quinasa fosforila un
-sitio -- todos predicen "fosforilable en general", nunca por quien. A
-diferencia del tipo de cadena de poliubiquitina (evento celular posterior no
-observable a partir de secuencia -- razonamiento que vivia en Fase A/3c,
-eliminada del alcance 2026-08-10), la especificidad de quinasa SI es una
-propiedad local de secuencia alrededor del sitio -- verificado 2026-08-07
-que existe una fuente real, publicada y descargable: Johnson et al. 2023
+Biological coherence analysis 2026-08-07, point 5: no engine of this
+pipeline (DeepMVP/DeepPTMPred) distinguishes WHICH kinase family phosphorylates a
+site; they all predict "phosphorylatable in general", never by whom. Unlike
+the polyubiquitin chain type (a later cellular event not
+observable from sequence, a line of reasoning that lived in Phase A/3c,
+removed from scope 2026-08-10), kinase specificity IS a
+local sequence property around the site, and it was verified on 2026-08-07
+that a real, published and downloadable source exists: Johnson et al. 2023
 Nature ("An atlas of substrate specificities for the human serine/threonine
-kinome", 303 quinasas) + Yaron-Barir et al. 2024 Nature ("The intrinsic
-substrate specificity of the human tyrosine kinome"), empaquetadas juntas en
-``kinase-library`` (PyPI, github.com/TheKinaseLibrary/kinase-library, licencia
-CC-BY-NC-SA-3.0 -- misma familia no comercial ya aceptada para EMNGly).
+kinome", 303 kinases) + Yaron-Barir et al. 2024 Nature ("The intrinsic
+substrate specificity of the human tyrosine kinome"), packaged together in
+``kinase-library`` (PyPI, github.com/TheKinaseLibrary/kinase-library, licence
+CC-BY-NC-SA-3.0, the same non-commercial family already accepted for EMNGly).
 
-``kl.Substrate(sequence, phos_pos=position)`` acepta la secuencia COMPLETA de
-la proteina + la posicion 1-based del fosfoaceptor -- la libreria misma
-extrae y rellena (con '_', tratado como comodin) la ventana de 15 residuos
-centrada en el sitio, sin necesidad de reimplementar ese recorte aqui.
-Auto-detecta Ser/Thr vs Tyr por el residuo real en esa posicion (verificado
-2026-08-07 con un ejemplo real de cada tipo: p53 S33 -> top hit ATM, coincide
-con la literatura real de respuesta a dano en el ADN; un fosfositio Y
-sintetico -> top hits del kinoma Tyr, nunca del kinoma Ser/Thr).
+``kl.Substrate(sequence, phos_pos=position)`` accepts the COMPLETE sequence of
+the protein plus the 1-based position of the phosphoacceptor; the library itself
+extracts and pads (with '_', treated as a wildcard) the 15-residue window
+centred on the site, so there is no need to reimplement that trimming here.
+It auto-detects Ser/Thr vs Tyr from the real residue at that position (verified
+2026-08-07 with a real example of each type: p53 S33 -> top hit ATM, which matches
+the real literature on the DNA damage response; a synthetic Y
+phosphosite -> top hits from the Tyr kinome, never from the Ser/Thr kinome).
 
-Entorno DEDICADO (conda env ``kinase_library``, ver ``Settings.KINASE_LIBRARY_*``):
-``numpy~=1.26.4``/``pandas~=2.2.3`` que fija el propio paquete son
-incompatibles con las versiones fijadas del venv principal de este pipeline
-(``numpy==2.2.6``/``pandas==2.3.3``, ver requirements.txt) -- mismo motivo por
-el que DeepMVP/DeepPTMPred/MeToken tampoco viven en el venv principal.
+A DEDICATED environment (the ``kinase_library`` conda env, see ``Settings.KINASE_LIBRARY_*``):
+the ``numpy~=1.26.4``/``pandas~=2.2.3`` that the package itself pins are
+incompatible with the versions pinned in this pipeline's main venv
+(``numpy==2.2.6``/``pandas==2.3.3``, see requirements.txt), the same reason
+why DeepMVP/DeepPTMPred/MeToken do not live in the main venv either.
 
-Un sitio individual que falla (residuo real no es S/T/Y en esa posicion,
-posicion fuera de rango, etc.) NUNCA tumba el resto del lote -- se omite y se
-continua, mismo criterio que ``_metoken_runner.py``.
+An individual site that fails (the real residue is not S/T/Y at that position,
+the position is out of range, etc.) NEVER brings down the rest of the batch; it is skipped and
+execution continues, the same criterion as ``_metoken_runner.py``.
 """
 
 import argparse

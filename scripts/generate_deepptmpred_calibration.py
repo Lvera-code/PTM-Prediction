@@ -1,83 +1,83 @@
 #!/usr/bin/env python
-"""Calibra el umbral de probabilidad de DeepPTMPred con datos reales, por tipo de PTM.
+"""Calibrates DeepPTMPred's probability threshold with real data, per PTM type.
 
-Standalone -- requiere el stack de DeepPTMPred (TensorFlow 2.15, PyTorch,
-PyRosetta, fair-esm), correr con el conda env `deepptmpred`
+Standalone: it requires the DeepPTMPred stack (TensorFlow 2.15, PyTorch,
+PyRosetta, fair-esm), so run it with the `deepptmpred` conda env
 (``conda run -n deepptmpred python scripts/generate_deepptmpred_calibration.py``),
-nunca con el interprete principal del pipeline.
+never with the pipeline's main interpreter.
 
-## Por que existe
+## Why it exists
 
-``Settings.DEEPPTMPRED_MIN_PROBABILITY`` (0.5) es un cutoff heredado del propio
-repo, hardcodeado en ``predict.py`` sin documentar de donde sale ni contra que
-validation set se calibro (a diferencia del ``fpr`` de DeepMVP, que si viene de
-un archivo de validacion real). Este script corre el modelo REAL (los ``.h5``
-ya instalados, via ``predict.PTMPredictor``, el mismo codigo que usa
-``src/engines/_deepptmpred_runner.py`` en produccion) sobre una MUESTRA
-representativa de sitios reales con etiqueta conocida, y mide AUROC/umbral
-optimo (Youden's J) por cada uno de los 17 tipos soportados.
+``Settings.DEEPPTMPRED_MIN_PROBABILITY`` (0.5) is a cutoff inherited from the
+repo itself, hardcoded in ``predict.py`` without documenting where it comes from or against which
+validation set it was calibrated (unlike DeepMVP's ``fpr``, which does come from
+a real validation file). This script runs the REAL model (the ``.h5`` files
+already installed, via ``predict.PTMPredictor``, the same code that
+``src/engines/_deepptmpred_runner.py`` uses in production) over a REPRESENTATIVE
+sample of real sites with a known label, and measures AUROC and the optimal
+threshold (Youden's J) for each of the 17 supported types.
 
-## De donde sale el dataset etiquetado
+## Where the labelled dataset comes from
 
-``DeepPTMPred/data/ptm_data.csv.gz`` -- mismo nombre/esquema de columnas que
-``ptm_data.csv`` referenciado en el propio README de DeepPTMPred (enlace de
-Google Drive, no descargable via HTTP simple), obtenido en cambio desde
-``github.com/meilerlab/PTMPrediction`` (verificado real: mismas 18 columnas
-que consume ``DeepPTMPred/pred/train_PTM/data_loader.py::load_dataset``
--- ``label, entry, pos, trunc_seq, sasa, phi, psi, secstruct, local_plDDT,
-avg_plDDT, ptm, mod_aa, ...`` -- practicamente con total seguridad la misma
-fuente). 188278 filas reales, 26796 entries unicos (verificado con pandas
-2026-07-30 -- la cifra de 376557 filas en STATUS.md, previa a esta
-verificacion, era incorrecta).
+``DeepPTMPred/data/ptm_data.csv.gz``, with the same name/column schema as
+``ptm_data.csv`` referenced in DeepPTMPred's own README (a
+Google Drive link, not downloadable via plain HTTP), obtained instead from
+``github.com/meilerlab/PTMPrediction`` (verified real: the same 18 columns
+that ``DeepPTMPred/pred/train_PTM/data_loader.py::load_dataset`` consumes,
+``label, entry, pos, trunc_seq, sasa, phi, psi, secstruct, local_plDDT,
+avg_plDDT, ptm, mod_aa, ...``, almost certainly the same
+source). 188278 real rows, 26796 unique entries (verified with pandas
+2026-07-30; the figure of 376557 rows recorded before this
+verification was incorrect).
 
-## Por que NO se usan las columnas estructurales del propio CSV
+## Why the CSV's own structural columns are NOT used
 
-``sasa/phi/psi/secstruct/local_plDDT`` del CSV son snapshots precomputados
-(por los autores, con metodo no documentado) usados solo en su pipeline de
-ENTRENAMIENTO (``data_loader.py::load_dataset``), no en el de INFERENCIA real
-que corre en produccion (``predict.py::PTMPredictor``, el que llama nuestro
-runner). Ademas se confirmo un bug real en ``data_loader.py`` (linea 139-141):
-``phi_center``/``psi_center`` se extraen con
-``half_window = (max(window_sizes)-1)//2 = 25``, pero el array ``phi``/``psi``
-del CSV solo tiene 11 elementos -- la condicion ``len(x) > half_window`` es
-SIEMPRE falsa, asi que ``phi_center``/``psi_center`` fueron 0.0 constante
-durante el entrenamiento real del modelo shippeado. Para calibrar el
-comportamiento REAL de ese modelo en produccion (lo que le importa a este
-pipeline, no una version idealizada que nunca se entreno), hay que replicar
-la ruta de INFERENCIA (estructura PyRosetta real + ventanas desde la
-secuencia completa + ESM-2 real), no la de entrenamiento -- de ahi que este
-script descargue estructura/secuencia real por proteina en vez de reusar las
-columnas del CSV directamente.
+The CSV's ``sasa/phi/psi/secstruct/local_plDDT`` are precomputed snapshots
+(by the authors, with an undocumented method) used only in their TRAINING
+pipeline (``data_loader.py::load_dataset``), not in the real INFERENCE one
+that runs in production (``predict.py::PTMPredictor``, the one our runner calls).
+In addition, a real bug was confirmed in ``data_loader.py`` (lines 139-141):
+``phi_center``/``psi_center`` are extracted with
+``half_window = (max(window_sizes)-1)//2 = 25``, but the CSV's ``phi``/``psi``
+array has only 11 elements, so the condition ``len(x) > half_window`` is
+ALWAYS false, meaning ``phi_center``/``psi_center`` were a constant 0.0
+during the real training of the shipped model. In order to calibrate the
+REAL behaviour of that model in production (which is what matters to this
+pipeline, not an idealized version that was never trained), the INFERENCE
+path must be replicated (real PyRosetta structure + windows from the
+complete sequence + real ESM-2), not the training one, which is why this
+script downloads real structure/sequence per protein instead of reusing the
+CSV's columns directly.
 
-## Fuentes externas (secuencia + estructura real por proteina)
+## External sources (real sequence + structure per protein)
 
-Solo se muestrean entries tipo UniProt (>=97% del dataset, ver
-``_looks_like_pdb_entry``; los ~1918 sitios con entry tipo PDB p.ej.
-``7V6D_A`` quedan fuera de esta muestra, decision explicita para mantener
-una unica ruta de fetch). Por accession:
-``https://www.alphafold.ebi.ac.uk/api/prediction/{accession}`` (verificado
-real 2026-07-30) devuelve tanto la secuencia EXACTA usada por el modelo como
-``pdbUrl`` -- confirmado que AlphaFold DB ya sirve ``v6`` (no ``v4``, la
-version que aparece en los nombres de archivo ya presentes en
-``DeepPTMPred/data/*.pdb`` de sesiones anteriores -- esos archivos siguen
-siendo validos, solo que si se necesita descargar una proteina NUEVA hay que
-resolver la URL real via este API en vez de asumir el patron
-``AF-{acc}-F1-model_v4.pdb``, que ahora devuelve 404). Se usa la ``sequence``
-que devuelve el API (no un fetch aparte a UniProt) para garantizar que
-secuencia y estructura sean exactamente consistentes.
+Only UniProt-style entries are sampled (>=97% of the dataset, see
+``_looks_like_pdb_entry``; the ~1918 sites with a PDB-style entry, for example
+``7V6D_A``, are left out of this sample, an explicit decision in order to keep
+a single fetch path). Per accession,
+``https://www.alphafold.ebi.ac.uk/api/prediction/{accession}`` (verified
+real 2026-07-30) returns both the EXACT sequence used by the model and
+``pdbUrl``. It is confirmed that AlphaFold DB now serves ``v6`` (not ``v4``, the
+version that appears in the file names already present in
+``DeepPTMPred/data/*.pdb`` from earlier sessions; those files remain
+valid, it is only that in order to download a NEW protein the real URL must be
+resolved via this API rather than assuming the pattern
+``AF-{acc}-F1-model_v4.pdb``, which now returns 404). The ``sequence``
+returned by the API is used (not a separate fetch to UniProt) in order to guarantee that
+sequence and structure are exactly consistent.
 
-## Bug real de `predict.py` encontrado y evitado (sin tocar el vendored)
+## A real `predict.py` bug found and avoided (without touching the vendored copy)
 
-``PTMPredictor.data_loader.rosetta_calc`` se crea una sola vez (`if
-self.rosetta_calc is None`) y nunca se reinicializa para un ``pdb_path``
-nuevo -- si se reusa el mismo ``PTMPredictor`` (mismo modelo .h5 cargado)
-para varias proteinas distintas, TODAS menos la primera reciben
-silenciosamente las features estructurales de la PRIMERA proteina. Este
-script reinicia ``predictor.data_loader.rosetta_calc = None`` antes de cada
-proteina nueva para forzar una ``PyRosettaCalculator`` fresca -- necesario
-porque, a diferencia de produccion (que crea un ``PTMPredictor`` nuevo por
-invocacion, un subproceso = una proteina), aqui se reusa el mismo predictor
-para muchas proteinas por tipo, evitando recargar el modelo cientos de veces.
+``PTMPredictor.data_loader.rosetta_calc`` is created only once (`if
+self.rosetta_calc is None`) and never reinitialized for a new ``pdb_path``:
+if the same ``PTMPredictor`` is reused (with the same .h5 model loaded)
+for several different proteins, ALL but the first silently receive
+the structural features of the FIRST protein. This
+script resets ``predictor.data_loader.rosetta_calc = None`` before each new
+protein in order to force a fresh ``PyRosettaCalculator``, which is necessary
+because, unlike production (which creates a new ``PTMPredictor`` per
+invocation, one subprocess = one protein), here the same predictor is reused
+for many proteins per type, avoiding reloading the model hundreds of times.
 """
 
 import argparse

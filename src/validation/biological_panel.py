@@ -2,7 +2,7 @@
 
 **Origin and evolution:**
 - 2026-08-04: an initial panel of 7 hand-curated proteins (point 8 of the
-  post-demo-prep robustness plan, see STATUS.md), replacing the single real protein
+  post-demo-prep robustness plan), replacing the single real protein
   used until then (Tau/MAPT, P10636).
 - 2026-08-09: migrated to a SYSTEMATIC selection of proteins derived from
   dbPTM (the decision is in the vault:
@@ -14,7 +14,7 @@
   proteins go in, but NOT the verification rigour of each site (see the hard
   rule below): dbPTM only contributes candidates, and each one was verified PMID by PMID
   against NCBI eutils before entering here, exactly like the 7
-  originals (4 Opus subagents in parallel, with a real catalogue of dbPTM garbage
+  originals (4 Opus subagents in parallel, with a real catalogue of dbPTM spurious entries
   found and discarded: identifiers that are not PMIDs, PMIDs that are real
   but from completely unrelated fields, the wrong PTM type (the aggregator
   "drags" lists from one site type to another of the same residue), and papers about

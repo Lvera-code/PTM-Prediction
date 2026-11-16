@@ -1,24 +1,24 @@
-"""Runner del panel de validacion biologica (punto 8 del plan de robustez post-demo-prep).
+"""Runner of the biological validation panel (point 8 of the post-demo-prep robustness plan).
 
-Corre el pipeline real (Camino PDB: Fase 1.5 -> Fase 2 motores -> Fase 3 consenso/anotacion)
-sobre cada proteina de ``src/validation/biological_panel.py`` y compara los sitios que
-``apply_workflow_filter`` acepta (``pasa_umbral=True``) contra el ground truth real
-documentado en literatura, reportando recall por separado para tier A y tier B (ver
-docstring de ``biological_panel.py`` para el porque de esta separacion).
+It runs the real pipeline (PDB path: Phase 1.5 -> Phase 2 engines -> Phase 3 consensus/annotation)
+over each protein of ``src/validation/biological_panel.py`` and compares the sites that
+``apply_workflow_filter`` accepts (``pasa_umbral=True``) against the real ground truth
+documented in the literature, reporting recall separately for tier A and tier B (see
+the docstring of ``biological_panel.py`` for the reason behind this separation).
 
-Esta validacion mide la CALIDAD DE LA ANOTACION/CONSENSO (Fase 2+3) -- Fase A/3c
-(modelado estructural real via PyRosetta) fue eliminada del alcance del proyecto
-2026-08-10 (feedback de Carlos, ver STATUS.md), asi que ya no existe una fase
-posterior que excluir aqui. DeepPTMPred (ESM-2 + features PyRosetta) ya domina el
-tiempo de corrida por si solo (~10+ min incluso para la proteina mas pequeña del
-panel, 103 residuos -- confirmado real 2026-08-04, no es proporcional al tamaño
-de la proteina).
+This validation measures the QUALITY OF THE ANNOTATION/CONSENSUS (Phases 2+3). Phase A/3c
+(real structural modelling via PyRosetta) was removed from the project's scope
+2026-08-10 (project supervision feedback), so there is no longer a later phase
+to exclude here. DeepPTMPred (ESM-2 + PyRosetta features) already dominates the
+run time on its own (~10+ min even for the smallest protein of the
+panel, 103 residues, confirmed real 2026-08-04; it is not proportional to the
+protein's size).
 
-Uso:
+Usage:
     conda run -n cnb_pipeline python scripts/validate_biological_panel.py [--only NOMBRE ...]
 
-Requiere DEEPMVP_PYTHON_BIN/DEEPPTMPRED_PYTHON_BIN apuntando a conda envs reales con los
-motores instalados (ver README.md "Instalacion") -- no mockea nada, es una corrida real.
+It requires DEEPMVP_PYTHON_BIN/DEEPPTMPRED_PYTHON_BIN pointing at real conda envs with the
+engines installed (see README.md, "Installation"). It mocks nothing, it is a real run.
 """
 
 import argparse

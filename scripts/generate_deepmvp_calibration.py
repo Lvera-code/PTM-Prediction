@@ -1,44 +1,44 @@
 #!/usr/bin/env python
-"""Genera los `site_prediction.tsv` de calibracion que faltan en `DeepMVP/models/<tipo>/`.
+"""Generates the calibration `site_prediction.tsv` files missing from `DeepMVP/models/<tipo>/`.
 
-Standalone -- requiere el stack de DeepMVP (TensorFlow 2.4.2, Python 3.7),
-correr con el conda env `deepmvp` (``conda run -n deepmvp python
-scripts/generate_deepmvp_calibration.py``), nunca con el interprete
-principal del pipeline.
+Standalone: it requires the DeepMVP stack (TensorFlow 2.4.2, Python 3.7), so
+run it with the `deepmvp` conda env (``conda run -n deepmvp python
+scripts/generate_deepmvp_calibration.py``), never with the pipeline's
+main interpreter.
 
-## Por que existe
+## Why it exists
 
-`DeepMVPEngine`/el nucleo de Fase 3 (``ptm_annotation.py``) filtran por la
-columna ``fpr``, calculada por ``DeepMVP/lib/Metrics.py::add_confidence_metrics``
-leyendo ``DeepMVP/models/<tipo>/site_prediction.tsv`` (un archivo de
-VALIDACION con columna ``y`` real). Ese archivo NO viene incluido en
-``models.tar.gz`` (confirmado real 2026-07-28, ver STATUS.md) -- confirmado
-tambien como bug conocido upstream via los issues #1/#2 de
-`github.com/bzhanglab/DeepMVP` (otros dos usuarios independientes reportaron
-lo mismo en 2025-09 y 2026-06; el PR que cerro el issue #1 no arreglaba
-esto).
+`DeepMVPEngine`/the Phase 3 core (``ptm_annotation.py``) filter by the
+``fpr`` column, computed by ``DeepMVP/lib/Metrics.py::add_confidence_metrics``
+reading ``DeepMVP/models/<tipo>/site_prediction.tsv`` (a VALIDATION file with
+a real ``y`` column). That file is NOT included in
+``models.tar.gz`` (confirmed real 2026-07-28), and is confirmed
+also as a known upstream bug via issues #1/#2 of
+`github.com/bzhanglab/DeepMVP` (two other independent users reported
+the same thing in 2025-09 and 2026-06; the PR that closed issue #1 did not fix
+this).
 
-## Como se genera sin necesitar un FASTA externo
+## How it is generated without needing an external FASTA
 
-`https://deepmvp.ptmax.org/all_data.tar.gz` (55MB, no listado en el HTML
-estatico de la Shiny app pero accesible por URL directa, confirmado real)
-contiene el dataset de train/test etiquetado (columnas ``protein, aa, pos,
-x, y``) para los 8 tipos de DeepMVP. La columna ``x`` ya viene con el ancho
-MAXIMO que necesita cualquier submodelo del ensemble (61 = flank 30,
-confirmado leyendo cada ``model.json``: ningun submodelo de los 8 tipos
-pide ``peptide_length`` > 61) -- los submodelos que piden una ventana mas
-angosta se derivan recortando esa misma ventana centrada (mismo criterio
-que ``DeepMVP/lib/DataIO.py::getPeptideSequence``), sin necesitar la
-secuencia completa de la proteina ni un ``db`` FASTA (a diferencia de
-``DeepMVP.py predict -i <test_file>``, que SI lo exige incondicionalmente
-via ``processing_prediction_data`` -- otro bug real confirmado, ver
-STATUS.md). Reusa directamente el codigo real de DeepMVP
-(``lib.PeptideEncode.encodePeptides``, ``lib.Utils.combine_rts``) para que
-el resultado sea identico al que produciria el propio ``DeepMVP.py``.
+`https://deepmvp.ptmax.org/all_data.tar.gz` (55MB, not listed in the Shiny
+app's static HTML but accessible by direct URL, confirmed real)
+contains the labelled train/test dataset (columns ``protein, aa, pos,
+x, y``) for DeepMVP's 8 types. The ``x`` column already comes with the
+MAXIMUM width that any submodel of the ensemble needs (61 = flank 30,
+confirmed by reading each ``model.json``: no submodel of the 8 types
+asks for ``peptide_length`` > 61), and the submodels that ask for a narrower
+window are derived by trimming that same centred window (the same criterion
+as ``DeepMVP/lib/DataIO.py::getPeptideSequence``), without needing the
+protein's complete sequence or a ``db`` FASTA (unlike
+``DeepMVP.py predict -i <test_file>``, which DOES require it unconditionally
+via ``processing_prediction_data``, another confirmed real bug). It reuses
+DeepMVP's real code directly
+(``lib.PeptideEncode.encodePeptides``, ``lib.Utils.combine_rts``) so that
+the result is identical to what ``DeepMVP.py`` itself would produce.
 
-Verificado 2026-07-28 con los 8 tipos: AUROC 0.90-0.99 (coincide con las
-cifras publicadas en el paper), confirma que la generacion es correcta, no
-solo que corre sin error.
+Verified 2026-07-28 with all 8 types: AUROC 0.90-0.99 (matching the
+figures published in the paper), which confirms that the generation is correct, not
+merely that it runs without error.
 """
 
 import argparse

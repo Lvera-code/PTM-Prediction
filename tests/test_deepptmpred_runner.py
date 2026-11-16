@@ -15,7 +15,7 @@ def test_esm_cache_path_incluye_hash_de_secuencia(tmp_path):
 
 
 def test_esm_cache_path_distinta_secuencia_mismo_accession_no_colisiona(tmp_path):
-    """Regresion: STATUS.md - auditoria 2026-07-28, item 2.
+    """Regresion: el registro de decisiones del proyecto, auditoria 2026-07-28, item 2.
 
     Antes la clave de cache era solo el accession -- una secuencia distinta
     bajo el mismo accession (p. ej. PDB actualizado con el mismo nombre de

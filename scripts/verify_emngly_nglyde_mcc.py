@@ -1,22 +1,22 @@
-"""Go/no-go check 2 de EMNGly (ver STATUS.md 'Decision 2'): reproduce MCC~=0.736
-corriendo el pipeline REAL (ESM-1b + MIF + SVM, exactamente los mismos componentes
-que ``src/engines/_emngly_runner.py``) sobre el set independiente de N-GlyDE
-(``EMNgly/data/N-GlyDE/NGLYDE_independent.txt``, 447 filas / 86 proteinas, via
-``dukkakc/DeepNGlyPred`` -- el propio repo de EMNgly solo documenta la fuente, no
-la empaqueta).
+"""EMNGly's go/no-go check 2: it reproduces MCC~=0.736 by
+running the REAL pipeline (ESM-1b + MIF + SVM, exactly the same components
+as ``src/engines/_emngly_runner.py``) over the N-GlyDE independent set
+(``EMNgly/data/N-GlyDE/NGLYDE_independent.txt``, 447 rows / 86 proteins, via
+``dukkakc/DeepNGlyPred``, as EMNgly's own repo only documents the source and does not
+package it).
 
-Requiere que ``scripts/prepare_emngly_nglyde_structures.py`` ya haya corrido (Fase
-1.5 real sobre un modelo AlphaFold por proteina, ver su docstring para el porque
-AlphaFold y no PDB cristalografico).
+It requires that ``scripts/prepare_emngly_nglyde_structures.py`` has already run (real
+Phase 1.5 over one AlphaFold model per protein; see its docstring for why
+AlphaFold and not a crystallographic PDB).
 
-Bug real confirmado leyendo ``EMNgly/predict.py::get_scores`` (no arreglado en el
-vendorizado, ver docstring de modulo alli): el script original llama
-``get_scores(label_y, predict_y[0])`` -- ``predict_y[0]`` es un escalar (la
-probabilidad de la PRIMERA fila), no la lista completa de probabilidades. Este
-script reimplementa ``get_scores`` correctamente (todas las probabilidades, no
-solo la primera) en vez de tocar el vendorizado.
+A real bug confirmed by reading ``EMNgly/predict.py::get_scores`` (not fixed in the
+vendored copy, see the module docstring there): the original script calls
+``get_scores(label_y, predict_y[0])``, where ``predict_y[0]`` is a scalar (the
+probability of the FIRST row), not the complete list of probabilities. This
+script reimplements ``get_scores`` correctly (all the probabilities, not
+only the first) instead of touching the vendored copy.
 
-Corre en ``.venv-emngly`` (fair-esm/torch/sklearn) -- NUNCA en ``cnb_pipeline``.
+It runs in ``.venv-emngly`` (fair-esm/torch/sklearn), NEVER in ``cnb_pipeline``.
 """
 
 import pickle

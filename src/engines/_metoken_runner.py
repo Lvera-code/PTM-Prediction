@@ -1,105 +1,105 @@
 #!/usr/bin/env python
-"""Runner standalone para MeToken (corroboracion informativa de TIPO, no un motor de consenso).
+"""Standalone runner for MeToken (informative corroboration of TYPE, not a consensus engine).
 
-NUNCA se importa desde el paquete ``src`` -- requiere torch/torch_scatter/
-transformers/biopython/omegaconf, dependencias SOLO presentes en el venv
-dedicado de MeToken (``Settings.METOKEN_PYTHON_BIN``, distinto de
-``DEEPMVP_PYTHON_BIN``/``DEEPPTMPRED_PYTHON_BIN``). Se invoca EXCLUSIVAMENTE
-via subprocess desde ``src/engines/metoken_engine.py``, mismo patron que
-``_deepptmpred_runner.py`` (Fase 2).
+It is NEVER imported from the ``src`` package: it requires torch/torch_scatter/
+transformers/biopython/omegaconf, dependencies present ONLY in MeToken's
+dedicated venv (``Settings.METOKEN_PYTHON_BIN``, distinct from
+``DEEPMVP_PYTHON_BIN``/``DEEPPTMPRED_PYTHON_BIN``). It is invoked EXCLUSIVELY
+via subprocess from ``src/engines/metoken_engine.py``, the same pattern as
+``_deepptmpred_runner.py`` (Phase 2).
 
-## Por que existe (rol en el pipeline, decision 2026-08-01)
+## Why it exists (its role in the pipeline, decision 2026-08-01)
 
-Investigado a fondo (subagente Opus) que ``github.com/A4Bio/MeToken``
-(ICLR 2025) es el motor estructural mas potente evaluado hasta ahora para
-PTM -- consume coordenadas backbone reales (N/CA/C/O) via grafo 3D-kNN +
-marcos locales por cuaternion, mucho mas rico que los 4 escalares
-(SASA/phi/psi/plDDT) que usa DeepPTMPred -- pero el checkpoint PUBLICADO es
-un CLASIFICADOR DE TIPO en sitios YA CONOCIDOS, no un detector de sitio:
-confirmado en ``model_interface.py:40`` del repo (``valid_idx = batch['Q'] >
-0 if self.hparams.with_null_ptm == 0 else ...`` -- la clase "Not a PTM type"
-queda excluida de la evaluacion/entrenamiento cuando ``with_null_ptm=0``, que
-es como viene el checkpoint publicado). Verificado con una corrida real
-contra ``AF-P10636-F1-model_v4.pdb`` (Tau): en posiciones SIN PTM real
-(prolinas, glicinas) predice tipos con alta confianza igualmente -- NO sirve
-para decidir si un sitio es o no PTM.
+It was investigated in depth (Opus subagent) that ``github.com/A4Bio/MeToken``
+(ICLR 2025) is the most powerful structural engine evaluated so far for
+PTM: it consumes real backbone coordinates (N/CA/C/O) via a 3D-kNN graph +
+local quaternion frames, far richer than the 4 scalars
+(SASA/phi/psi/plDDT) that DeepPTMPred uses. However, the PUBLISHED checkpoint is
+a TYPE CLASSIFIER on ALREADY KNOWN sites, not a site detector:
+confirmed in the repo's ``model_interface.py:40`` (``valid_idx = batch['Q'] >
+0 if self.hparams.with_null_ptm == 0 else ...``, where the "Not a PTM type"
+class is excluded from evaluation/training when ``with_null_ptm=0``, which is
+how the published checkpoint comes). Verified with a real run
+against ``AF-P10636-F1-model_v4.pdb`` (Tau): at positions WITHOUT a real PTM
+(prolines, glycines) it predicts types with high confidence all the same, so it is
+NOT usable for deciding whether a site is a PTM or not.
 
-Por eso el rol aqui es el mismo patron no-decisorio que la corroboracion via
-secretora (``src/structural/uniprot_localization_client.py``): corroboracion
-puramente informativa del TIPO en sitios que el consenso YA acepto
-(``pasa_umbral=true`` en ``ptm_annotation.py``), NUNCA cambia
-``pasa_umbral``/``consenso``. Ver ``src/engines/metoken_engine.py`` para el
-wiring (subprocess con manejo de error no fatal) y
-``src/engines/ptm_annotation.py::annotate_pdb_path`` para el punto de
-enganche opcional.
+That is why its role here is the same non-deciding pattern as the secretory
+pathway corroboration (``src/structural/uniprot_localization_client.py``):
+purely informative corroboration of the TYPE at sites that the consensus has
+ALREADY accepted (``pasa_umbral=true`` in ``ptm_annotation.py``), NEVER changing
+``pasa_umbral``/``consenso``. See ``src/engines/metoken_engine.py`` for the
+wiring (subprocess with non-fatal error handling) and
+``src/engines/ptm_annotation.py::annotate_pdb_path`` for the optional
+attachment point.
 
-## Dos bugs reales confirmados corriendo el repo (no asumidos, ver STATUS.md)
+## Two real bugs confirmed by running the repo (not assumed)
 
-1. **``inference.py:61`` llama a ``PDB.Polypeptide.three_to_one``**, eliminado
-   de Biopython en la version >=1.80 (confirmado: ``hasattr(PDB.Polypeptide,
-   'three_to_one')`` -> ``False`` en Biopython 1.87, la version que instala
-   ``pip install biopython`` hoy) -- revienta con ``AttributeError`` en
-   cualquier entorno moderno. Reemplazado aqui por
+1. **``inference.py:61`` calls ``PDB.Polypeptide.three_to_one``**, removed
+   from Biopython in version >=1.80 (confirmed: ``hasattr(PDB.Polypeptide,
+   'three_to_one')`` -> ``False`` in Biopython 1.87, the version that
+   ``pip install biopython`` installs today), so it fails with an ``AttributeError`` in
+   any modern environment. It is replaced here by
    ``PDB.Polypeptide.protein_letters_3to1``/``protein_letters_3to1_extended``
-   (los diccionarios que SI existen en Biopython moderno), monkeypatcheado
-   sobre el modulo ya importado -- NO se edita ``inference.py`` (vendored).
+   (the dictionaries that DO exist in modern Biopython), monkeypatched
+   over the already imported module. ``inference.py`` is NOT edited (vendored).
 
-2. **``src/metoken_model.py:213`` tiene ``device='cuda'`` hardcodeado**
+2. **``src/metoken_model.py:213`` has ``device='cuda'`` hardcoded**
    (``codebook_mask = torch.ones(len(codebook), dtype=torch.int32,
-   device='cuda')``, dentro de ``MeToken_Model.__init__``) -- imposibilita
-   construir el modelo en CPU. Confirmado real: sin parche,
-   ``MeToken_Model(params)`` revienta con ``AssertionError: Torch not
-   compiled with CUDA enabled`` en esta maquina (sin GPU, sin
-   ``nvidia-smi``). Es la UNICA linea de todo ``src/`` con ``device='cuda'``
-   hardcodeado (verificado por grep -- el resto de tensores usan
-   ``device=x.device``/``device=index.device``, siguiendo el device del
-   tensor de entrada). Como esta dentro de un ``__init__`` (no una funcion
-   standalone reemplazable), se parchea envolviendo ``torch.ones`` en un
-   context manager activo SOLO durante la construccion del modelo: si se
-   pide ``device='cuda'`` y CUDA no esta disponible, redirige a ``'cpu'``;
-   cualquier otra llamada a ``torch.ones`` (dentro o fuera de ese bloque) no
-   se ve afectada. No se edita ``src/metoken_model.py`` (vendored).
+   device='cuda')``, inside ``MeToken_Model.__init__``), which makes it impossible
+   to build the model on CPU. Confirmed real: without a patch,
+   ``MeToken_Model(params)`` fails with ``AssertionError: Torch not
+   compiled with CUDA enabled`` on this machine (no GPU, no
+   ``nvidia-smi``). It is the ONLY line in all of ``src/`` with ``device='cuda'``
+   hardcoded (verified by grep; the rest of the tensors use
+   ``device=x.device``/``device=index.device``, following the device of the
+   input tensor). Since it is inside an ``__init__`` (not a standalone
+   replaceable function), it is patched by wrapping ``torch.ones`` in a
+   context manager active ONLY during the construction of the model: if
+   ``device='cuda'`` is requested and CUDA is not available, it redirects to ``'cpu'``;
+   any other call to ``torch.ones`` (inside or outside that block) is
+   unaffected. ``src/metoken_model.py`` is NOT edited (vendored).
 
-Ambos parches verificados real: corriendo SIN parche 2 revienta
-(``AssertionError``); corriendo CON ambos parches sobre
-``examples/Q16613.pdb`` (el ejemplo del propio repo) reproduce EXACTO el
-resultado documentado en su ``quick_inference.ipynb``
-(``PTM type at the position 31 is Phosphorylation``) -- confirma que los
-parches no alteran el comportamiento numerico del modelo, solo lo hacen
-correr en este entorno.
+Both patches verified for real: running WITHOUT patch 2 fails
+(``AssertionError``); running WITH both patches over
+``examples/Q16613.pdb`` (the repo's own example) reproduces EXACTLY the
+result documented in its ``quick_inference.ipynb``
+(``PTM type at the position 31 is Phosphorylation``), which confirms that the
+patches do not alter the model's numerical behaviour, they only make it
+run in this environment.
 
-## Deteccion de la clase "no-PTM"/"rare" (24 clases reales, no 26)
+## Detection of the "no-PTM"/"rare" class (24 real classes, not 26)
 
-``src/constant.py::PTMtype_list`` tiene 26 entradas: indice 0 = "Not a PTM
-type" (la clase null, enmascarada en entrenamiento -- ver arriba), indices
-1-24 = los 24 tipos de PTM reales que el modelo distingue, indice 25 = "in
-Rare PTM Types" (cubo de PTMs raros agrupados, no un tipo especifico
-interpretable). Este runner excluye AMBOS indices (0 y 25) al buscar el tipo
-con mayor probabilidad -- "de las 24 clases", como pide la tarea -- y reporta
-la probabilidad cruda (softmax sobre las 26 clases completas, sin
-renormalizar) del indice ganador entre esas 24, no una probabilidad
-renormalizada.
+``src/constant.py::PTMtype_list`` has 26 entries: index 0 = "Not a PTM
+type" (the null class, masked during training, see above), indices
+1-24 = the 24 real PTM types that the model distinguishes, index 25 = "in
+Rare PTM Types" (an aggregate class of grouped rare PTMs, not a specific
+interpretable type). This runner excludes BOTH indices (0 and 25) when searching for the
+type with the highest probability, that is, "out of the 24 classes" as the task
+requires, and reports the raw probability (softmax over the complete 26
+classes, without renormalizing) of the winning index among those 24, not a
+renormalized probability.
 
-## Offline (mismo caveat que otros motores basados en ESM de este proyecto)
+## Offline (the same caveat as this project's other ESM-based engines)
 
-``AutoTokenizer.from_pretrained("facebook/esm2_t33_650M_UR50D")`` se llama
-DOS veces en el repo (``src/metoken_model.py`` y
-``src/datasets/featurizer.py``, un tokenizer nuevo cada vez -- no es el
-encoder ESM-2 completo, MeToken usa su propio ``nn.Embedding`` entrenado
-desde cero, ``wo_esm``, no representaciones ESM reales pese al nombre del
-atributo) -- descarga de HF Hub la primera vez, cacheable localmente despues
-(ver ``HF_HUB_OFFLINE``/``TRANSFORMERS_OFFLINE`` abajo).
+``AutoTokenizer.from_pretrained("facebook/esm2_t33_650M_UR50D")`` is called
+TWICE in the repo (``src/metoken_model.py`` and
+``src/datasets/featurizer.py``, a new tokenizer each time; it is not the
+complete ESM-2 encoder, since MeToken uses its own ``nn.Embedding`` trained
+from scratch, ``wo_esm``, not real ESM representations despite the attribute's
+name), which downloads from HF Hub the first time and is cacheable locally afterwards
+(see ``HF_HUB_OFFLINE``/``TRANSFORMERS_OFFLINE`` below).
 
-## torch_scatter sin wheel prebuilt
+## torch_scatter without a prebuilt wheel
 
-``src/metoken_module.py`` importa ``torch_scatter`` (``scatter_sum``,
-``scatter_softmax``, ``scatter_mean``) -- sin wheel prebuilt para la
-combinacion torch/CPU/Python de este entorno en ``data.pyg.org``
-(confirmado: el indice de wheels solo lista variantes hasta
-``torch-2.1.0+cpu``, esta maquina tiene ``torch==2.13.0+cpu``), asi que
-``pip install --no-build-isolation torch_scatter`` compila desde fuente
-(extension C++/CPU, ~pocos minutos en esta maquina real, no los ~15 min
-estimados de antemano -- ver STATUS.md).
+``src/metoken_module.py`` imports ``torch_scatter`` (``scatter_sum``,
+``scatter_softmax``, ``scatter_mean``), which has no prebuilt wheel for the
+torch/CPU/Python combination of this environment on ``data.pyg.org``
+(confirmed: the wheel index only lists variants up to
+``torch-2.1.0+cpu``, while this machine has ``torch==2.13.0+cpu``), so
+``pip install --no-build-isolation torch_scatter`` compiles from source
+(a C++/CPU extension, a few minutes on this real machine, not the ~15 min
+estimated beforehand).
 """
 
 import argparse

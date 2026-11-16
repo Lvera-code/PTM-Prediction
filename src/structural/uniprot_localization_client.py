@@ -1,38 +1,38 @@
-"""Cliente minimo para UniProt REST (evidencia real de localizacion subcelular).
+"""Minimal client for UniProt REST (real subcellular localization evidence).
 
-## Por que existe
+## Why it exists
 
-La N-glicosilacion ocurre quimicamente en el lumen del reticulo
-endoplasmatico/aparato de Golgi -- una proteina puramente citoplasmatica o
-nuclear (sin senal de secrecion/membrana real) practicamente nunca se
-glicosila en un sequon N-X-[S/T], sin importar cuan fuerte sea el score de
-consenso del pipeline (DeepMVP/DeepPTMPred/EMNGly son todos predictores de
-secuencia/estructura, ninguno modela la via biosintetica real del
-sustrato). Hallazgo del analisis de coherencia biologica 2026-08-07: el
-pipeline no comprobaba esto en ningun punto. Este cliente consulta la
-anotacion REAL de localizacion subcelular de UniProt (curada, con evidencia
-citada) para dar una senal informativa -- NUNCA decide ``pasa_umbral``/
-``consenso``, solo avisa cuando el consenso ya acepto un sitio N-glico sin
-evidencia conocida de via secretora.
+N-glycosylation occurs chemically in the lumen of the endoplasmic
+reticulum/Golgi apparatus, so a purely cytoplasmic or
+nuclear protein (without a real secretion/membrane signal) is almost never
+glycosylated at an N-X-[S/T] sequon, regardless of how strong the pipeline's
+consensus score is (DeepMVP/DeepPTMPred/EMNGly are all sequence/structure
+predictors, and none models the substrate's real biosynthetic
+pathway). A finding of the biological coherence analysis 2026-08-07: the
+pipeline did not check this at any point. This client queries UniProt's REAL
+subcellular localization annotation (curated, with cited evidence)
+in order to give an informative signal. It NEVER decides ``pasa_umbral``/
+``consenso``, it only warns when the consensus has already accepted an N-glyco site without
+known evidence of a secretory pathway.
 
-## Endpoint real (verificado 2026-08-07 con una consulta real contra P01588/
-   EPO, proteina secretada conocida -- no asumido de la documentacion)
+## The real endpoint (verified 2026-08-07 with a real query against P01588/
+   EPO, a known secreted protein, not assumed from the documentation)
 
-``https://rest.uniprot.org/uniprotkb/{accession}.json`` (GET, sin auth).
-Dos senales reales en la respuesta, ambas comprobadas con la consulta real:
-``keywords[].name`` (vocabulario controlado, p.ej. ``"Secreted"``/``"Signal"``
--- confirmado presente para P01588) y
+``https://rest.uniprot.org/uniprotkb/{accession}.json`` (GET, without auth).
+Two real signals in the response, both checked with the real query:
+``keywords[].name`` (a controlled vocabulary, for example ``"Secreted"``/``"Signal"``,
+confirmed present for P01588) and
 ``comments[commentType="SUBCELLULAR LOCATION"].subcellularLocations[].location.value``
-(nota: el ``commentType`` real tiene un ESPACIO, ``"SUBCELLULAR LOCATION"``,
-no guion bajo -- el primer intento asumiendolo con guion bajo devolvio 0
-resultados contra un caso real conocido, corregido tras verificar la
-respuesta cruda).
+(note that the real ``commentType`` has a SPACE, ``"SUBCELLULAR LOCATION"``,
+not an underscore; the first attempt assuming an underscore returned 0
+results against a known real case, and was corrected after verifying the raw
+response).
 
-Nunca aborta el flujo principal: un accession no reconocido por UniProt (muy
-comun aqui, ya que ``accession`` en este proyecto suele derivarse del nombre
-de archivo PDB/FASTA de entrada, no siempre un ID UniProt real) o un fallo de
-red se reportan como "no se pudo verificar" (``None``), NUNCA como "no
-secretado" -- ausencia de evidencia no es evidencia de ausencia.
+It never aborts the main flow: an accession not recognized by UniProt (very
+common here, since ``accession`` in this project is usually derived from the name
+of the input PDB/FASTA file and is not always a real UniProt ID) or a network
+failure are reported as "could not be verified" (``None``), NEVER as "not
+secreted", because absence of evidence is not evidence of absence.
 """
 
 import json

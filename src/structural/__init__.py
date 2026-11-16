@@ -1,8 +1,8 @@
-"""Clientes de datos externos usados por Fase 3b (cruces informativos).
+"""External data clients used by Phase 3b (informative cross-references).
 
-Fase 3c (modelado estructural real via PyRosetta) eliminada del alcance
-2026-08-10 (feedback de Carlos, ver STATUS.md) -- este paquete solo contiene
-``uniprot_localization_client.py``, consultado desde
-``src/engines/ptm_annotation.py`` (proceso principal, sin dependencia de
-pyrosetta) para la corroboracion de via secretora en N-glicosilacion.
+Phase 3c (real structural modelling via PyRosetta) was removed from scope
+2026-08-10 (project supervision feedback), so this package contains only
+``uniprot_localization_client.py``, queried from
+``src/engines/ptm_annotation.py`` (the main process, with no dependency on
+pyrosetta) for the secretory pathway corroboration in N-glycosylation.
 """

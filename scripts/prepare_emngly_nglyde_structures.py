@@ -1,20 +1,20 @@
-"""Fase A del go/no-go check 2 de EMNGly (ver STATUS.md 'Decision 2'): descarga un
-modelo AlphaFold por cada UniProt accession unico del set independiente de N-GlyDE
-(``dukkakc/DeepNGlyPred``, ``EMNgly/data/N-GlyDE/NGLYDE_independent.txt``) y corre
-Fase 1.5 real (``src.utils.structure_parser.parse_structure``) sobre cada uno, para
-producir la secuencia derivada + tabla de mapeo de posiciones + PDB de una sola
-cadena que ``scripts/verify_emngly_nglyde_mcc.py`` despues consume.
+"""Phase A of EMNGly's go/no-go check 2: it downloads an
+AlphaFold model for each unique UniProt accession of the N-GlyDE independent set
+(``dukkakc/DeepNGlyPred``, ``EMNgly/data/N-GlyDE/NGLYDE_independent.txt``) and runs
+real Phase 1.5 (``src.utils.structure_parser.parse_structure``) over each one, in order to
+produce the derived sequence + position mapping table + single-chain
+PDB that ``scripts/verify_emngly_nglyde_mcc.py`` subsequently consumes.
 
-Por que AlphaFold y no PDBs cristalograficos reales: el propio dataset de
-entrenamiento de EMNGly usa modelos AlphaFold2 (ver docstring de
-``src/engines/_emngly_runner.py``), asi que reproducir el benchmark publicado
-(MCC~=0.736 en N-GlyDE) requiere el mismo tipo de estructura que el paper usa, no
-estructuras cristalograficas reales (que ademas no existen para la mayoria de las
-86 proteinas de este set). El go/no-go check 1 (alineamiento contra sitios GlyGen
-reales) ya cubre el caso de PDBs con huecos/numeracion no continua por separado.
+Why AlphaFold and not real crystallographic PDBs: EMNGly's own training
+dataset uses AlphaFold2 models (see the docstring of
+``src/engines/_emngly_runner.py``), so reproducing the published benchmark
+(MCC~=0.736 on N-GlyDE) requires the same kind of structure that the paper uses, not real
+crystallographic structures (which in addition do not exist for most of the
+86 proteins of this set). Go/no-go check 1 (alignment against real GlyGen
+sites) already covers the case of PDBs with gaps/non-continuous numbering separately.
 
-Corre en el venv principal del pipeline (``cnb_pipeline``, tiene gemmi/pandas) --
-NUNCA en ``.venv-emngly`` (fair-esm/torch/sklearn, sin gemmi).
+It runs in the pipeline's main venv (``cnb_pipeline``, which has gemmi/pandas),
+NEVER in ``.venv-emngly`` (fair-esm/torch/sklearn, without gemmi).
 """
 
 import json

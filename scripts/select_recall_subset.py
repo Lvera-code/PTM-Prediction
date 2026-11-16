@@ -1,44 +1,44 @@
-"""Selecciona el subconjunto de recall (~20-30 proteinas) del panel dbPTM.
+"""Selects the recall subset (~20-30 proteins) of the dbPTM panel.
 
-## Por que existe
+## Why it exists
 
-`src/validation/biological_panel.py::PANEL` es el subconjunto CHICO que ademas
-corre el pipeline completo (`scripts/validate_biological_panel.py`) para medir
-recall real -- por eso no puede ser toda la base de dbPTM (~19000 proteinas,
-dias de computo). Este script selecciona sistematicamente ~20-30 candidatas
-desde `data/dbptm/lookup.sqlite3` (decision 2026-08-09, vault), reemplazando
-la eleccion a mano de las 7 proteinas actuales.
+`src/validation/biological_panel.py::PANEL` is the SMALL subset that also
+runs the complete pipeline (`scripts/validate_biological_panel.py`) to measure
+real recall, which is why it cannot be the whole dbPTM database (~19000 proteins,
+days of compute). This script systematically selects ~20-30 candidates
+from `data/dbptm/lookup.sqlite3` (decision 2026-08-09, vault), replacing
+the manual choice of the current 7 proteins.
 
-## Metodo
+## Method
 
-1. Elegibilidad: al menos 1 sitio tier A, longitud UniProt real <= 1500 aa
-   (por manejo de PDB/descarga -- NO por tiempo de motor, que segun STATUS.md
-   no escala fuerte con longitud: DeepPTMPred domina con 17 llamadas ESM-2 por
-   proteina, independientes del tamano).
-2. Greedy set-cover sobre los 17 tipos canonicos: en cada paso elige la
-   accession que cubre mas tipos aun no cubiertos con evidencia tier A
-   (desempate: mas sitios tier A total). Sigue agregando candidatas de alto
-   valor mas alla de la cobertura minima hasta un objetivo de ~25 (rango
-   20-30), dando redundancia a los tipos mas comunes -- igual que el panel
-   actual ya hace con p53+histonas.
-3. `--emit-python`: para cada candidata, emite hasta `MAX_SITES_PER_ACCESSION_TYPE`
-   (5) sitios por tipo canonico, priorizando tier A y desempatando por mas
-   PMIDs -- sin este tope, tipos muy estudiados (fosforilacion, ubiquitinacion)
-   pueden traer cientos de sitios tier A para una sola proteina (caso real
-   encontrado 2026-08-09: MAP4/P27816 daba 549 sitios candidatos sin el tope).
-   Formato listo para pegar en `biological_panel.py`.
-4. `--verify`: descarga el PDB real de AlphaFold por candidata y chequea
-   longitud + residuo esperado en cada sitio candidato ANTES de aceptarla --
-   la regla dura del proyecto documenta 3 trampas de numeracion reales
-   (histonas, protrombina, EPO) que esto esta pensado para atrapar durante la
-   curacion, no despues en CI.
+1. Eligibility: at least 1 tier A site, real UniProt length <= 1500 aa
+   (for PDB handling/download reasons, NOT for engine time, which does
+   not scale strongly with length: DeepPTMPred dominates with 17 ESM-2 calls per
+   protein, independent of size).
+2. Greedy set-cover over the 17 canonical types: at each step it chooses the
+   accession that covers the most types not yet covered with tier A evidence
+   (tie-break: the most tier A sites in total). It keeps adding high-value
+   candidates beyond the minimum coverage up to a target of ~25 (range
+   20-30), giving redundancy to the most common types, just as the current
+   panel already does with p53+histones.
+3. `--emit-python`: for each candidate, it emits up to `MAX_SITES_PER_ACCESSION_TYPE`
+   (5) sites per canonical type, prioritizing tier A and breaking ties by more
+   PMIDs. Without this cap, heavily studied types (phosphorylation, ubiquitination)
+   can bring hundreds of tier A sites for a single protein (a real case
+   found 2026-08-09: MAP4/P27816 gave 549 candidate sites without the cap).
+   The format is ready to paste into `biological_panel.py`.
+4. `--verify`: it downloads the real AlphaFold PDB per candidate and checks the
+   length plus the expected residue at each candidate site BEFORE accepting it.
+   The project's hard rule documents 3 real numbering traps
+   (histones, prothrombin, EPO) that this is designed to catch during
+   curation, not later in CI.
 
-**Salida es un BORRADOR, no definitivo**: la regla dura del proyecto (nunca
-fabricar datos cientificos) exige que cada sitio del panel de recall tenga su
-PMID verificado por titulo via NCBI eutils -- mas estricto que "dbPTM lo
-dice". Este script resuelve la SELECCION sistematica, la verificacion de
-evidencia sigue siendo manual antes de pegar el resultado en
-`biological_panel.py` (ver tarea "Revision manual PMIDs" del plan).
+**The output is a DRAFT, not final**: the project's hard rule (never
+fabricate scientific data) requires that every site of the recall panel have its
+PMID verified by title via NCBI eutils, which is stricter than "dbPTM says
+so". This script resolves the systematic SELECTION; the verification of
+evidence remains manual before pasting the result into
+`biological_panel.py`.
 """
 
 import argparse

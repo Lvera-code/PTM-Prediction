@@ -1,28 +1,27 @@
-"""Orquestador del pipeline de prediccion de zonas PTM.
+"""Orchestrator of the PTM zone prediction pipeline.
 
-Numeracion de fases alineada con `BCell-Epitope-Prediction` (proyecto 1):
-Fase 1 (saneamiento) -> Fase 1.5 (extraccion de estructura, Camino PDB
-unicamente) -> Fase 2 (motores: DeepMVP / DeepMVP+DeepPTMPred) -> Fase 3
-(nucleo: anotacion + filtro) -> Fase 3b (cruces informativos: via secretora,
-Kinase Library, MeToken, competencia entre PTMs).
+Phase numbering aligned with `BCell-Epitope-Prediction` (project 1):
+Phase 1 (sanitation) -> Phase 1.5 (structure extraction, PDB path
+only) -> Phase 2 (engines: DeepMVP / DeepMVP+DeepPTMPred) -> Phase 3
+(core: annotation + filter) -> Phase 3b (informative cross-references: secretory
+pathway, Kinase Library, MeToken, competition between PTMs).
 
-Camino FASTA: Fase 1 (saneamiento) -> Fase 2 (DeepMVP, unico motor) -> Fase 3
-(nucleo: anotacion + filtro).
-Camino PDB: Fase 1.5 (extraccion ATMSEQ + pdb de una cadena) -> Fase 2
-(DeepMVP + DeepPTMPred en consenso) -> Fase 3 (nucleo: anotacion + filtro,
-fusiona consenso donde ambos motores coinciden en tipo+posicion) -> Fase 3b
-(cruces informativos).
+FASTA path: Phase 1 (sanitation) -> Phase 2 (DeepMVP, the only engine) -> Phase 3
+(core: annotation + filter).
+PDB path: Phase 1.5 (ATMSEQ extraction + single-chain pdb) -> Phase 2
+(DeepMVP + DeepPTMPred in consensus) -> Phase 3 (core: annotation + filter,
+merging consensus where both engines agree on type+position) -> Phase 3b
+(informative cross-references).
 
-Diseno del nucleo de Fase 3 (B: anotacion/filtrado, D: logica de flujo) en
+The design of the Phase 3 core (B: annotation/filtering, D: flow logic) is in
 ``01-Proyectos/PTM-Prediction/Decisiones/2026-07-27-diseno-nucleo-fase3-anotacion-flujo.md``
-del vault.
+in the vault.
 
-Fase 3c (modelado estructural real via PyRosetta, antes "Fase A") fue
-eliminada del alcance del proyecto por decision de Carlos (feedback
-2026-08-10, ver
-``01-Proyectos/PTM-Prediction/Decisiones/2026-08-10-carlos-elimina-fase3c-confirma-scipion.md``
-del vault) -- nucleo (Fases 1-3b) confirmado feature-complete, el proyecto
-pasa a integrarse en Scipion.
+Phase 3c (real structural modelling via PyRosetta, formerly "Phase A") was
+removed from the project's scope by a supervision decision (feedback
+2026-08-10, see ``01-Proyectos/PTM-Prediction/Decisiones/`` in the vault, the note
+dated 2026-08-10). The core (Phases 1-3b) is confirmed feature-complete and the project
+moves on to integration into Scipion.
 """
 
 import argparse
@@ -44,15 +43,15 @@ from src.utils.exceptions import PipelineError
 from src.utils.fasta_parser import load_and_sanitize, write_fasta
 from src.utils.input_router import FASTA_EXTENSIONS, STRUCTURE_EXTENSIONS, route_input
 
-# Analisis de coherencia biologica 2026-08-07 (cambio 1 de 3): ningun motor
-# de este pipeline (DeepMVP/DeepPTMPred/EMNGly) modela la
-# via biosintetica real del sustrato (co-expresion/co-localizacion de la
-# enzima) -- todos predicen CAPACIDAD de un sitio de modificarse a partir de
-# secuencia/estructura, nunca si esa PTM ocurre realmente en una celula/
-# tejido/condicion dada (eso depende de contexto biologico que ningun
-# predictor de secuencia puede capturar). Impreso una vez al final de cada
-# corrida (no se escribe dentro del CSV del reporte -- cambiaria su esquema,
-# rompiendo lectores existentes que no esperan una fila de comentario).
+# Biological coherence analysis 2026-08-07 (change 1 of 3): no engine
+# of this pipeline (DeepMVP/DeepPTMPred/EMNGly) models the
+# substrate's real biosynthetic pathway (co-expression/co-localization of the
+# enzyme). They all predict a site's CAPACITY to be modified from
+# sequence/structure, never whether that PTM actually occurs in a given cell/
+# tissue/condition (which depends on biological context that no
+# sequence predictor can capture). Printed once at the end of each
+# run (it is not written inside the report CSV, as that would change its schema and
+# break existing readers that do not expect a comment row).
 INTERPRETATION_DISCLAIMER = (
     "AVISO DE INTERPRETACION: este reporte predice sitios POTENCIALMENTE "
     "modificables (propiedad de secuencia/estructura), no si esa "
@@ -70,12 +69,12 @@ _SEPARATOR = "=" * 70
 
 
 def _print_table(headers: List[str], rows: List[list]) -> None:
-    """Imprime una tabla alineada por ancho de columna con ``print()`` plano.
+    """Prints a column-width-aligned table with plain ``print()``.
 
-    Sin dependencias nuevas (no usa ``DataFrame.to_string``, que arrastra
-    indice/dtypes que no aportan nada a un resumen en pantalla) -- mismo
-    espiritu que los resumenes por fase de BCell-Epitope-Prediction, que
-    tambien son ``print()`` simples, no volcados de pandas.
+    Without new dependencies (it does not use ``DataFrame.to_string``, which carries
+    an index/dtypes that add nothing to an on-screen summary), in the same
+    spirit as the per-phase summaries of BCell-Epitope-Prediction, which
+    are also simple ``print()`` calls rather than pandas dumps.
     """
     widths = [len(str(h)) for h in headers]
     str_rows = [[str(c) for c in row] for row in rows]
@@ -93,26 +92,26 @@ def _print_table(headers: List[str], rows: List[list]) -> None:
 
 
 def _ground_truth_lookup(accession: str) -> dict:
-    """``{(posicion, tipo_ptm): (tier, fuente, pmids)}`` para marcar en el resumen
-    en pantalla que sitios de consenso ya estan confirmados por PMID real --
-    nunca inventa literatura donde no la hay.
+    """``{(posicion, tipo_ptm): (tier, fuente, pmids)}``, used to mark in the
+    on-screen summary which consensus sites are already confirmed by a real PMID.
+    It never invents literature where there is none.
 
-    Dos fuentes, en orden de precedencia (decision 2026-08-09, vault):
-    1. ``src/validation/biological_panel.py::PANEL`` -- el subconjunto chico
-       (~20-30 proteinas) curado a mano: cada PMID verificado individualmente
-       contra NCBI eutils, las unicas que ademas corren el pipeline completo
-       para medir recall (``scripts/validate_biological_panel.py``). Marcado
+    Two sources, in order of precedence (decision 2026-08-09, vault):
+    1. ``src/validation/biological_panel.py::PANEL``, the small subset
+       (~20-30 proteins) curated manually: every PMID verified individually
+       against NCBI eutils, and the only ones that additionally run the complete
+       pipeline to measure recall (``scripts/validate_biological_panel.py``). Marked
        ``fuente="curado"``.
-    2. ``src/validation/dbptm_lookup.py`` -- base grande derivada de dbPTM
-       (miles de proteinas humanas reviewed), solo lookup, nunca corre
-       motores. Marcado ``fuente="dbPTM"`` -- es una señal MAS DEBIL que
-       "curado": el tier ahi es solo un conteo de PMIDs sin verificar
-       individualmente, y la verificacion real del subconjunto curado
-       encontro PMIDs inexistentes o mal atribuidos en el borrador dbPTM
-       (ver decision 2026-08-09), asi que un "tier A" de esta fuente no tiene
-       el mismo peso que uno "curado".
-    Para cualquier proteina fuera de ambas devuelve ``{}`` y el resumen
-    simplemente no muestra las columnas.
+    2. ``src/validation/dbptm_lookup.py``, a large database derived from dbPTM
+       (thousands of reviewed human proteins), lookup only, never running
+       engines. Marked ``fuente="dbPTM"``, which is a WEAKER signal than
+       "curado": the tier there is only a count of PMIDs without individual
+       verification, and the real verification of the curated subset
+       found non-existent or misattributed PMIDs in the dbPTM draft
+       (see the decision of 2026-08-09), so a "tier A" from this source does not carry
+       the same weight as a "curado" one.
+    For any protein outside both it returns ``{}`` and the summary
+    simply does not show the columns.
     """
     from src.validation.biological_panel import PANEL
     from src.validation.dbptm_lookup import lookup_ground_truth
@@ -131,17 +130,17 @@ def _ground_truth_lookup(accession: str) -> dict:
 
 
 def _fmt_pmids(pmids: tuple, max_shown: int = 1) -> str:
-    """``"20123963+7"`` -- primeros ``max_shown`` PMIDs + conteo del resto.
+    """``"20123963+7"``: the first ``max_shown`` PMIDs plus a count of the rest.
 
-    Default ``max_shown=1`` (decision 2026-08-10): verificado que en el panel
-    curado los PMIDs estan casi siempre ordenados ascendente (~92% de los 484
-    sitios, ``pmids`` mas viejo primero -- ver ``import_dbptm_panel.py`` para
-    el fallback dbPTM, que SIEMPRE ordena asi), asi que el primero es una cita
-    razonable ("el estudio que lo reporto primero", no necesariamente "el mas
-    citado"). El ~8% restante (5 proteinas verificadas por un subagente que
-    puso deliberadamente el paper dedicado/landmark primero) tambien queda
-    bien representado por el primero. Nunca es "el mas importante" en sentido
-    estricto, pero es una cita defendible para mostrar sola.
+    Default ``max_shown=1`` (decision 2026-08-10): it was verified that in the
+    curated panel the PMIDs are almost always sorted ascending (~92% of the 484
+    sites, oldest ``pmids`` first; see ``import_dbptm_panel.py`` for
+    the dbPTM fallback, which ALWAYS sorts this way), so the first one is a
+    reasonable citation ("the study that reported it first", not necessarily "the most
+    cited"). The remaining ~8% (5 proteins verified by a subagent that
+    deliberately placed the dedicated/landmark paper first) is also
+    well represented by the first one. It is never "the most important" in a
+    strict sense, but it is a defensible citation to show on its own.
     """
     shown = ",".join(str(p) for p in pmids[:max_shown])
     resto = len(pmids) - max_shown
@@ -149,14 +148,14 @@ def _fmt_pmids(pmids: tuple, max_shown: int = 1) -> str:
 
 
 def _crosstalk_count(aviso: str) -> int:
-    """Cantidad de tipos competidores en ``ptm_crosstalk_aviso`` (formato fijo de
+    """The number of competing types in ``ptm_crosstalk_aviso`` (the fixed format of
     ``_add_ptm_crosstalk_flag``: ``"Compite con: tipo1, tipo2 (...)"``).
 
-    Solo cuenta, no nombra ninguno como "principal": verificado en el codigo
-    (``_add_ptm_crosstalk_flag``, ``sorted(set(...))``) que la lista esta
-    ordenada ALFABETICAMENTE, no por relevancia biologica -- mostrar el
-    primero sugeriria un sesgo que no existe (ej. "acetylation" gana casi
-    siempre por orden alfabetico, no porque sea el competidor dominante).
+    It only counts, and names none as the "main" one: it was verified in the code
+    (``_add_ptm_crosstalk_flag``, ``sorted(set(...))``) that the list is
+    sorted ALPHABETICALLY, not by biological relevance, so showing the
+    first one would suggest a bias that does not exist (for example "acetylation" wins
+    almost always by alphabetical order, not because it is the dominant competitor).
     Decision 2026-08-10.
     """
     marker = "Compite con: "
@@ -166,9 +165,9 @@ def _crosstalk_count(aviso: str) -> int:
 
 
 def _abbrev_motor(motor: str) -> str:
-    """Solo para mostrar en pantalla -- NUNCA tocar la columna ``motor`` real del
-    DataFrame, que ``ptm_annotation.py`` usa como logica (ej.
-    ``result["motor"] == "DeepMVP"`` para filas nglyco, linea 836)."""
+    """For on-screen display only. NEVER touch the DataFrame's real ``motor``
+    column, which ``ptm_annotation.py`` uses as logic (for example
+    ``result["motor"] == "DeepMVP"`` for nglyco rows, line 836)."""
     return motor.replace("DeepPTMPred", "DPTMP").replace("DeepMVP", "DMVP")
 
 
@@ -177,7 +176,7 @@ def _fmt_score(value) -> str:
 
 
 def parse_args(argv: List[str] = None) -> argparse.Namespace:
-    """Define y parsea los argumentos de linea de comandos del pipeline."""
+    """Defines and parses the pipeline's command line arguments."""
     parser = argparse.ArgumentParser(
         prog="pipeline.py",
         description="Pipeline de prediccion de zonas PTM (DeepMVP + DeepPTMPred).",
@@ -199,7 +198,7 @@ def parse_args(argv: List[str] = None) -> argparse.Namespace:
 
 
 def run_fase1_fasta(input_path: Path, output_dir: Path) -> Path:
-    """Camino FASTA: satura Fase 1 y escribe el FASTA saneado listo para DeepMVP."""
+    """FASTA path: completes Phase 1 and writes the sanitized FASTA ready for DeepMVP."""
     records = load_and_sanitize(input_path)
     accession = records[0].accession if len(records) == 1 else input_path.stem
     clean_path = output_dir / f"{accession}_clean.fasta"
@@ -235,17 +234,17 @@ def run_fase2_fasta_motor(clean_fasta: Path, output_dir: Path) -> pd.DataFrame:
 def run_fase3_fasta_annotation(
     records, deepmvp_results: pd.DataFrame, output_dir: Path, out_stem: str
 ) -> "tuple[pd.DataFrame, int, Path]":
-    """Camino FASTA: Fase 3, nucleo (B: anotacion + D: filtro). Escribe el reporte final.
+    """FASTA path: Phase 3, the core (B: annotation + D: filter). It writes the final report.
 
-    DeepMVP procesa el FASTA completo (posiblemente multi-accession) en una
-    unica invocacion (columna ``protein`` distingue cada accession en su
-    salida): se anota cada accession por separado (secuencia correcta para
-    el calculo de ventanas de cada una) y se concatena, en vez de tratar el
-    FASTA como una unica secuencia fusionada.
+    DeepMVP processes the complete FASTA (possibly multi-accession) in a
+    single invocation (the ``protein`` column distinguishes each accession in its
+    output), so each accession is annotated separately (with the correct sequence for
+    computing each one's windows) and then concatenated, instead of treating the
+    FASTA as a single fused sequence.
 
-    Devuelve ``(filtered, n_evaluados, report_path)`` -- ``n_evaluados`` es
-    ``len(annotated)`` (antes del filtro de umbral), para que el resumen en
-    pantalla pueda mostrar "X/Y pasan el umbral" sin releer el CSV.
+    It returns ``(filtered, n_evaluados, report_path)``, where ``n_evaluados`` is
+    ``len(annotated)`` (before the threshold filter), so that the on-screen
+    summary can show "X/Y pass the threshold" without re-reading the CSV.
     """
     per_accession = []
     for record in records:
@@ -277,27 +276,27 @@ def run_fase2_pdb_motors(record, output_dir: Path):
 def run_fase3_pdb_annotation(
     record, deepmvp_results: pd.DataFrame, deepptmpred_results: pd.DataFrame, output_dir: Path
 ) -> "tuple[pd.DataFrame, int, Path]":
-    """Camino PDB: Fase 3, nucleo con consenso (B: anotacion + D: filtro).
+    """PDB path: Phase 3, the core with consensus (B: annotation + D: filter).
 
-    ``record.chain_pdb_path`` (no ``record.pdb_path``, que puede tener mas
-    de una cadena) se pasa a ``annotate_pdb_path`` para habilitar la
-    corroboracion opcional de tipo via MeToken -- sus posiciones 1-based
-    deben coincidir exactamente con ``record.sequence``, mismo criterio que
-    usa ``record.chain_id`` (ver Fase 1.5). Se activa/desactiva solo con
-    ``Settings.METOKEN_ENABLED`` (ver ``src/engines/ptm_annotation.py``), sin
-    tocar este orquestador. ``record.position_mapping`` (misma Fase 1.5) se
-    pasa tambien para habilitar el consenso REAL de N-glicosilacion via
-    EMNGly (``Settings.EMNGLY_ENABLED``, decision 2026-08-06, reemplaza a
-    CoNglyPred -- ver STATUS.md) -- necesita traducir posiciones ATMSEQ a
-    numeracion real de PDB para alinear ``structure_emb`` correctamente
-    (ver docstring de ``_emngly_runner.py``).
+    ``record.chain_pdb_path`` (not ``record.pdb_path``, which may have more
+    than one chain) is passed to ``annotate_pdb_path`` in order to enable the
+    optional type corroboration via MeToken: its 1-based positions
+    must match ``record.sequence`` exactly, the same criterion that
+    ``record.chain_id`` uses (see Phase 1.5). It is enabled/disabled solely with
+    ``Settings.METOKEN_ENABLED`` (see ``src/engines/ptm_annotation.py``), without
+    touching this orchestrator. ``record.position_mapping`` (the same Phase 1.5) is
+    also passed in order to enable the REAL N-glycosylation consensus via
+    EMNGly (``Settings.EMNGLY_ENABLED``, decision 2026-08-06, replacing
+    CoNglyPred): it needs to translate ATMSEQ positions to the
+    real PDB numbering in order to align ``structure_emb`` correctly
+    (see the docstring of ``_emngly_runner.py``).
 
-    Devuelve ``(filtered, n_evaluados, report_path)`` -- expone tambien el
-    DataFrame en memoria (no solo la ruta del CSV ya escrito) porque
-    ``_print_pdb_summary`` lo lee directamente para el resumen en pantalla,
-    sin releerlo de disco; ``n_evaluados`` (``len(annotated)``, antes del
-    filtro de umbral) es lo que ese resumen necesita para mostrar "X/Y pasan
-    el umbral".
+    It returns ``(filtered, n_evaluados, report_path)``, and also exposes the
+    in-memory DataFrame (not only the path of the CSV already written) because
+    ``_print_pdb_summary`` reads it directly for the on-screen summary,
+    without re-reading it from disk; ``n_evaluados`` (``len(annotated)``, before the
+    threshold filter) is what that summary needs in order to show "X/Y pass
+    the threshold".
     """
     annotated = annotate_pdb_path(
         record.accession, record.sequence, deepmvp_results, deepptmpred_results,
@@ -319,12 +318,12 @@ def run_fase3_pdb_annotation(
 
 
 def _discover_batch_inputs(directory: Path) -> List[Path]:
-    """Lista, en orden alfabetico, los archivos de ``directory`` con una extension reconocida
-    por ``src.utils.input_router`` (FASTA o estructura). No recursivo -- mismo alcance plano
-    que ``inputs/`` en el uso de un solo archivo. El contenido de cada archivo se
-    revalida igual que en modo de un solo archivo (``route_input`` dentro de ``run_single_input``),
-    esto es solo un filtro rapido por extension para no intentar rutear cada archivo random
-    que pueda haber en la carpeta (p.ej. ``.csv``/``.log`` de una corrida anterior).
+    """Lists, in alphabetical order, the files of ``directory`` with an extension recognized
+    by ``src.utils.input_router`` (FASTA or structure). Not recursive, the same flat scope
+    as ``inputs/`` in single-file use. The content of each file is
+    revalidated exactly as in single-file mode (``route_input`` inside ``run_single_input``);
+    this is only a quick filter by extension so as not to attempt routing every arbitrary file
+    that may be in the folder (for example a ``.csv``/``.log`` from a previous run).
     """
     recognized = FASTA_EXTENSIONS | STRUCTURE_EXTENSIONS
     return sorted(
@@ -333,8 +332,8 @@ def _discover_batch_inputs(directory: Path) -> List[Path]:
 
 
 def _print_fasta_summary(filtered: pd.DataFrame, n_evaluados: int, report_path: Path) -> None:
-    """Resumen limpio del Camino FASTA -- sin motor de estructura, no hay consenso
-    ni Fase 3b/3c: la unica pregunta real es cuantos sitios acepta DeepMVP y de que tipo.
+    """A clean summary of the FASTA path. Without a structural engine there is no consensus
+    and no Phase 3b/3c: the only real question is how many sites DeepMVP accepts and of what type.
     """
     print(f"\n{_SEPARATOR}\nFASE 3 | Anotacion + filtro (DeepMVP)\n{_SEPARATOR}")
     print(f"{len(filtered)}/{n_evaluados} sitio(s) pasan el umbral.")
@@ -348,15 +347,15 @@ def _print_pdb_summary(
     record, deepmvp_results: pd.DataFrame, deepptmpred_results: pd.DataFrame,
     filtered: pd.DataFrame, n_evaluados: int, report_path: Path,
 ) -> None:
-    """Resumen limpio del Camino PDB -- lo unico que se ve en pantalla tras una corrida.
+    """A clean summary of the PDB path, the only thing shown on screen after a run.
 
-    Todo el detalle de subprocess/progreso por-tipo que antes saturaba la
-    consola (una linea INFO por cada uno de los 17 tipos de DeepPTMPred, por
-    ejemplo) ya no llega aqui -- vive solo en ``logs/ptm_pipeline.log`` (ver
-    ``src/utils/logger_config.py``). Lo que se muestra es exactamente lo que
-    un usuario necesita para juzgar el resultado: cuanto paso, que tiene
-    consenso real, y que se modelo estructuralmente -- nunca la mecanica
-    interna de como se llego ahi.
+    All the per-type subprocess/progress detail that used to saturate the
+    console (one INFO line for each of DeepPTMPred's 17 types, for
+    example) no longer reaches here: it lives only in ``logs/ptm_pipeline.log`` (see
+    ``src/utils/logger_config.py``). What is shown is exactly what
+    a user needs in order to judge the result: how much passed, what has
+    a real consensus, and what was modelled structurally, never the internal
+    mechanics of how that was reached.
     """
     print(f"\n{_SEPARATOR}\nFASE 1.5 | Extraccion de estructura\n{_SEPARATOR}")
     print(f"Cadena '{record.chain_id}' ({len(record.sequence)} residuo(s)) -> {record.chain_pdb_path}")
@@ -379,9 +378,9 @@ def _print_pdb_summary(
     if len(consenso_df):
         print(f"\n-- Consenso real ({len(consenso_df)} sitio(s)) --")
         if ground_truth:
-            # La fuente es constante por accession -- _ground_truth_lookup nunca
-            # mezcla PANEL (curado) y el fallback dbPTM en la misma corrida -- asi
-            # que repetirla en cada fila solo desperdicia ancho. Se imprime una vez.
+            # The source is constant per accession, as _ground_truth_lookup never
+            # mixes PANEL (curated) and the dbPTM fallback in the same run, so
+            # repeating it on every row only wastes width. It is printed once.
             fuente = next(iter(ground_truth.values()))[1]
             if fuente == "curado":
                 print("Literatura: fuente = panel curado (cada PMID verificado a mano contra NCBI eutils).")
@@ -455,14 +454,14 @@ def _print_pdb_summary(
 
 
 def run_single_input(input_path: Path, output_dir: Path) -> Path:
-    """Corre el pipeline completo (Camino FASTA o PDB, segun ``route_input``) sobre un unico
-    archivo de entrada. Extraido de ``main()`` para que el modo batch (``main()`` con
-    ``--input`` apuntando a un directorio) pueda reusar exactamente la misma logica por
-    archivo, sin duplicarla.
+    """Runs the complete pipeline (FASTA or PDB path, according to ``route_input``) over a single
+    input file. Extracted from ``main()`` so that batch mode (``main()`` with
+    ``--input`` pointing at a directory) can reuse exactly the same per-file
+    logic without duplicating it.
 
-    Devuelve la ruta del reporte final. Cualquier ``PipelineError`` de las fases internas se
-    propaga sin capturar -- el llamador decide si eso detiene todo el proceso (modo de un
-    solo archivo) o solo ese archivo del batch (modo batch, ver ``main()``).
+    It returns the path of the final report. Any ``PipelineError`` from the internal phases is
+    propagated uncaught: the caller decides whether that stops the whole process (single-file
+    mode) or only that file of the batch (batch mode, see ``main()``).
     """
     routed = route_input(input_path)
 
@@ -490,22 +489,22 @@ def run_single_input(input_path: Path, output_dir: Path) -> Path:
 
 
 def _run_batch(input_dir: Path, output_dir: Path) -> int:
-    """Modo batch: corre ``run_single_input`` sobre cada archivo reconocido de ``input_dir``.
+    """Batch mode: runs ``run_single_input`` over each recognized file of ``input_dir``.
 
-    Un archivo que falla se registra como error y NO detiene el resto del batch -- mismo
-    criterio de degradacion no fatal que MeToken aplica por-sitio (un
-    fallo individual real no debe tumbar todo el barrido). Escribe
-    ``batch_summary.csv`` (columnas: archivo, estado, reporte/error) en ``output_dir``.
-    Codigo de salida: 0 solo si TODOS los archivos completaron sin error, 1 si al menos uno
-    fallo (incluye el caso de un directorio sin ningun archivo reconocido -- ver docstring de
-    ``_discover_batch_inputs``, "vacio" tambien es un resultado que no debe pasar en silencio).
+    A file that fails is recorded as an error and does NOT stop the rest of the batch, the same
+    non-fatal degradation criterion that MeToken applies per site (one
+    real individual failure must not bring down the whole sweep). It writes
+    ``batch_summary.csv`` (columns: file, status, report/error) in ``output_dir``.
+    Exit code: 0 only if ALL the files completed without error, 1 if at least one
+    failed (this includes the case of a directory without any recognized file; see the docstring of
+    ``_discover_batch_inputs``, as "empty" is also a result that must not pass silently).
 
-    Captura ``Exception`` en general, no solo ``PipelineError`` (bug real encontrado en
-    auditoria 2026-08-07: antes, cualquier excepcion inesperada -- p.ej. un ``KeyError``/
-    ``AttributeError`` real de un motor/engine con una salida malformada, no necesariamente
-    un ``PipelineError`` -- escapaba del bucle entero, tumbando TODO el batch antes de
-    escribir ``batch_summary.csv`` y perdiendo el registro de los archivos previos ya
-    procesados con exito, pese a que sus reportes individuales SI quedaban en disco).
+    It catches ``Exception`` in general, not only ``PipelineError`` (a real bug found in the
+    2026-08-07 audit: previously, any unexpected exception, for example a real ``KeyError``/
+    ``AttributeError`` from an engine with malformed output, not necessarily
+    a ``PipelineError``, escaped the whole loop, bringing down the ENTIRE batch before
+    writing ``batch_summary.csv`` and losing the record of the previously
+    processed files, even though their individual reports WERE on disk).
     """
     inputs = _discover_batch_inputs(input_dir)
     if not inputs:

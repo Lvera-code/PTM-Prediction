@@ -1,31 +1,31 @@
-"""Corroboracion opcional de ESPECIFICIDAD DE QUINASA (Kinase Library), ambos caminos (FASTA y PDB).
+"""Optional corroboration of KINASE SPECIFICITY (Kinase Library), both paths (FASTA and PDB).
 
-Analisis de coherencia biologica 2026-08-07, punto 5 (ver
-``src/engines/_kinase_library_runner.py`` para el detalle completo de por
-que esta fuente SI puede orientar por-sitio, a diferencia del tipo de cadena
-de poliubiquitina -- razonamiento que vivia en Fase A/3c, eliminada del
-alcance 2026-08-10). NUNCA es un motor de consenso --
-Kinase Library no decide ``pasa_umbral``/``consenso``, solo corrobora
-sitios de fosforilacion que el consenso YA acepto, con la quinasa/familia
-mas probable segun las matrices de especificidad publicadas (Johnson et al.
+Biological coherence analysis 2026-08-07, point 5 (see
+``src/engines/_kinase_library_runner.py`` for the complete detail of why
+this source CAN give per-site guidance, unlike the polyubiquitin chain
+type, a line of reasoning that lived in Phase A/3c, removed from
+scope 2026-08-10). It is NEVER a consensus engine:
+Kinase Library does not decide ``pasa_umbral``/``consenso``, it only corroborates
+phosphorylation sites that the consensus has ALREADY accepted, with the most
+probable kinase/family according to the published specificity matrices (Johnson et al.
 2023 Nature, Yaron-Barir et al. 2024 Nature).
 
-Solo necesita la SECUENCIA COMPLETA de la proteina (``kl.Substrate`` hace su
-propio recorte+relleno de la ventana de 15-mer alrededor del sitio) --
-aplica igual a Camino FASTA (``annotate_fasta_path``) y Camino PDB
-(``annotate_pdb_path``). Invoca ``src/engines/_kinase_library_runner.py``
-via subprocess, sobre el entorno conda DEDICADO
-``Settings.KINASE_LIBRARY_PYTHON_BIN`` (``numpy``/``pandas`` que fija el
-paquete ``kinase-library`` son incompatibles con las versiones fijadas del
-venv principal, ver requirements.txt).
+It only needs the COMPLETE SEQUENCE of the protein (``kl.Substrate`` performs its
+own trimming and padding of the 15-mer window around the site), so it
+applies equally to the FASTA path (``annotate_fasta_path``) and the PDB path
+(``annotate_pdb_path``). It invokes ``src/engines/_kinase_library_runner.py``
+via subprocess, on the DEDICATED conda environment
+``Settings.KINASE_LIBRARY_PYTHON_BIN`` (the ``numpy``/``pandas`` that the
+``kinase-library`` package pins are incompatible with the versions pinned in the
+main venv, see requirements.txt).
 
-Mismo patron no-decisorio que MeToken: cualquier fallo
-(entorno no instalado, subproceso que revienta, timeout, salida malformada)
-degrada a un aviso en el log y devuelve ``{}`` -- NUNCA propaga una excepcion
-que tumbe el pipeline principal. Quien llama
-(``src/engines/ptm_annotation.py``) decide que hacer con un resultado vacio
-(no anota corroboracion en ninguna fila, el resto del pipeline sigue
-exactamente igual).
+The same non-deciding pattern as MeToken: any failure
+(environment not installed, a subprocess that fails, a timeout, malformed output)
+degrades to a warning in the log and returns ``{}``. It NEVER propagates an exception
+that would bring down the main pipeline. The caller
+(``src/engines/ptm_annotation.py``) decides what to do with an empty result
+(it annotates no corroboration on any row, and the rest of the pipeline continues
+exactly the same).
 """
 
 import os

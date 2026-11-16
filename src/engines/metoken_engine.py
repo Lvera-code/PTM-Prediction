@@ -1,20 +1,20 @@
-"""Corroboracion opcional de TIPO (MeToken), Camino PDB unicamente.
+"""Optional corroboration of TYPE (MeToken), PDB path only.
 
-NUNCA es un motor de consenso -- Decision 2 (segundo motor completo del
-Camino PDB) sigue pausada, ver STATUS.md. Este modulo invoca
-``src/engines/_metoken_runner.py`` (vendorizado, ver su docstring para el
-detalle completo de por que MeToken existe aqui, los 2 bugs reales
-parcheados, y la deteccion de la clase null/rare) via subprocess, sobre el
-venv dedicado ``Settings.METOKEN_PYTHON_BIN``.
+It is NEVER a consensus engine; Decision 2 (a second complete engine for the
+PDB path) remains paused, see the project decision record. This module invokes
+``src/engines/_metoken_runner.py`` (vendored, see its docstring for the
+complete detail of why MeToken exists here, the 2 real bugs
+patched, and the detection of the null/rare class) via subprocess, on the
+dedicated venv ``Settings.METOKEN_PYTHON_BIN``.
 
-Mismo patron no-decisorio que ``src/structural/uniprot_localization_client.py``:
-cualquier fallo (repo no instalado, checkpoint ausente, subproceso que
-revienta, timeout, salida malformada) degrada a un aviso en el log y
-devuelve ``{}`` -- NUNCA
-propaga una excepcion que tumbe el pipeline principal. Quien llama
-(``src/engines/ptm_annotation.py::annotate_pdb_path``) decide que hacer con
-un resultado vacio (no anota corroboracion en ninguna fila, el resto del
-pipeline sigue exactamente igual).
+The same non-deciding pattern as ``src/structural/uniprot_localization_client.py``:
+any failure (repo not installed, checkpoint absent, a subprocess that
+fails, a timeout, malformed output) degrades to a warning in the log and
+returns ``{}``. It NEVER
+propagates an exception that would bring down the main pipeline. The caller
+(``src/engines/ptm_annotation.py::annotate_pdb_path``) decides what to do with
+an empty result (it annotates no corroboration on any row, and the rest of the
+pipeline continues exactly the same).
 """
 
 import os

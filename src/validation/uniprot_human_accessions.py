@@ -1,20 +1,20 @@
-"""Lista de accessions UniProt humanas *reviewed* (Swiss-Prot).
+"""List of *reviewed* human UniProt accessions (Swiss-Prot).
 
-## Por que existe
+## Why it exists
 
-El panel de validacion biologica migra de curacion manual a dbPTM (decision
-2026-08-09, vault) -- dbPTM es multi-especie, sin filtro de organismo en sus
-archivos de descarga (verificado 2026-08-09 leyendo la pagina de descarga real,
-no asumido). Este modulo resuelve ese filtro consultando UniProt directamente,
-mismo patron de cliente minimo via ``urllib`` que ``uniprot_localization_client.py``.
+The biological validation panel migrates from manual curation to dbPTM (decision
+2026-08-09, vault), and dbPTM is multi-species, with no organism filter in its
+download files (verified 2026-08-09 by reading the real download page,
+not assumed). This module resolves that filter by querying UniProt directly,
+with the same minimal ``urllib`` client pattern as ``uniprot_localization_client.py``.
 
-## Endpoint real (verificado 2026-08-09 con una consulta real, no asumido de
-   la documentacion)
+## The real endpoint (verified 2026-08-09 with a real query, not assumed from
+   the documentation)
 
 ``https://rest.uniprot.org/uniprotkb/stream?query=organism_id:9606+AND+reviewed:true&format=list``
-(GET, sin auth). El endpoint ``/stream`` devuelve el resultado completo en una
-sola respuesta sin paginar -- confirmado real: 20431 accessions, un accession
-por linea, texto plano. No usar ``/search`` (pagina de a 500 por defecto).
+(GET, without auth). The ``/stream`` endpoint returns the complete result in a
+single response without paging, confirmed real: 20431 accessions, one accession
+per line, plain text. Do not use ``/search`` (which pages at 500 by default).
 """
 
 import urllib.error
